@@ -50,7 +50,7 @@ type AgentsConfig struct {
 
 type PolicyConfig struct {
 	Deny             []string `json:"deny,omitempty"`
-	ManagedDeny      []string `json:"managedDeny,omitempty"`
+	ManagedDeny      []string `json:"-"`
 	ApprovalRequired []string `json:"approvalRequired,omitempty"`
 	AllowExecSecrets bool     `json:"allowExecSecrets,omitempty"`
 }
@@ -73,10 +73,13 @@ type Config struct {
 }
 
 type LoadOptions struct {
-	ManagedPath string
-	UserPath    string
-	ProjectPath string
-	LocalPath   string
+	ManagedPath   string
+	UserPath      string
+	ProjectPath   string
+	LocalPath     string
+	ManagedDir    string
+	UserConfigDir string
+	WorkingDir    string
 }
 
 type Scope string

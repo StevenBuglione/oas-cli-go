@@ -48,6 +48,7 @@ func Build(ctx context.Context, options BuildOptions) (*NormalizedCatalog, error
 		GeneratedAt:    time.Now().UTC(),
 	}
 	fingerprint := sha256.New()
+	recordedSources := map[string]struct{}{}
 
 	referencedSources := map[string]bool{}
 	serviceIDs := sortedKeys(cfg.Services)
@@ -58,6 +59,7 @@ func Build(ctx context.Context, options BuildOptions) (*NormalizedCatalog, error
 			continue
 		}
 		referencedSources[serviceConfig.Source] = true
+		recordSource(catalog, recordedSources, serviceConfig.Source, sourceConfig.Type, sourceConfig.URI, provenanceMethodForSourceType(sourceConfig.Type))
 		if err := buildServiceCatalog(ctx, catalog, &cfg, options.BaseDir, serviceID, serviceConfig, sourceConfig, fingerprint); err != nil {
 			return nil, err
 		}
@@ -69,6 +71,7 @@ func Build(ctx context.Context, options BuildOptions) (*NormalizedCatalog, error
 		}
 		switch sourceConfig.Type {
 		case "apiCatalog":
+			recordSource(catalog, recordedSources, sourceID, sourceConfig.Type, sourceConfig.URI, string(discovery.ProvenanceRFC9727))
 			result, err := discovery.DiscoverAPICatalog(ctx, options.HTTPClient, sourceConfig.URI)
 			if err != nil {
 				return nil, err
@@ -84,10 +87,12 @@ func Build(ctx context.Context, options BuildOptions) (*NormalizedCatalog, error
 				}
 			}
 		case "serviceRoot":
+			recordSource(catalog, recordedSources, sourceID, sourceConfig.Type, sourceConfig.URI, string(discovery.ProvenanceRFC8631))
 			if err := buildServiceCatalog(ctx, catalog, &cfg, options.BaseDir, "", config.Service{Source: sourceID}, sourceConfig, fingerprint); err != nil {
 				return nil, err
 			}
 		case "openapi":
+			recordSource(catalog, recordedSources, sourceID, sourceConfig.Type, sourceConfig.URI, string(discovery.ProvenanceExplicit))
 			if err := buildServiceCatalog(ctx, catalog, &cfg, options.BaseDir, "", config.Service{Source: sourceID}, sourceConfig, fingerprint); err != nil {
 				return nil, err
 			}
@@ -101,6 +106,33 @@ func Build(ctx context.Context, options BuildOptions) (*NormalizedCatalog, error
 	catalog.SourceFingerprint = hex.EncodeToString(fingerprint.Sum(nil))
 	catalog.EffectiveViews = buildEffectiveViews(cfg, catalog.Tools)
 	return catalog, nil
+}
+
+func recordSource(ntc *NormalizedCatalog, recorded map[string]struct{}, id, sourceType, uri, method string) {
+	if _, ok := recorded[id]; ok {
+		return
+	}
+	recorded[id] = struct{}{}
+	ntc.Sources = append(ntc.Sources, SourceRecord{
+		ID:   id,
+		Type: sourceType,
+		URI:  uri,
+		Provenance: SourceProvenance{
+			Method: method,
+			At:     time.Now().UTC(),
+		},
+	})
+}
+
+func provenanceMethodForSourceType(sourceType string) string {
+	switch sourceType {
+	case "apiCatalog":
+		return string(discovery.ProvenanceRFC9727)
+	case "serviceRoot":
+		return string(discovery.ProvenanceRFC8631)
+	default:
+		return string(discovery.ProvenanceExplicit)
+	}
 }
 
 func loadGuidance(baseDir string, refs []string) (map[string]Guidance, error) {

@@ -145,3 +145,70 @@ func TestLoadEffectiveReturnsFieldDiagnostics(t *testing.T) {
 		t.Fatalf("expected sources.broken.uri diagnostic, got %#v", validationErr.Diagnostics)
 	}
 }
+
+func TestDiscoverScopePaths(t *testing.T) {
+	root := t.TempDir()
+	managedDir := filepath.Join(root, "etc", "oas-cli")
+	userConfigDir := filepath.Join(root, "xdg")
+	projectDir := filepath.Join(root, "project")
+
+	for _, dir := range []string{managedDir, filepath.Join(userConfigDir, "oas-cli"), projectDir} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", dir, err)
+		}
+	}
+
+	managedPath := writeJSON(t, managedDir, ".cli.json", `{"cli":"1.0.0","mode":{"default":"discover"},"sources":{"svc":{"type":"openapi","uri":"file:///managed.json"}}}`)
+	userPath := writeJSON(t, filepath.Join(userConfigDir, "oas-cli"), ".cli.json", `{"sources":{"svc":{"enabled":false}}}`)
+	projectPath := writeJSON(t, projectDir, ".cli.json", `{"services":{"svc":{"source":"svc"}}}`)
+	localPath := writeJSON(t, projectDir, ".cli.local.json", `{"sources":{"svc":{"enabled":true}}}`)
+
+	paths := config.DiscoverScopePaths(config.LoadOptions{
+		ManagedDir:    managedDir,
+		UserConfigDir: userConfigDir,
+		WorkingDir:    projectDir,
+	})
+
+	if paths[config.ScopeManaged] != managedPath {
+		t.Fatalf("expected managed path %q, got %q", managedPath, paths[config.ScopeManaged])
+	}
+	if paths[config.ScopeUser] != userPath {
+		t.Fatalf("expected user path %q, got %q", userPath, paths[config.ScopeUser])
+	}
+	if paths[config.ScopeProject] != projectPath {
+		t.Fatalf("expected project path %q, got %q", projectPath, paths[config.ScopeProject])
+	}
+	if paths[config.ScopeLocal] != localPath {
+		t.Fatalf("expected local path %q, got %q", localPath, paths[config.ScopeLocal])
+	}
+}
+
+func TestLoadEffectiveUsesSchemaValidation(t *testing.T) {
+	dir := t.TempDir()
+	projectPath := writeJSON(t, dir, ".cli.json", `{
+	  "cli": "1.0.0",
+	  "mode": { "default": "discover" },
+	  "sources": {
+	    "broken": {
+	      "type": "not-a-valid-source-type",
+	      "uri": "https://example.com/openapi.json"
+	    }
+	  }
+	}`)
+
+	_, err := config.LoadEffective(config.LoadOptions{ProjectPath: projectPath, WorkingDir: dir})
+	if err == nil {
+		t.Fatalf("expected schema validation error")
+	}
+
+	validationErr, ok := err.(*config.ValidationError)
+	if !ok {
+		t.Fatalf("expected ValidationError, got %T", err)
+	}
+	if len(validationErr.Diagnostics) == 0 {
+		t.Fatalf("expected diagnostics")
+	}
+	if validationErr.Diagnostics[0].Path != "sources.broken.type" {
+		t.Fatalf("expected schema diagnostic for sources.broken.type, got %#v", validationErr.Diagnostics)
+	}
+}

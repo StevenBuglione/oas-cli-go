@@ -8,6 +8,7 @@ Go reference implementation for OAS-CLI, including:
 ## Features
 
 - `.cli.json` scope merging with deny-wins policy semantics
+- Managed/User/Project/Local scope file discovery
 - RFC 9727 API catalog discovery
 - RFC 8631 service discovery via `Link` headers
 - OpenAPI ingestion with overlay application
@@ -43,3 +44,11 @@ make verify
 - `pkg/policy`: execution-time policy decisions
 - `pkg/exec`: HTTP request execution
 - `pkg/audit`: audit event persistence
+
+## CLI Body Input
+
+`oascli` supports all v1 request body forms required by the profile:
+
+- `--body '{"key":"value"}'`
+- `--body @request.json`
+- `--body -` to read the body from stdin

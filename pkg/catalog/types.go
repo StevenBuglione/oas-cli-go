@@ -15,10 +15,23 @@ type NormalizedCatalog struct {
 	CatalogVersion    string          `json:"catalogVersion"`
 	GeneratedAt       time.Time       `json:"generatedAt"`
 	SourceFingerprint string          `json:"sourceFingerprint"`
+	Sources           []SourceRecord  `json:"sources"`
 	Services          []Service       `json:"services"`
 	Tools             []Tool          `json:"tools"`
 	Workflows         []Workflow      `json:"workflows,omitempty"`
 	EffectiveViews    []EffectiveView `json:"effectiveViews"`
+}
+
+type SourceRecord struct {
+	ID         string           `json:"id"`
+	Type       string           `json:"type"`
+	URI        string           `json:"uri"`
+	Provenance SourceProvenance `json:"provenance"`
+}
+
+type SourceProvenance struct {
+	Method string    `json:"method"`
+	At     time.Time `json:"at"`
 }
 
 type Service struct {

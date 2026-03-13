@@ -149,6 +149,12 @@ workflows:
 	if len(ntc.Services) != 1 {
 		t.Fatalf("expected 1 service, got %#v", ntc.Services)
 	}
+	if len(ntc.Sources) != 1 {
+		t.Fatalf("expected 1 source provenance record, got %#v", ntc.Sources)
+	}
+	if ntc.Sources[0].ID != "ticketsSource" || ntc.Sources[0].Provenance.Method != "explicit" {
+		t.Fatalf("expected explicit source provenance for ticketsSource, got %#v", ntc.Sources[0])
+	}
 	if len(ntc.Tools) != 2 {
 		t.Fatalf("expected 2 tools, got %#v", ntc.Tools)
 	}

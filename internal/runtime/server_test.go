@@ -252,3 +252,82 @@ paths:
 		t.Fatalf("expected 200 for allowed tool, got %d", allowResp.StatusCode)
 	}
 }
+
+func TestServerResolvesExecSecretReferencesWhenAllowed(t *testing.T) {
+	dir := t.TempDir()
+
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "Bearer token-from-exec" {
+			t.Fatalf("expected bearer auth header from exec secret, got %q", got)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	}))
+	defer api.Close()
+
+	writeRuntimeFile(t, dir, "tickets.openapi.yaml", `
+openapi: 3.1.0
+info:
+  title: Tickets API
+  version: "1.0.0"
+servers:
+  - url: `+api.URL+`
+security:
+  - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+paths:
+  /tickets:
+    get:
+      operationId: listTickets
+      tags: [tickets]
+      responses:
+        "200":
+          description: OK
+`)
+	configPath := writeRuntimeFile(t, dir, ".cli.json", `{
+	  "cli": "1.0.0",
+	  "mode": { "default": "discover" },
+	  "sources": {
+	    "ticketsSource": {
+	      "type": "openapi",
+	      "uri": "./tickets.openapi.yaml",
+	      "enabled": true
+	    }
+	  },
+	  "services": {
+	    "tickets": {
+	      "source": "ticketsSource",
+	      "alias": "tickets"
+	    }
+	  },
+	  "policy": {
+	    "allowExecSecrets": true
+	  },
+	  "secrets": {
+	    "bearerAuth": {
+	      "type": "exec",
+	      "command": ["sh", "-lc", "printf token-from-exec"]
+	    }
+	  }
+	}`)
+
+	server := runtime.NewServer(runtime.Options{AuditPath: filepath.Join(dir, "audit.log")})
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	allowBody := bytes.NewBufferString(`{
+	  "configPath": "` + configPath + `",
+	  "toolId": "tickets:listTickets"
+	}`)
+	allowResp, err := http.Post(httpServer.URL+"/v1/tools/execute", "application/json", allowBody)
+	if err != nil {
+		t.Fatalf("allow execute request: %v", err)
+	}
+	defer allowResp.Body.Close()
+	if allowResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for allowed tool, got %d", allowResp.StatusCode)
+	}
+}

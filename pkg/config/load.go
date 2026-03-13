@@ -1,8 +1,6 @@
 package config
 
 import (
-	"bytes"
-	"encoding/json"
 	"os"
 	"path/filepath"
 )
@@ -70,14 +68,15 @@ func LoadEffective(options LoadOptions) (*EffectiveConfig, error) {
 		ScopePaths: map[Scope]string{},
 	}
 
+	discoveredPaths := DiscoverScopePaths(options)
 	scopedPaths := []struct {
 		scope Scope
 		path  string
 	}{
-		{scope: ScopeManaged, path: options.ManagedPath},
-		{scope: ScopeUser, path: options.UserPath},
-		{scope: ScopeProject, path: options.ProjectPath},
-		{scope: ScopeLocal, path: options.LocalPath},
+		{scope: ScopeManaged, path: discoveredPaths[ScopeManaged]},
+		{scope: ScopeUser, path: discoveredPaths[ScopeUser]},
+		{scope: ScopeProject, path: discoveredPaths[ScopeProject]},
+		{scope: ScopeLocal, path: discoveredPaths[ScopeLocal]},
 	}
 
 	for _, entry := range scopedPaths {
@@ -93,13 +92,17 @@ func LoadEffective(options LoadOptions) (*EffectiveConfig, error) {
 		effective.Config.merge(entry.scope, raw)
 	}
 
-	if options.LocalPath != "" {
-		effective.BaseDir = filepath.Dir(options.LocalPath)
-	} else if options.ProjectPath != "" {
-		effective.BaseDir = filepath.Dir(options.ProjectPath)
+	if projectPath := discoveredPaths[ScopeLocal]; projectPath != "" {
+		effective.BaseDir = filepath.Dir(projectPath)
+	} else if projectPath := discoveredPaths[ScopeProject]; projectPath != "" {
+		effective.BaseDir = filepath.Dir(projectPath)
+	} else if options.WorkingDir != "" {
+		effective.BaseDir = options.WorkingDir
 	}
-
-	if err := validate(effective.Config); err != nil {
+	if err := validateConfig(effective.Config); err != nil {
+		return nil, err
+	}
+	if err := validateCrossReferences(effective.Config); err != nil {
 		return nil, err
 	}
 
@@ -111,15 +114,10 @@ func loadRaw(path string) (rawConfig, error) {
 	if err != nil {
 		return rawConfig{}, err
 	}
-
-	var raw rawConfig
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&raw); err != nil {
+	if err := validateDocument(data, true); err != nil {
 		return rawConfig{}, err
 	}
-
-	return raw, nil
+	return decodeRawConfig(data)
 }
 
 func (cfg *Config) merge(scope Scope, raw rawConfig) {
@@ -216,29 +214,8 @@ func (cfg *Config) merge(scope Scope, raw rawConfig) {
 	}
 }
 
-func validate(cfg Config) error {
+func validateCrossReferences(cfg Config) error {
 	var diagnostics []Diagnostic
-
-	if cfg.CLI == "" {
-		diagnostics = append(diagnostics, Diagnostic{Path: "cli", Message: "is required"})
-	}
-	if cfg.Mode.Default == "" {
-		diagnostics = append(diagnostics, Diagnostic{Path: "mode.default", Message: "is required"})
-	}
-	if len(cfg.Sources) == 0 {
-		diagnostics = append(diagnostics, Diagnostic{Path: "sources", Message: "must define at least one source"})
-	}
-
-	for key, source := range cfg.Sources {
-		prefix := "sources." + key
-		if source.Type == "" {
-			diagnostics = append(diagnostics, Diagnostic{Path: prefix + ".type", Message: "is required"})
-		}
-		if source.URI == "" {
-			diagnostics = append(diagnostics, Diagnostic{Path: prefix + ".uri", Message: "is required"})
-		}
-	}
-
 	for key, service := range cfg.Services {
 		if service.Source == "" {
 			diagnostics = append(diagnostics, Diagnostic{Path: "services." + key + ".source", Message: "is required"})
@@ -248,11 +225,9 @@ func validate(cfg Config) error {
 			diagnostics = append(diagnostics, Diagnostic{Path: "services." + key + ".source", Message: "references unknown source"})
 		}
 	}
-
 	if len(diagnostics) > 0 {
 		return &ValidationError{Diagnostics: diagnostics}
 	}
-
 	return nil
 }
 

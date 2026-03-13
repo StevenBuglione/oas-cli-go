@@ -23,6 +23,7 @@ type CommandOptions struct {
 	AgentProfile string
 	Format       string
 	Approval     bool
+	Stdin        io.Reader
 	Stdout       io.Writer
 	Stderr       io.Writer
 }
@@ -78,6 +79,9 @@ func NewRootCommand(options CommandOptions, args []string) (*cobra.Command, erro
 	if options.Stderr == nil {
 		options.Stderr = os.Stderr
 	}
+	if options.Stdin == nil {
+		options.Stdin = os.Stdin
+	}
 
 	response, err := fetchCatalog(options)
 	if err != nil {
@@ -91,6 +95,7 @@ func NewRootCommand(options CommandOptions, args []string) (*cobra.Command, erro
 	}
 	root.SetOut(options.Stdout)
 	root.SetErr(options.Stderr)
+	root.SetIn(options.Stdin)
 	root.PersistentFlags().StringVar(&options.RuntimeURL, "runtime", options.RuntimeURL, "Runtime base URL")
 	root.PersistentFlags().StringVar(&options.ConfigPath, "config", options.ConfigPath, "Path to .cli.json")
 	root.PersistentFlags().StringVar(&options.Mode, "mode", options.Mode, "Execution mode")
@@ -102,7 +107,7 @@ func NewRootCommand(options CommandOptions, args []string) (*cobra.Command, erro
 	root.AddCommand(newToolCommand(options, response))
 	root.AddCommand(newExplainCommand(options, response))
 	root.AddCommand(newWorkflowCommand(options))
-	addDynamicToolCommands(root, options, response.View.Tools)
+	addDynamicToolCommands(root, options, response.Catalog.Services, response.View.Tools)
 	root.SetArgs(args)
 	return root, nil
 }
@@ -184,12 +189,19 @@ func newWorkflowCommand(options CommandOptions) *cobra.Command {
 	return command
 }
 
-func addDynamicToolCommands(root *cobra.Command, options CommandOptions, tools []catalog.Tool) {
+func addDynamicToolCommands(root *cobra.Command, options CommandOptions, services []catalog.Service, tools []catalog.Tool) {
 	serviceCommands := map[string]*cobra.Command{}
 	groupCommands := map[string]*cobra.Command{}
+	serviceAliases := map[string]string{}
+	for _, service := range services {
+		serviceAliases[service.ID] = service.Alias
+	}
 
 	for _, tool := range tools {
-		serviceAlias := tool.ServiceID
+		serviceAlias := serviceAliases[tool.ServiceID]
+		if serviceAlias == "" {
+			serviceAlias = tool.ServiceID
+		}
 		serviceCommand := serviceCommands[serviceAlias]
 		if serviceCommand == nil {
 			serviceCommand = &cobra.Command{Use: serviceAlias}
@@ -222,9 +234,9 @@ func addDynamicToolCommands(root *cobra.Command, options CommandOptions, tools [
 					}
 				}
 				bodyRef, _ := cmd.Flags().GetString("body")
-				var body []byte
-				if bodyRef != "" {
-					body = []byte(bodyRef)
+				body, err := loadBody(bodyRef, cmd.InOrStdin())
+				if err != nil {
+					return err
 				}
 				result, err := postJSON[executeResponse](options.RuntimeURL+"/v1/tools/execute", executeRequest{
 					ConfigPath:   options.ConfigPath,
@@ -255,6 +267,19 @@ func addDynamicToolCommands(root *cobra.Command, options CommandOptions, tools [
 		}
 		command.Flags().String("body", "", "inline request body")
 		groupCommand.AddCommand(command)
+	}
+}
+
+func loadBody(bodyRef string, stdin io.Reader) ([]byte, error) {
+	switch {
+	case bodyRef == "":
+		return nil, nil
+	case bodyRef == "-":
+		return io.ReadAll(stdin)
+	case strings.HasPrefix(bodyRef, "@"):
+		return os.ReadFile(strings.TrimPrefix(bodyRef, "@"))
+	default:
+		return []byte(bodyRef), nil
 	}
 }
 

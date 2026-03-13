@@ -307,7 +307,13 @@ func resolveSecret(policyConfig config.PolicyConfig, secret config.SecretRef) (s
 		if !policyConfig.AllowExecSecrets {
 			return "", fmt.Errorf("exec secrets are disabled")
 		}
-		output, err := exec.Command(secret.Value).Output()
+		if len(secret.Command) == 0 {
+			if secret.Value == "" {
+				return "", fmt.Errorf("exec secret requires command or value")
+			}
+			secret.Command = []string{secret.Value}
+		}
+		output, err := exec.Command(secret.Command[0], secret.Command[1:]...).Output()
 		return string(output), err
 	default:
 		return "", fmt.Errorf("unsupported secret type %q", secret.Type)
