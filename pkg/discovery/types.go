@@ -17,9 +17,17 @@ type Warning struct {
 }
 
 type FetchRecord struct {
-	URL       string           `json:"url"`
-	FetchedAt time.Time        `json:"fetchedAt"`
-	Method    ProvenanceMethod `json:"method"`
+	URL           string           `json:"url"`
+	FetchedAt     time.Time        `json:"fetchedAt"`
+	Method        ProvenanceMethod `json:"method"`
+	RequestMethod string           `json:"requestMethod,omitempty"`
+	StatusCode    int              `json:"statusCode,omitempty"`
+	CacheOutcome  string           `json:"cacheOutcome,omitempty"`
+	ETag          string           `json:"etag,omitempty"`
+	LastModified  string           `json:"lastModified,omitempty"`
+	CacheControl  string           `json:"cacheControl,omitempty"`
+	ExpiresAt     *time.Time       `json:"expiresAt,omitempty"`
+	Stale         bool             `json:"stale,omitempty"`
 }
 
 type CatalogProvenance struct {

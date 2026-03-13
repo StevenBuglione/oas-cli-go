@@ -212,3 +212,36 @@ func TestLoadEffectiveUsesSchemaValidation(t *testing.T) {
 		t.Fatalf("expected schema diagnostic for sources.broken.type, got %#v", validationErr.Diagnostics)
 	}
 }
+
+func TestLoadEffectiveRejectsNegativeRefreshMaxAge(t *testing.T) {
+	dir := t.TempDir()
+	projectPath := writeJSON(t, dir, ".cli.json", `{
+	  "cli": "1.0.0",
+	  "mode": { "default": "discover" },
+	  "sources": {
+	    "tickets": {
+	      "type": "openapi",
+	      "uri": "https://example.com/openapi.json",
+	      "refresh": {
+	        "maxAgeSeconds": -1
+	      }
+	    }
+	  }
+	}`)
+
+	_, err := config.LoadEffective(config.LoadOptions{ProjectPath: projectPath, WorkingDir: dir})
+	if err == nil {
+		t.Fatalf("expected schema validation error")
+	}
+
+	validationErr, ok := err.(*config.ValidationError)
+	if !ok {
+		t.Fatalf("expected ValidationError, got %T", err)
+	}
+	if len(validationErr.Diagnostics) == 0 {
+		t.Fatalf("expected diagnostics")
+	}
+	if validationErr.Diagnostics[0].Path != "sources.tickets.refresh.maxAgeSeconds" {
+		t.Fatalf("expected refresh schema diagnostic, got %#v", validationErr.Diagnostics)
+	}
+}

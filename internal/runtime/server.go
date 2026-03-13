@@ -8,23 +8,29 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/StevenBuglione/oas-cli-go/pkg/audit"
 	"github.com/StevenBuglione/oas-cli-go/pkg/catalog"
 	"github.com/StevenBuglione/oas-cli-go/pkg/config"
 	httpexec "github.com/StevenBuglione/oas-cli-go/pkg/exec"
+	"github.com/StevenBuglione/oas-cli-go/pkg/obs"
 	"github.com/StevenBuglione/oas-cli-go/pkg/policy"
 )
 
 type Options struct {
 	AuditPath  string
+	CacheDir   string
 	HTTPClient *http.Client
+	Observer   obs.Observer
 }
 
 type Server struct {
 	auditStore *audit.FileStore
 	client     *http.Client
+	cacheDir   string
+	observer   obs.Observer
 }
 
 type effectiveCatalogResponse struct {
@@ -57,16 +63,41 @@ type workflowRunRequest struct {
 	Approval     bool   `json:"approval,omitempty"`
 }
 
+type refreshRequest struct {
+	ConfigPath string `json:"configPath"`
+}
+
+type refreshSourceResult struct {
+	ID           string `json:"id"`
+	URI          string `json:"uri"`
+	CacheOutcome string `json:"cacheOutcome,omitempty"`
+	StatusCode   int    `json:"statusCode,omitempty"`
+	Stale        bool   `json:"stale,omitempty"`
+}
+
+type refreshResponse struct {
+	RefreshedAt time.Time             `json:"refreshedAt"`
+	Sources     []refreshSourceResult `json:"sources"`
+}
+
 func NewServer(options Options) *Server {
 	if options.AuditPath == "" {
 		options.AuditPath = filepath.Join(".cache", "audit.log")
 	}
+	if options.CacheDir == "" {
+		options.CacheDir = filepath.Join(".cache", "http")
+	}
 	if options.HTTPClient == nil {
 		options.HTTPClient = http.DefaultClient
+	}
+	if options.Observer == nil {
+		options.Observer = obs.NewNop()
 	}
 	return &Server{
 		auditStore: audit.NewFileStore(options.AuditPath),
 		client:     options.HTTPClient,
+		cacheDir:   options.CacheDir,
+		observer:   options.Observer,
 	}
 }
 
@@ -75,16 +106,25 @@ func (server *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/catalog/effective", server.handleEffectiveCatalog)
 	mux.HandleFunc("/v1/tools/execute", server.handleExecuteTool)
 	mux.HandleFunc("/v1/workflows/run", server.handleWorkflowRun)
-	mux.HandleFunc("/v1/refresh", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusNoContent)
-	})
+	mux.HandleFunc("/v1/refresh", server.handleRefresh)
 	mux.HandleFunc("/v1/audit/events", server.handleAuditEvents)
 	return mux
 }
 
 func (server *Server) handleEffectiveCatalog(w http.ResponseWriter, r *http.Request) {
-	cfg, ntc, err := server.loadCatalog(r.Context(), r.URL.Query().Get("config"))
+	requestID := requestID(r)
+	start := time.Now()
+	ctx, finish := server.observer.StartSpan(r.Context(), "runtime.catalog.effective", map[string]string{
+		"requestId": requestID,
+	})
+	ctx = obs.WithRequestID(ctx, requestID)
+	var finishErr error
+	defer func() { finish(finishErr) }()
+
+	cfg, ntc, err := server.loadCatalog(ctx, r.URL.Query().Get("config"), false)
 	if err != nil {
+		finishErr = err
+		server.observer.Emit(ctx, obs.Event{Name: "runtime.catalog.effective", Operation: "catalog.effective", Duration: time.Since(start), ErrorCategory: "catalog_load_error", RequestID: requestID})
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -92,24 +132,39 @@ func (server *Server) handleEffectiveCatalog(w http.ResponseWriter, r *http.Requ
 	mode := r.URL.Query().Get("mode")
 	agentProfile := r.URL.Query().Get("agentProfile")
 	view := selectView(cfg.Config, ntc, mode, agentProfile)
+	server.observer.Emit(ctx, obs.Event{Name: "runtime.catalog.effective", Operation: "catalog.effective", StatusCode: http.StatusOK, Duration: time.Since(start), RequestID: requestID})
 	writeJSON(w, http.StatusOK, effectiveCatalogResponse{Catalog: ntc, View: view})
 }
 
 func (server *Server) handleExecuteTool(w http.ResponseWriter, r *http.Request) {
+	requestID := requestID(r)
+	start := time.Now()
+	ctx, finish := server.observer.StartSpan(r.Context(), "runtime.tools.execute", map[string]string{
+		"requestId": requestID,
+	})
+	ctx = obs.WithRequestID(ctx, requestID)
+	var finishErr error
+	defer func() { finish(finishErr) }()
+
 	var request executeToolRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		finishErr = err
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	cfg, ntc, err := server.loadCatalog(r.Context(), request.ConfigPath)
+	cfg, ntc, err := server.loadCatalog(ctx, request.ConfigPath, false)
 	if err != nil {
+		finishErr = err
+		server.observer.Emit(ctx, obs.Event{Name: "runtime.tools.execute", Operation: "tools.execute", Duration: time.Since(start), ErrorCategory: "catalog_load_error", RequestID: requestID})
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	tool := ntc.FindTool(request.ToolID)
 	if tool == nil {
+		finishErr = fmt.Errorf("tool not found")
+		server.observer.Emit(ctx, obs.Event{Name: "runtime.tools.execute", Operation: request.ToolID, Duration: time.Since(start), ErrorCategory: "tool_not_found", RequestID: requestID})
 		http.Error(w, "tool not found", http.StatusNotFound)
 		return
 	}
@@ -121,12 +176,13 @@ func (server *Server) handleExecuteTool(w http.ResponseWriter, r *http.Request) 
 	})
 	if !decision.Allowed {
 		server.recordEvent(*tool, request.AgentProfile, decision, 0, 0, 0)
+		server.observer.Emit(ctx, obs.Event{Name: "runtime.tools.execute", Service: tool.ServiceID, Operation: tool.ID, Duration: time.Since(start), ErrorCategory: decision.ReasonCode, RequestID: requestID})
 		http.Error(w, decision.ReasonCode, http.StatusForbidden)
 		return
 	}
 
-	start := time.Now()
-	result, err := httpexec.Execute(r.Context(), server.client, httpexec.Request{
+	execStart := time.Now()
+	result, err := httpexec.Execute(ctx, server.client, httpexec.Request{
 		Tool:     *tool,
 		PathArgs: request.PathArgs,
 		Flags:    request.Flags,
@@ -134,12 +190,16 @@ func (server *Server) handleExecuteTool(w http.ResponseWriter, r *http.Request) 
 		Auth:     resolveAuth(cfg.Config, *tool),
 	})
 	if err != nil {
+		finishErr = err
 		server.recordEvent(*tool, request.AgentProfile, policy.Decision{Allowed: false, ReasonCode: "execution_error"}, 0, 0, 0)
+		server.observer.Emit(ctx, obs.Event{Name: "runtime.tools.execute", Service: tool.ServiceID, Operation: tool.ID, Duration: time.Since(execStart), ErrorCategory: "execution_error", RequestID: requestID})
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
 	}
 
-	server.recordEvent(*tool, request.AgentProfile, decision, result.StatusCode, result.RetryCount, time.Since(start))
+	latency := time.Since(execStart)
+	server.recordEvent(*tool, request.AgentProfile, decision, result.StatusCode, result.RetryCount, latency)
+	server.observer.Emit(ctx, obs.Event{Name: "runtime.tools.execute", Service: tool.ServiceID, Operation: tool.ID, StatusCode: result.StatusCode, Duration: latency, RequestID: requestID})
 
 	response := executeToolResponse{StatusCode: result.StatusCode}
 	if json.Valid(result.Body) {
@@ -151,14 +211,26 @@ func (server *Server) handleExecuteTool(w http.ResponseWriter, r *http.Request) 
 }
 
 func (server *Server) handleWorkflowRun(w http.ResponseWriter, r *http.Request) {
+	requestID := requestID(r)
+	start := time.Now()
+	ctx, finish := server.observer.StartSpan(r.Context(), "runtime.workflows.run", map[string]string{
+		"requestId": requestID,
+	})
+	ctx = obs.WithRequestID(ctx, requestID)
+	var finishErr error
+	defer func() { finish(finishErr) }()
+
 	var request workflowRunRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		finishErr = err
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	cfg, ntc, err := server.loadCatalog(r.Context(), request.ConfigPath)
+	cfg, ntc, err := server.loadCatalog(ctx, request.ConfigPath, false)
 	if err != nil {
+		finishErr = err
+		server.observer.Emit(ctx, obs.Event{Name: "runtime.workflows.run", Operation: request.WorkflowID, Duration: time.Since(start), ErrorCategory: "catalog_load_error", RequestID: requestID})
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -171,6 +243,7 @@ func (server *Server) handleWorkflowRun(w http.ResponseWriter, r *http.Request) 
 		for _, step := range workflow.Steps {
 			tool := ntc.FindTool(step.ToolID)
 			if tool == nil {
+				finishErr = fmt.Errorf("workflow references unknown tool")
 				http.Error(w, "workflow references unknown tool", http.StatusBadRequest)
 				return
 			}
@@ -180,11 +253,13 @@ func (server *Server) handleWorkflowRun(w http.ResponseWriter, r *http.Request) 
 				ApprovalGranted: request.Approval,
 			})
 			if !decision.Allowed {
+				server.observer.Emit(ctx, obs.Event{Name: "runtime.workflows.run", Operation: request.WorkflowID, Duration: time.Since(start), ErrorCategory: decision.ReasonCode, RequestID: requestID})
 				http.Error(w, decision.ReasonCode, http.StatusForbidden)
 				return
 			}
 			steps = append(steps, step.StepID)
 		}
+		server.observer.Emit(ctx, obs.Event{Name: "runtime.workflows.run", Operation: request.WorkflowID, StatusCode: http.StatusOK, Duration: time.Since(start), RequestID: requestID})
 		writeJSON(w, http.StatusOK, map[string]any{
 			"workflowId": workflow.WorkflowID,
 			"steps":      steps,
@@ -192,7 +267,58 @@ func (server *Server) handleWorkflowRun(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	finishErr = fmt.Errorf("workflow not found")
+	server.observer.Emit(ctx, obs.Event{Name: "runtime.workflows.run", Operation: request.WorkflowID, Duration: time.Since(start), ErrorCategory: "workflow_not_found", RequestID: requestID})
 	http.Error(w, "workflow not found", http.StatusNotFound)
+}
+
+func (server *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
+	requestID := requestID(r)
+	start := time.Now()
+	ctx, finish := server.observer.StartSpan(r.Context(), "runtime.refresh", map[string]string{
+		"requestId": requestID,
+	})
+	ctx = obs.WithRequestID(ctx, requestID)
+	var finishErr error
+	defer func() { finish(finishErr) }()
+
+	var request refreshRequest
+	if r.ContentLength > 0 {
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			finishErr = err
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+	if request.ConfigPath == "" {
+		request.ConfigPath = r.URL.Query().Get("config")
+	}
+
+	_, ntc, err := server.loadCatalog(ctx, request.ConfigPath, true)
+	if err != nil {
+		finishErr = err
+		server.observer.Emit(ctx, obs.Event{Name: "runtime.refresh", Operation: "refresh", Duration: time.Since(start), ErrorCategory: "refresh_error", RequestID: requestID})
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	response := refreshResponse{RefreshedAt: time.Now().UTC()}
+	for _, source := range ntc.Sources {
+		item := refreshSourceResult{
+			ID:  source.ID,
+			URI: source.URI,
+		}
+		if len(source.Provenance.Fetches) > 0 {
+			last := source.Provenance.Fetches[len(source.Provenance.Fetches)-1]
+			item.CacheOutcome = last.CacheOutcome
+			item.StatusCode = last.StatusCode
+			item.Stale = last.Stale
+		}
+		response.Sources = append(response.Sources, item)
+	}
+
+	server.observer.Emit(ctx, obs.Event{Name: "runtime.refresh", Operation: "refresh", StatusCode: http.StatusOK, Duration: time.Since(start), RequestID: requestID})
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (server *Server) handleAuditEvents(w http.ResponseWriter, _ *http.Request) {
@@ -204,7 +330,7 @@ func (server *Server) handleAuditEvents(w http.ResponseWriter, _ *http.Request) 
 	writeJSON(w, http.StatusOK, events)
 }
 
-func (server *Server) loadCatalog(ctx context.Context, configPath string) (*config.EffectiveConfig, *catalog.NormalizedCatalog, error) {
+func (server *Server) loadCatalog(ctx context.Context, configPath string, forceRefresh bool) (*config.EffectiveConfig, *catalog.NormalizedCatalog, error) {
 	if configPath == "" {
 		return nil, nil, fmt.Errorf("config query parameter is required")
 	}
@@ -217,8 +343,12 @@ func (server *Server) loadCatalog(ctx context.Context, configPath string) (*conf
 		return nil, nil, err
 	}
 	ntc, err := catalog.Build(ctx, catalog.BuildOptions{
-		Config:  cfg.Config,
-		BaseDir: cfg.BaseDir,
+		Config:       cfg.Config,
+		BaseDir:      cfg.BaseDir,
+		HTTPClient:   server.client,
+		CacheDir:     server.cacheDir,
+		ForceRefresh: forceRefresh,
+		Observer:     server.observer,
 	})
 	if err != nil {
 		return nil, nil, err
@@ -272,6 +402,13 @@ func first(values []string) string {
 		return ""
 	}
 	return values[0]
+}
+
+func requestID(request *http.Request) string {
+	if value := request.Header.Get("X-Request-ID"); value != "" {
+		return value
+	}
+	return strconv.FormatInt(time.Now().UTC().UnixNano(), 10)
 }
 
 func resolveAuth(cfg config.Config, tool catalog.Tool) []httpexec.AuthScheme {

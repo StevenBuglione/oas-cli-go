@@ -21,7 +21,15 @@
         "properties": {
           "type": { "enum": ["apiCatalog", "serviceRoot", "openapi"] },
           "uri": { "type": "string", "minLength": 1 },
-          "enabled": { "type": "boolean" }
+          "enabled": { "type": "boolean" },
+          "refresh": {
+            "type": "object",
+            "properties": {
+              "maxAgeSeconds": { "type": "integer", "minimum": 0 },
+              "manualOnly": { "type": "boolean" }
+            },
+            "additionalProperties": false
+          }
         },
         "additionalProperties": true
       }

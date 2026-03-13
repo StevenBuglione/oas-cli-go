@@ -8,7 +8,8 @@ import (
 	"net/url"
 	"slices"
 	"strings"
-	"time"
+
+	"github.com/StevenBuglione/oas-cli-go/pkg/cache"
 )
 
 type linksetDocument struct {
@@ -21,9 +22,9 @@ type linksetLink struct {
 	Rel  string `json:"rel"`
 }
 
-func DiscoverAPICatalog(ctx context.Context, client *http.Client, catalogURL string) (*APICatalogResult, error) {
-	if client == nil {
-		client = http.DefaultClient
+func DiscoverAPICatalog(ctx context.Context, fetcher *cache.Fetcher, catalogURL string, policy cache.Policy) (*APICatalogResult, error) {
+	if fetcher == nil {
+		fetcher = cache.NewFetcher(cache.FetcherOptions{})
 	}
 
 	result := &APICatalogResult{
@@ -56,22 +57,20 @@ func DiscoverAPICatalog(ctx context.Context, client *http.Client, catalogURL str
 			return err
 		}
 		req.Header.Set("Accept", "application/linkset+json")
-		resp, err := client.Do(req)
+		response, err := fetcher.Fetch(req, cache.FetchOptions{
+			Key:    http.MethodGet + ":" + current + ":application/linkset+json",
+			Policy: policy,
+		})
 		if err != nil {
 			return err
 		}
-		defer resp.Body.Close()
 
 		var doc linksetDocument
-		if err := json.NewDecoder(resp.Body).Decode(&doc); err != nil {
+		if err := json.Unmarshal(response.Body, &doc); err != nil {
 			return err
 		}
 
-		result.Provenance.Fetches = append(result.Provenance.Fetches, FetchRecord{
-			URL:       current,
-			FetchedAt: time.Now().UTC(),
-			Method:    ProvenanceRFC9727,
-		})
+		result.Provenance.Fetches = append(result.Provenance.Fetches, fetchRecordFromCache(current, ProvenanceRFC9727, response))
 
 		links := doc.Linkset
 		if len(links) == 0 {

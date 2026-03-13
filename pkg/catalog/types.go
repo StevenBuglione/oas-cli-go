@@ -3,12 +3,17 @@ package catalog
 import (
 	"net/http"
 	"time"
+
+	"github.com/StevenBuglione/oas-cli-go/pkg/obs"
 )
 
 type BuildOptions struct {
-	Config     any
-	BaseDir    string
-	HTTPClient *http.Client
+	Config       any
+	BaseDir      string
+	HTTPClient   *http.Client
+	CacheDir     string
+	ForceRefresh bool
+	Observer     obs.Observer
 }
 
 type NormalizedCatalog struct {
@@ -30,8 +35,23 @@ type SourceRecord struct {
 }
 
 type SourceProvenance struct {
-	Method string    `json:"method"`
-	At     time.Time `json:"at"`
+	Method  string        `json:"method"`
+	At      time.Time     `json:"at"`
+	Fetches []SourceFetch `json:"fetches,omitempty"`
+}
+
+type SourceFetch struct {
+	URL           string     `json:"url"`
+	FetchedAt     time.Time  `json:"fetchedAt"`
+	Method        string     `json:"method"`
+	RequestMethod string     `json:"requestMethod,omitempty"`
+	StatusCode    int        `json:"statusCode,omitempty"`
+	CacheOutcome  string     `json:"cacheOutcome,omitempty"`
+	ETag          string     `json:"etag,omitempty"`
+	LastModified  string     `json:"lastModified,omitempty"`
+	CacheControl  string     `json:"cacheControl,omitempty"`
+	ExpiresAt     *time.Time `json:"expiresAt,omitempty"`
+	Stale         bool       `json:"stale,omitempty"`
 }
 
 type Service struct {

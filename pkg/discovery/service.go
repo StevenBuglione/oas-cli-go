@@ -6,43 +6,42 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
+
+	"github.com/StevenBuglione/oas-cli-go/pkg/cache"
 )
 
 var ErrServiceLinksUnavailable = errors.New("service description links unavailable")
 
-func DiscoverServiceRoot(ctx context.Context, client *http.Client, serviceRoot string) (*ServiceRootResult, error) {
-	if client == nil {
-		client = http.DefaultClient
+func DiscoverServiceRoot(ctx context.Context, fetcher *cache.Fetcher, serviceRoot string, policy cache.Policy) (*ServiceRootResult, error) {
+	if fetcher == nil {
+		fetcher = cache.NewFetcher(cache.FetcherOptions{})
 	}
 
-	methods := []string{http.MethodHead, http.MethodGet}
+	methods := []string{"HEAD", "GET"}
 	for _, method := range methods {
 		req, err := http.NewRequestWithContext(ctx, method, serviceRoot, nil)
 		if err != nil {
 			return nil, err
 		}
 
-		resp, err := client.Do(req)
+		fetchResult, err := fetcher.Fetch(req, cache.FetchOptions{
+			Key:    method + ":" + serviceRoot,
+			Policy: policy,
+		})
 		if err != nil {
-			if method == http.MethodHead {
+			if method == "HEAD" {
 				continue
 			}
 			return nil, err
 		}
 
-		links := parseLinkHeader(resp.Header.Values("Link"))
-		resp.Body.Close()
-		if resp.StatusCode >= 400 || len(links) == 0 {
+		links := parseLinkHeader(fetchResult.Metadata.Headers.Values("Link"))
+		if fetchResult.Metadata.StatusCode >= 400 || len(links) == 0 {
 			continue
 		}
 
 		result := &ServiceRootResult{
-			Provenance: FetchRecord{
-				URL:       serviceRoot,
-				FetchedAt: time.Now().UTC(),
-				Method:    ProvenanceRFC8631,
-			},
+			Provenance: fetchRecordFromCache(serviceRoot, ProvenanceRFC8631, fetchResult),
 		}
 		for _, link := range links {
 			switch {

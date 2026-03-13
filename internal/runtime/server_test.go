@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/StevenBuglione/oas-cli-go/internal/runtime"
+	"github.com/StevenBuglione/oas-cli-go/pkg/obs"
 )
 
 func writeRuntimeFile(t *testing.T, dir, name, content string) string {
@@ -329,5 +330,171 @@ paths:
 	defer allowResp.Body.Close()
 	if allowResp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200 for allowed tool, got %d", allowResp.StatusCode)
+	}
+}
+
+func TestServerRefreshEndpointRevalidatesCachedSources(t *testing.T) {
+	dir := t.TempDir()
+	observer := obs.NewRecorder()
+	var sawConditional bool
+
+	var api *httptest.Server
+	api = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if match := r.Header.Get("If-None-Match"); match != "" {
+			sawConditional = true
+			if match != `"tickets-v1"` {
+				t.Fatalf("expected If-None-Match \"tickets-v1\", got %q", match)
+			}
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+		w.Header().Set("ETag", `"tickets-v1"`)
+		w.Header().Set("Cache-Control", "max-age=0")
+		_, _ = w.Write([]byte(`{
+		  "openapi": "3.1.0",
+		  "info": { "title": "Tickets API", "version": "1.0.0" },
+		  "servers": [{ "url": "` + api.URL + `" }],
+		  "paths": {
+		    "/tickets": {
+		      "get": {
+		        "operationId": "listTickets",
+		        "tags": ["tickets"],
+		        "responses": { "200": { "description": "OK" } }
+		      }
+		    }
+		  }
+		}`))
+	}))
+	defer api.Close()
+
+	configPath := writeRuntimeFile(t, dir, ".cli.json", `{
+	  "cli": "1.0.0",
+	  "mode": { "default": "discover" },
+	  "sources": {
+	    "ticketsSource": {
+	      "type": "openapi",
+	      "uri": "`+api.URL+`/tickets.openapi.json",
+	      "enabled": true
+	    }
+	  },
+	  "services": {
+	    "tickets": {
+	      "source": "ticketsSource",
+	      "alias": "tickets"
+	    }
+	  }
+	}`)
+
+	server := runtime.NewServer(runtime.Options{
+		AuditPath:  filepath.Join(dir, "audit.log"),
+		CacheDir:   filepath.Join(dir, ".cache", "http"),
+		HTTPClient: api.Client(),
+		Observer:   observer,
+	})
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	if _, err := http.Get(httpServer.URL + "/v1/catalog/effective?config=" + configPath); err != nil {
+		t.Fatalf("prime catalog cache: %v", err)
+	}
+
+	body := bytes.NewBufferString(`{"configPath":"` + configPath + `"}`)
+	resp, err := http.Post(httpServer.URL+"/v1/refresh", "application/json", body)
+	if err != nil {
+		t.Fatalf("refresh request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 refresh response, got %d", resp.StatusCode)
+	}
+
+	var payload map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode refresh response: %v", err)
+	}
+	sources := payload["sources"].([]any)
+	first := sources[0].(map[string]any)
+	if first["cacheOutcome"] != "revalidated_hit" {
+		t.Fatalf("expected revalidated source outcome, got %#v", first)
+	}
+	if !sawConditional {
+		t.Fatalf("expected conditional refresh request")
+	}
+	if len(observer.Events()) == 0 {
+		t.Fatalf("expected observer events during refresh")
+	}
+}
+
+func TestServerRefreshEndpointReportsStaleFallback(t *testing.T) {
+	dir := t.TempDir()
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("ETag", `"tickets-v1"`)
+		w.Header().Set("Cache-Control", "max-age=0")
+		_, _ = w.Write([]byte(`{
+		  "openapi": "3.1.0",
+		  "info": { "title": "Tickets API", "version": "1.0.0" },
+		  "servers": [{ "url": "https://api.example.com" }],
+		  "paths": {
+		    "/tickets": {
+		      "get": {
+		        "operationId": "listTickets",
+		        "tags": ["tickets"],
+		        "responses": { "200": { "description": "OK" } }
+		      }
+		    }
+		  }
+		}`))
+	}))
+
+	configPath := writeRuntimeFile(t, dir, ".cli.json", `{
+	  "cli": "1.0.0",
+	  "mode": { "default": "discover" },
+	  "sources": {
+	    "ticketsSource": {
+	      "type": "openapi",
+	      "uri": "`+api.URL+`/tickets.openapi.json",
+	      "enabled": true
+	    }
+	  },
+	  "services": {
+	    "tickets": {
+	      "source": "ticketsSource",
+	      "alias": "tickets"
+	    }
+	  }
+	}`)
+
+	server := runtime.NewServer(runtime.Options{
+		AuditPath:  filepath.Join(dir, "audit.log"),
+		CacheDir:   filepath.Join(dir, ".cache", "http"),
+		HTTPClient: api.Client(),
+		Observer:   obs.NewRecorder(),
+	})
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	if _, err := http.Get(httpServer.URL + "/v1/catalog/effective?config=" + configPath); err != nil {
+		t.Fatalf("prime catalog cache: %v", err)
+	}
+	api.Close()
+
+	body := bytes.NewBufferString(`{"configPath":"` + configPath + `"}`)
+	resp, err := http.Post(httpServer.URL+"/v1/refresh", "application/json", body)
+	if err != nil {
+		t.Fatalf("refresh request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 refresh response, got %d", resp.StatusCode)
+	}
+
+	var payload map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode refresh response: %v", err)
+	}
+	sources := payload["sources"].([]any)
+	first := sources[0].(map[string]any)
+	if first["cacheOutcome"] != "stale_hit" || first["stale"] != true {
+		t.Fatalf("expected stale fallback source outcome, got %#v", first)
 	}
 }

@@ -6,11 +6,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"path"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/StevenBuglione/oas-cli-go/pkg/cache"
 	"github.com/StevenBuglione/oas-cli-go/pkg/config"
 	"github.com/StevenBuglione/oas-cli-go/pkg/discovery"
 	"github.com/StevenBuglione/oas-cli-go/pkg/openapi"
@@ -43,12 +45,26 @@ func Build(ctx context.Context, options BuildOptions) (*NormalizedCatalog, error
 		return nil, fmt.Errorf("build options require config.Config")
 	}
 
+	var store *cache.FileStore
+	var err error
+	if options.CacheDir != "" {
+		store, err = cache.NewFileStore(options.CacheDir)
+		if err != nil {
+			return nil, err
+		}
+	}
+	fetcher := cache.NewFetcher(cache.FetcherOptions{
+		Store:    store,
+		Client:   options.HTTPClient,
+		Observer: options.Observer,
+	})
+
 	catalog := &NormalizedCatalog{
 		CatalogVersion: "1.0.0",
 		GeneratedAt:    time.Now().UTC(),
 	}
 	fingerprint := sha256.New()
-	recordedSources := map[string]struct{}{}
+	sourceRecords := map[string]*SourceRecord{}
 
 	referencedSources := map[string]bool{}
 	serviceIDs := sortedKeys(cfg.Services)
@@ -59,46 +75,54 @@ func Build(ctx context.Context, options BuildOptions) (*NormalizedCatalog, error
 			continue
 		}
 		referencedSources[serviceConfig.Source] = true
-		recordSource(catalog, recordedSources, serviceConfig.Source, sourceConfig.Type, sourceConfig.URI, provenanceMethodForSourceType(sourceConfig.Type))
-		if err := buildServiceCatalog(ctx, catalog, &cfg, options.BaseDir, serviceID, serviceConfig, sourceConfig, fingerprint); err != nil {
+		fetches, err := buildServiceCatalog(ctx, catalog, &cfg, options.BaseDir, serviceID, serviceConfig, sourceConfig, fingerprint, fetcher, cachePolicyForSource(sourceConfig, options.ForceRefresh))
+		if err != nil {
 			return nil, err
 		}
+		recordSource(sourceRecords, serviceConfig.Source, sourceConfig.Type, sourceConfig.URI, provenanceMethodForSourceType(sourceConfig.Type), fetches)
 	}
 
 	for sourceID, sourceConfig := range cfg.Sources {
 		if referencedSources[sourceID] || !sourceConfig.Enabled {
 			continue
 		}
+		policy := cachePolicyForSource(sourceConfig, options.ForceRefresh)
 		switch sourceConfig.Type {
 		case "apiCatalog":
-			recordSource(catalog, recordedSources, sourceID, sourceConfig.Type, sourceConfig.URI, string(discovery.ProvenanceRFC9727))
-			result, err := discovery.DiscoverAPICatalog(ctx, options.HTTPClient, sourceConfig.URI)
+			result, err := discovery.DiscoverAPICatalog(ctx, fetcher, sourceConfig.URI, policy)
 			if err != nil {
 				return nil, err
 			}
+			recordSource(sourceRecords, sourceID, sourceConfig.Type, sourceConfig.URI, string(discovery.ProvenanceRFC9727), sourceFetchesFromDiscovery(result.Provenance.Fetches))
 			for _, discoveredService := range result.Services {
 				discoveredConfig := config.Service{Source: sourceID}
-				if err := buildServiceCatalog(ctx, catalog, &cfg, options.BaseDir, "", discoveredConfig, config.Source{
+				fetches, err := buildServiceCatalog(ctx, catalog, &cfg, options.BaseDir, "", discoveredConfig, config.Source{
 					Type:    "serviceRoot",
 					URI:     discoveredService.URL,
 					Enabled: true,
-				}, fingerprint); err != nil {
+					Refresh: sourceConfig.Refresh,
+				}, fingerprint, fetcher, policy)
+				if err != nil {
 					return nil, err
 				}
+				recordSource(sourceRecords, sourceID, sourceConfig.Type, sourceConfig.URI, string(discovery.ProvenanceRFC9727), fetches)
 			}
 		case "serviceRoot":
-			recordSource(catalog, recordedSources, sourceID, sourceConfig.Type, sourceConfig.URI, string(discovery.ProvenanceRFC8631))
-			if err := buildServiceCatalog(ctx, catalog, &cfg, options.BaseDir, "", config.Service{Source: sourceID}, sourceConfig, fingerprint); err != nil {
+			fetches, err := buildServiceCatalog(ctx, catalog, &cfg, options.BaseDir, "", config.Service{Source: sourceID}, sourceConfig, fingerprint, fetcher, policy)
+			if err != nil {
 				return nil, err
 			}
+			recordSource(sourceRecords, sourceID, sourceConfig.Type, sourceConfig.URI, string(discovery.ProvenanceRFC8631), fetches)
 		case "openapi":
-			recordSource(catalog, recordedSources, sourceID, sourceConfig.Type, sourceConfig.URI, string(discovery.ProvenanceExplicit))
-			if err := buildServiceCatalog(ctx, catalog, &cfg, options.BaseDir, "", config.Service{Source: sourceID}, sourceConfig, fingerprint); err != nil {
+			fetches, err := buildServiceCatalog(ctx, catalog, &cfg, options.BaseDir, "", config.Service{Source: sourceID}, sourceConfig, fingerprint, fetcher, policy)
+			if err != nil {
 				return nil, err
 			}
+			recordSource(sourceRecords, sourceID, sourceConfig.Type, sourceConfig.URI, string(discovery.ProvenanceExplicit), fetches)
 		}
 	}
 
+	catalog.Sources = flattenSourceRecords(sourceRecords)
 	sort.Slice(catalog.Tools, func(i, j int) bool {
 		return catalog.Tools[i].ID < catalog.Tools[j].ID
 	})
@@ -108,20 +132,24 @@ func Build(ctx context.Context, options BuildOptions) (*NormalizedCatalog, error
 	return catalog, nil
 }
 
-func recordSource(ntc *NormalizedCatalog, recorded map[string]struct{}, id, sourceType, uri, method string) {
-	if _, ok := recorded[id]; ok {
-		return
+func recordSource(records map[string]*SourceRecord, id, sourceType, uri, method string, fetches []SourceFetch) {
+	record, ok := records[id]
+	if !ok {
+		record = &SourceRecord{
+			ID:   id,
+			Type: sourceType,
+			URI:  uri,
+			Provenance: SourceProvenance{
+				Method: method,
+				At:     time.Now().UTC(),
+			},
+		}
+		records[id] = record
 	}
-	recorded[id] = struct{}{}
-	ntc.Sources = append(ntc.Sources, SourceRecord{
-		ID:   id,
-		Type: sourceType,
-		URI:  uri,
-		Provenance: SourceProvenance{
-			Method: method,
-			At:     time.Now().UTC(),
-		},
-	})
+	record.Provenance.Fetches = append(record.Provenance.Fetches, fetches...)
+	if len(record.Provenance.Fetches) > 0 {
+		record.Provenance.At = record.Provenance.Fetches[0].FetchedAt
+	}
 }
 
 func provenanceMethodForSourceType(sourceType string) string {
@@ -135,36 +163,122 @@ func provenanceMethodForSourceType(sourceType string) string {
 	}
 }
 
-func loadGuidance(baseDir string, refs []string) (map[string]Guidance, error) {
+func flattenSourceRecords(records map[string]*SourceRecord) []SourceRecord {
+	ids := make([]string, 0, len(records))
+	for id := range records {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+
+	result := make([]SourceRecord, 0, len(ids))
+	for _, id := range ids {
+		result = append(result, *records[id])
+	}
+	return result
+}
+
+func cachePolicyForSource(source config.Source, forceRefresh bool) cache.Policy {
+	policy := cache.Policy{
+		AllowStaleOnError: true,
+		ForceRefresh:      forceRefresh,
+	}
+	if source.Refresh != nil {
+		policy.MaxAge = time.Duration(source.Refresh.MaxAgeSeconds) * time.Second
+		policy.ManualOnly = source.Refresh.ManualOnly
+	}
+	return policy
+}
+
+func sourceFetchesFromDiscovery(fetches []discovery.FetchRecord) []SourceFetch {
+	result := make([]SourceFetch, 0, len(fetches))
+	for _, fetch := range fetches {
+		result = append(result, SourceFetch{
+			URL:           fetch.URL,
+			FetchedAt:     fetch.FetchedAt,
+			Method:        string(fetch.Method),
+			RequestMethod: fetch.RequestMethod,
+			StatusCode:    fetch.StatusCode,
+			CacheOutcome:  fetch.CacheOutcome,
+			ETag:          fetch.ETag,
+			LastModified:  fetch.LastModified,
+			CacheControl:  fetch.CacheControl,
+			ExpiresAt:     fetch.ExpiresAt,
+			Stale:         fetch.Stale,
+		})
+	}
+	return result
+}
+
+func sourceFetchesFromOpenAPIFetches(fetches []openapi.FetchRecord, method string) []SourceFetch {
+	result := make([]SourceFetch, 0, len(fetches))
+	for _, fetch := range fetches {
+		result = append(result, sourceFetchFromOpenAPI(&fetch, method))
+	}
+	return result
+}
+
+func sourceFetchFromOpenAPI(fetchRecord *openapi.FetchRecord, method string) SourceFetch {
+	fetch := SourceFetch{
+		URL:           fetchRecord.Metadata.URL,
+		FetchedAt:     fetchedAt(fetchRecord.Metadata),
+		Method:        method,
+		RequestMethod: fetchRecord.Metadata.Method,
+		StatusCode:    fetchRecord.Metadata.StatusCode,
+		CacheOutcome:  string(fetchRecord.Outcome),
+		ETag:          fetchRecord.Metadata.ETag,
+		LastModified:  fetchRecord.Metadata.LastModified,
+		CacheControl:  fetchRecord.Metadata.CacheControl,
+		Stale:         fetchRecord.Metadata.Stale,
+	}
+	if !fetchRecord.Metadata.ExpiresAt.IsZero() {
+		expiresAt := fetchRecord.Metadata.ExpiresAt
+		fetch.ExpiresAt = &expiresAt
+	}
+	return fetch
+}
+
+func fetchedAt(metadata cache.Metadata) time.Time {
+	if !metadata.LastValidatedAt.IsZero() {
+		return metadata.LastValidatedAt
+	}
+	return metadata.CachedAt
+}
+
+func loadGuidance(baseDir string, refs []string, fetcher *cache.Fetcher, policy cache.Policy, method string) (map[string]Guidance, []SourceFetch, error) {
 	guidance := map[string]Guidance{}
+	var fetches []SourceFetch
 	for _, ref := range refs {
-		data, err := openapi.ReadReference(context.Background(), openapi.ResolveReference(baseDir, ref))
+		data, fetchRecord, err := openapi.ReadReference(context.Background(), openapi.ResolveReference(baseDir, ref), fetcher, policy)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		var manifest skillManifest
 		if err := json.Unmarshal(data, &manifest); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		for key, value := range manifest.ToolGuidance {
 			guidance[key] = value
 		}
+		if fetchRecord != nil {
+			fetches = append(fetches, sourceFetchFromOpenAPI(fetchRecord, method))
+		}
 	}
-	return guidance, nil
+	return guidance, fetches, nil
 }
 
-func loadWorkflows(baseDir string, refs []string, bindings map[string]string) ([]Workflow, error) {
+func loadWorkflows(baseDir string, refs []string, bindings map[string]string, fetcher *cache.Fetcher, policy cache.Policy, method string) ([]Workflow, []SourceFetch, error) {
 	var workflows []Workflow
+	var fetches []SourceFetch
 	for _, ref := range refs {
-		data, err := openapi.ReadReference(context.Background(), openapi.ResolveReference(baseDir, ref))
+		data, fetchRecord, err := openapi.ReadReference(context.Background(), openapi.ResolveReference(baseDir, ref), fetcher, policy)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		var document workflowDocument
 		if err := yaml.Unmarshal(data, &document); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		for _, workflow := range document.Workflows {
 			current := Workflow{WorkflowID: workflow.WorkflowID}
@@ -180,8 +294,11 @@ func loadWorkflows(baseDir string, refs []string, bindings map[string]string) ([
 			}
 			workflows = append(workflows, current)
 		}
+		if fetchRecord != nil {
+			fetches = append(fetches, sourceFetchFromOpenAPI(fetchRecord, method))
+		}
 	}
-	return workflows, nil
+	return workflows, fetches, nil
 }
 
 func buildTools(service Service, document *openapi3.T, guidance map[string]Guidance, bindings map[string]string) ([]Tool, error) {
@@ -264,10 +381,11 @@ func buildTools(service Service, document *openapi3.T, guidance map[string]Guida
 	return tools, nil
 }
 
-func buildServiceCatalog(ctx context.Context, ntc *NormalizedCatalog, cfg *config.Config, baseDir, serviceID string, serviceConfig config.Service, sourceConfig config.Source, fingerprint hashWriter) error {
-	openapiRef, metadataRefs, err := resolveServiceSource(ctx, baseDir, sourceConfig)
+func buildServiceCatalog(ctx context.Context, ntc *NormalizedCatalog, cfg *config.Config, baseDir, serviceID string, serviceConfig config.Service, sourceConfig config.Source, fingerprint hashWriter, fetcher *cache.Fetcher, policy cache.Policy) ([]SourceFetch, error) {
+	method := provenanceMethodForSourceType(sourceConfig.Type)
+	openapiRef, metadataRefs, fetches, err := resolveServiceSource(ctx, baseDir, sourceConfig, fetcher, policy)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	serviceConfig.Overlays = append([]string(nil), serviceConfig.Overlays...)
@@ -275,20 +393,22 @@ func buildServiceCatalog(ctx context.Context, ntc *NormalizedCatalog, cfg *confi
 	serviceConfig.Workflows = uniqueRefs(serviceConfig.Workflows, metadataRefs.workflows)
 	serviceConfig.Overlays = uniqueRefs(serviceConfig.Overlays, metadataRefs.overlays)
 
-	document, err := openapi.LoadDocument(ctx, baseDir, openapiRef, serviceConfig.Overlays)
+	document, err := openapi.LoadDocument(ctx, baseDir, openapiRef, serviceConfig.Overlays, fetcher, policy)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	fingerprint.Write([]byte(document.Fingerprint))
+	fetches = append(fetches, sourceFetchesFromOpenAPIFetches(document.Fetches, method)...)
 
 	if serviceID == "" {
 		serviceID = deriveServiceID(document.Document, sourceConfig.URI, sourceConfig.Type)
 	}
 
-	guidance, err := loadGuidance(baseDir, serviceConfig.Skills)
+	guidance, guidanceFetches, err := loadGuidance(baseDir, serviceConfig.Skills, fetcher, policy, method)
 	if err != nil {
-		return err
+		return nil, err
 	}
+	fetches = append(fetches, guidanceFetches...)
 	alias := serviceConfig.Alias
 	if alias == "" {
 		alias = serviceID
@@ -305,16 +425,17 @@ func buildServiceCatalog(ctx context.Context, ntc *NormalizedCatalog, cfg *confi
 	operationBindings := map[string]string{}
 	tools, err := buildTools(service, document.Document, guidance, operationBindings)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	ntc.Tools = append(ntc.Tools, tools...)
 
-	workflows, err := loadWorkflows(baseDir, serviceConfig.Workflows, operationBindings)
+	workflows, workflowFetches, err := loadWorkflows(baseDir, serviceConfig.Workflows, operationBindings, fetcher, policy, method)
 	if err != nil {
-		return err
+		return nil, err
 	}
+	fetches = append(fetches, workflowFetches...)
 	ntc.Workflows = append(ntc.Workflows, workflows...)
-	return nil
+	return fetches, nil
 }
 
 type metadataReferences struct {
@@ -323,34 +444,36 @@ type metadataReferences struct {
 	workflows []string
 }
 
-func resolveServiceSource(ctx context.Context, baseDir string, source config.Source) (string, metadataReferences, error) {
+func resolveServiceSource(ctx context.Context, baseDir string, source config.Source, fetcher *cache.Fetcher, policy cache.Policy) (string, metadataReferences, []SourceFetch, error) {
 	switch source.Type {
 	case "openapi":
-		return source.URI, metadataReferences{}, nil
+		return source.URI, metadataReferences{}, nil, nil
 	case "serviceRoot":
-		result, err := discovery.DiscoverServiceRoot(ctx, nil, source.URI)
+		result, err := discovery.DiscoverServiceRoot(ctx, fetcher, source.URI, policy)
 		if err != nil {
-			return "", metadataReferences{}, err
+			return "", metadataReferences{}, nil, err
 		}
-		refs, err := loadMetadataReferences(ctx, result.MetadataURL)
+		fetches := sourceFetchesFromDiscovery([]discovery.FetchRecord{result.Provenance})
+		refs, metadataFetches, err := loadMetadataReferences(ctx, result.MetadataURL, fetcher, policy, string(discovery.ProvenanceRFC8631))
 		if err != nil {
-			return "", metadataReferences{}, err
+			return "", metadataReferences{}, nil, err
 		}
-		return result.OpenAPIURL, refs, nil
+		fetches = append(fetches, metadataFetches...)
+		return result.OpenAPIURL, refs, fetches, nil
 	case "apiCatalog":
-		return "", metadataReferences{}, fmt.Errorf("apiCatalog sources must be expanded before resolution")
+		return "", metadataReferences{}, nil, fmt.Errorf("apiCatalog sources must be expanded before resolution")
 	default:
-		return "", metadataReferences{}, fmt.Errorf("unsupported source type %q", source.Type)
+		return "", metadataReferences{}, nil, fmt.Errorf("unsupported source type %q", source.Type)
 	}
 }
 
-func loadMetadataReferences(ctx context.Context, ref string) (metadataReferences, error) {
+func loadMetadataReferences(ctx context.Context, ref string, fetcher *cache.Fetcher, policy cache.Policy, method string) (metadataReferences, []SourceFetch, error) {
 	if ref == "" {
-		return metadataReferences{}, nil
+		return metadataReferences{}, nil, nil
 	}
-	data, err := openapi.ReadReference(ctx, ref)
+	data, fetchRecord, err := openapi.ReadReference(ctx, ref, fetcher, policy)
 	if err != nil {
-		return metadataReferences{}, err
+		return metadataReferences{}, nil, err
 	}
 
 	var document struct {
@@ -360,21 +483,41 @@ func loadMetadataReferences(ctx context.Context, ref string) (metadataReferences
 		} `json:"linkset"`
 	}
 	if err := json.Unmarshal(data, &document); err != nil {
-		return metadataReferences{}, err
+		return metadataReferences{}, nil, err
 	}
 
 	var refs metadataReferences
 	for _, link := range document.Linkset {
+		resolvedHref, err := resolveMetadataHref(ref, link.Href)
+		if err != nil {
+			return metadataReferences{}, nil, err
+		}
 		switch {
 		case strings.Contains(link.Rel, "skill-manifest"):
-			refs.skills = append(refs.skills, link.Href)
+			refs.skills = append(refs.skills, resolvedHref)
 		case strings.Contains(link.Rel, "workflows"):
-			refs.workflows = append(refs.workflows, link.Href)
+			refs.workflows = append(refs.workflows, resolvedHref)
 		case strings.Contains(link.Rel, "schema-overlay"):
-			refs.overlays = append(refs.overlays, link.Href)
+			refs.overlays = append(refs.overlays, resolvedHref)
 		}
 	}
-	return refs, nil
+	var fetches []SourceFetch
+	if fetchRecord != nil {
+		fetches = append(fetches, sourceFetchFromOpenAPI(fetchRecord, method))
+	}
+	return refs, fetches, nil
+}
+
+func resolveMetadataHref(baseRef, href string) (string, error) {
+	base, err := url.Parse(baseRef)
+	if err != nil {
+		return "", err
+	}
+	relative, err := url.Parse(href)
+	if err != nil {
+		return "", err
+	}
+	return base.ResolveReference(relative).String(), nil
 }
 
 func deriveServiceID(document *openapi3.T, sourceURI, sourceType string) string {

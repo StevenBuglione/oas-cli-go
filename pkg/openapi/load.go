@@ -6,13 +6,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/StevenBuglione/oas-cli-go/pkg/cache"
 	"github.com/StevenBuglione/oas-cli-go/pkg/overlay"
 	"github.com/getkin/kin-openapi/openapi3"
 	"gopkg.in/yaml.v3"
@@ -22,19 +22,29 @@ type LoadedDocument struct {
 	Raw         map[string]any
 	Document    *openapi3.T
 	Fingerprint string
+	Fetches     []FetchRecord
 }
 
-func LoadDocument(ctx context.Context, baseDir, ref string, overlays []string) (*LoadedDocument, error) {
-	raw, fingerprint, err := loadAny(ctx, resolveReference(baseDir, ref))
+type FetchRecord struct {
+	Outcome  cache.Outcome
+	Metadata cache.Metadata
+}
+
+func LoadDocument(ctx context.Context, baseDir, ref string, overlays []string, fetcher *cache.Fetcher, policy cache.Policy) (*LoadedDocument, error) {
+	raw, fingerprint, primaryFetch, err := loadAny(ctx, resolveReference(baseDir, ref), fetcher, policy)
 	if err != nil {
 		return nil, err
 	}
 	hash := sha256.New()
 	hash.Write([]byte(fingerprint))
+	var fetches []FetchRecord
+	if primaryFetch != nil {
+		fetches = append(fetches, *primaryFetch)
+	}
 
 	for _, overlayRef := range overlays {
 		path := resolveReference(baseDir, overlayRef)
-		doc, err := overlay.Load(path)
+		doc, fetchRecord, err := loadOverlay(ctx, path, fetcher, policy)
 		if err != nil {
 			return nil, err
 		}
@@ -43,6 +53,9 @@ func LoadDocument(ctx context.Context, baseDir, ref string, overlays []string) (
 			return nil, err
 		}
 		hash.Write([]byte(path))
+		if fetchRecord != nil {
+			fetches = append(fetches, *fetchRecord)
+		}
 	}
 
 	data, err := json.Marshal(raw)
@@ -64,6 +77,7 @@ func LoadDocument(ctx context.Context, baseDir, ref string, overlays []string) (
 		Raw:         raw,
 		Document:    document,
 		Fingerprint: hex.EncodeToString(hash.Sum(nil)),
+		Fetches:     fetches,
 	}, nil
 }
 
@@ -84,45 +98,61 @@ func resolveReference(baseDir, ref string) string {
 	return filepath.Join(baseDir, ref)
 }
 
-func loadAny(ctx context.Context, ref string) (map[string]any, string, error) {
-	data, err := ReadReference(ctx, ref)
+func loadAny(ctx context.Context, ref string, fetcher *cache.Fetcher, policy cache.Policy) (map[string]any, string, *FetchRecord, error) {
+	data, fetchRecord, err := ReadReference(ctx, ref, fetcher, policy)
 	if err != nil {
-		return nil, "", err
+		return nil, "", nil, err
 	}
 
 	var decoded any
 	if err := yaml.Unmarshal(data, &decoded); err != nil {
-		return nil, "", err
+		return nil, "", nil, err
 	}
 	normalized := normalize(decoded)
 	object, ok := normalized.(map[string]any)
 	if !ok {
-		return nil, "", fmt.Errorf("expected object document at %s", ref)
+		return nil, "", nil, fmt.Errorf("expected object document at %s", ref)
 	}
-	return object, string(data), nil
+	return object, string(data), fetchRecord, nil
 }
 
-func ReadReference(ctx context.Context, ref string) ([]byte, error) {
+func ReadReference(ctx context.Context, ref string, fetcher *cache.Fetcher, policy cache.Policy) ([]byte, *FetchRecord, error) {
 	if strings.HasPrefix(ref, "http://") || strings.HasPrefix(ref, "https://") {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, ref, nil)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		resp, err := http.DefaultClient.Do(req)
+		if fetcher == nil {
+			fetcher = cache.NewFetcher(cache.FetcherOptions{})
+		}
+		result, err := fetcher.Fetch(req, cache.FetchOptions{Policy: policy})
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		defer resp.Body.Close()
-		return io.ReadAll(resp.Body)
+		return result.Body, &FetchRecord{Outcome: result.Outcome, Metadata: result.Metadata}, nil
 	}
 	if strings.HasPrefix(ref, "file://") {
 		parsed, err := url.Parse(ref)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		ref = parsed.Path
 	}
-	return os.ReadFile(ref)
+	data, err := os.ReadFile(ref)
+	return data, nil, err
+}
+
+func loadOverlay(ctx context.Context, ref string, fetcher *cache.Fetcher, policy cache.Policy) (overlay.Document, *FetchRecord, error) {
+	data, fetchRecord, err := ReadReference(ctx, ref, fetcher, policy)
+	if err != nil {
+		return overlay.Document{}, nil, err
+	}
+
+	var doc overlay.Document
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return overlay.Document{}, nil, err
+	}
+	return doc, fetchRecord, nil
 }
 
 func normalize(value any) any {
