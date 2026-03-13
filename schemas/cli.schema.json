@@ -5,7 +5,7 @@
   "type": "object",
   "required": ["cli", "mode", "sources"],
   "properties": {
-    "cli": { "type": "string" },
+    "cli": { "type": "string", "minLength": 1 },
     "mode": {
       "type": "object",
       "required": ["default"],
@@ -22,7 +22,7 @@
         "required": ["type", "uri"],
         "properties": {
           "type": { "enum": ["apiCatalog", "serviceRoot", "openapi"] },
-          "uri": { "type": "string" },
+          "uri": { "type": "string", "minLength": 1 },
           "enabled": { "type": "boolean" }
         },
         "additionalProperties": true
@@ -34,8 +34,8 @@
         "type": "object",
         "required": ["source"],
         "properties": {
-          "source": { "type": "string" },
-          "alias": { "type": "string" },
+          "source": { "type": "string", "minLength": 1 },
+          "alias": { "type": "string", "minLength": 1 },
           "overlays": { "type": "array", "items": { "type": "string" } },
           "skills": { "type": "array", "items": { "type": "string" } },
           "workflows": { "type": "array", "items": { "type": "string" } }
@@ -63,14 +63,14 @@
     "agents": {
       "type": "object",
       "properties": {
-        "defaultProfile": { "type": "string" },
+        "defaultProfile": { "type": "string", "minLength": 1 },
         "profiles": {
           "type": "object",
           "additionalProperties": {
             "type": "object",
             "properties": {
               "mode": { "enum": ["discover", "curated"] },
-              "toolSet": { "type": "string" }
+              "toolSet": { "type": "string", "minLength": 1 }
             },
             "additionalProperties": false
           }
@@ -94,7 +94,7 @@
         "required": ["type"],
         "properties": {
           "type": { "enum": ["env", "file", "osKeychain", "exec"] },
-          "value": { "type": "string" },
+          "value": { "type": "string", "minLength": 1 },
           "command": { "type": "array", "items": { "type": "string" } }
         },
         "additionalProperties": false

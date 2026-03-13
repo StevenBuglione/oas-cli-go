@@ -2,6 +2,17 @@
   "catalogVersion": "1.0.0",
   "generatedAt": "2026-03-12T23:59:59Z",
   "sourceFingerprint": "demo-fingerprint",
+  "sources": [
+    {
+      "id": "ticketsSource",
+      "type": "serviceRoot",
+      "uri": "https://api.example.com/v1",
+      "provenance": {
+        "method": "rfc8631",
+        "at": "2026-03-12T23:59:59Z"
+      }
+    }
+  ],
   "services": [
     {
       "id": "tickets",

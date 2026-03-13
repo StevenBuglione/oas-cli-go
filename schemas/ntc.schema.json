@@ -3,11 +3,33 @@
   "$id": "https://stevenbuglione.github.io/oas-cli-spec/schemas/ntc.schema.json",
   "title": "Normalized Tool Catalog",
   "type": "object",
-  "required": ["catalogVersion", "generatedAt", "sourceFingerprint", "services", "tools", "effectiveViews"],
+  "required": ["catalogVersion", "generatedAt", "sourceFingerprint", "sources", "services", "tools", "effectiveViews"],
   "properties": {
     "catalogVersion": { "type": "string" },
     "generatedAt": { "type": "string", "format": "date-time" },
     "sourceFingerprint": { "type": "string" },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "type", "uri", "provenance"],
+        "properties": {
+          "id": { "type": "string" },
+          "type": { "type": "string" },
+          "uri": { "type": "string" },
+          "provenance": {
+            "type": "object",
+            "required": ["method", "at"],
+            "properties": {
+              "method": { "type": "string" },
+              "at": { "type": "string", "format": "date-time" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    },
     "services": {
       "type": "array",
       "items": {
