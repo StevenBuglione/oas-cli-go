@@ -1,0 +1,117 @@
+package config
+
+import (
+	"fmt"
+	"strings"
+)
+
+type ModeConfig struct {
+	Default string `json:"default"`
+}
+
+type Source struct {
+	Type    string         `json:"type"`
+	URI     string         `json:"uri"`
+	Enabled bool           `json:"enabled"`
+	Refresh *RefreshPolicy `json:"refresh,omitempty"`
+}
+
+type RefreshPolicy struct {
+	MaxAgeSeconds int  `json:"maxAgeSeconds,omitempty"`
+	ManualOnly    bool `json:"manualOnly,omitempty"`
+}
+
+type Service struct {
+	Source    string   `json:"source"`
+	Alias     string   `json:"alias,omitempty"`
+	Overlays  []string `json:"overlays,omitempty"`
+	Skills    []string `json:"skills,omitempty"`
+	Workflows []string `json:"workflows,omitempty"`
+}
+
+type ToolSet struct {
+	Allow []string `json:"allow,omitempty"`
+	Deny  []string `json:"deny,omitempty"`
+}
+
+type CurationConfig struct {
+	ToolSets map[string]ToolSet `json:"toolSets,omitempty"`
+}
+
+type AgentProfile struct {
+	Mode    string `json:"mode,omitempty"`
+	ToolSet string `json:"toolSet,omitempty"`
+}
+
+type AgentsConfig struct {
+	Profiles       map[string]AgentProfile `json:"profiles,omitempty"`
+	DefaultProfile string                  `json:"defaultProfile,omitempty"`
+}
+
+type PolicyConfig struct {
+	Deny             []string `json:"deny,omitempty"`
+	ManagedDeny      []string `json:"managedDeny,omitempty"`
+	ApprovalRequired []string `json:"approvalRequired,omitempty"`
+	AllowExecSecrets bool     `json:"allowExecSecrets,omitempty"`
+}
+
+type SecretRef struct {
+	Type    string   `json:"type"`
+	Value   string   `json:"value,omitempty"`
+	Command []string `json:"command,omitempty"`
+}
+
+type Config struct {
+	CLI      string               `json:"cli"`
+	Mode     ModeConfig           `json:"mode"`
+	Sources  map[string]Source    `json:"sources"`
+	Services map[string]Service   `json:"services,omitempty"`
+	Curation CurationConfig       `json:"curation,omitempty"`
+	Agents   AgentsConfig         `json:"agents,omitempty"`
+	Policy   PolicyConfig         `json:"policy,omitempty"`
+	Secrets  map[string]SecretRef `json:"secrets,omitempty"`
+}
+
+type LoadOptions struct {
+	ManagedPath string
+	UserPath    string
+	ProjectPath string
+	LocalPath   string
+}
+
+type Scope string
+
+const (
+	ScopeManaged Scope = "managed"
+	ScopeUser    Scope = "user"
+	ScopeProject Scope = "project"
+	ScopeLocal   Scope = "local"
+)
+
+type EffectiveConfig struct {
+	Config     Config
+	ScopePaths map[Scope]string
+	BaseDir    string
+}
+
+type Diagnostic struct {
+	Path    string `json:"path"`
+	Message string `json:"message"`
+}
+
+type ValidationError struct {
+	Diagnostics []Diagnostic
+}
+
+func (e *ValidationError) Error() string {
+	if len(e.Diagnostics) == 0 {
+		return "configuration validation failed"
+	}
+
+	var builder strings.Builder
+	builder.WriteString("configuration validation failed")
+	for _, diagnostic := range e.Diagnostics {
+		builder.WriteString(fmt.Sprintf("; %s: %s", diagnostic.Path, diagnostic.Message))
+	}
+	return builder.String()
+}
