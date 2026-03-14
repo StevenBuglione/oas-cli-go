@@ -247,11 +247,10 @@ This gives users a near drop-in migration path while keeping internal config uni
 - `CallTool(ctx, name string, args any) (ToolResult, error)`
 - `Close() error`
 
-**Supported transports in the initial implementation:**
+**Transport coverage by phase:**
 
-- `stdio`
-- `sse`
-- `streamable-http`
+- Phase 1: `stdio`, `streamable-http`
+- Phase 2: `sse`
 
 The transport client owns wire-level MCP concerns only. It does not know about OpenAPI normalization, policy, or workflow binding.
 
@@ -291,6 +290,7 @@ The transport client owns wire-level MCP concerns only. It does not know about O
 - If the MCP input schema is an object, it becomes the request-body schema directly.
 - If the MCP input schema is absent, the request body schema is an empty object.
 - If the MCP input schema is a non-object JSON schema, it is wrapped as `{ "input": <original-schema> }` so the CLI still has a stable object-shaped body contract.
+- The catalog metadata records whether wrapper mode was used. During execution, `pkg/exec/mcp.go` unwraps wrapped inputs back to the original primitive or array value before calling `CallTool`.
 - Supported JSON Schema features are the subset already accepted by the existing OpenAPI normalization path for request bodies.
 - Unsupported constructs such as cyclic `$ref` graphs or discriminator-free ambiguous unions fail catalog build with the source and tool name in the error.
 - The synthetic response schema is a stable MCP envelope:
@@ -404,6 +404,7 @@ The implementation in this feature intentionally stops there. If an OpenAPI docu
   - valid for `authorizationCode` only
   - default: first free port in the inclusive range `8787-8899`
   - if the configured port is busy, runtime falls back to the next free port in that range only when `interactive` is `true`; otherwise it fails with a port-in-use error that names the provider
+  - if the provider config pins an exact redirect URI, fallback is disabled and the configured port must be available
 - `tokenStorage`
   - valid values: `instance`, `memory`
   - default: `instance`
@@ -442,6 +443,10 @@ The documentation and examples must show both lookup shapes:
 - A single security requirement object means logical AND across its schemes; all listed schemes must resolve successfully.
 - Multiple security requirement objects mean logical OR; the runtime evaluates them in order and uses the first fully satisfiable alternative.
 - If no alternative is satisfiable, execution fails with an auth-resolution error that lists the scheme names it attempted.
+- `oauth2` / `openIdConnect` can compose with `apiKey`, `http`, or future cookie-based credentials in the same AND alternative only when their concrete application targets do not conflict.
+- If two schemes in the same AND alternative try to write different values to the same header, query key, cookie name, or TLS slot, that alternative is rejected as unsatisfiable and the runtime moves to the next OR alternative.
+- `Authorization` is treated as a single-valued target. A bearer token, basic auth credential, or custom API-key header named `Authorization` cannot coexist in the same AND alternative.
+- The auth engine returns a normalized application plan of `{headers, query, cookies, tls, tokenMetadata}`; executors apply that plan without reinterpreting scheme semantics.
 
 **Token-key derivation:**
 
