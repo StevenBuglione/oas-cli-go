@@ -20,12 +20,14 @@
           "status": { "enum": ["passing", "partial", "failing"] },
           "features": {
             "type": "object",
-            "required": ["httpCaching", "refresh", "observabilityHooks", "compatibilityMatrix"],
+            "required": ["httpCaching", "refresh", "observabilityHooks", "compatibilityMatrix", "mcpTransports", "oauthRuntime"],
             "properties": {
               "httpCaching": { "enum": ["passing", "partial", "failing", "not_applicable"] },
               "refresh": { "enum": ["passing", "partial", "failing", "not_applicable"] },
               "observabilityHooks": { "enum": ["passing", "partial", "failing", "not_applicable"] },
-              "compatibilityMatrix": { "enum": ["passing", "partial", "failing", "not_applicable"] }
+              "compatibilityMatrix": { "enum": ["passing", "partial", "failing", "not_applicable"] },
+              "mcpTransports": { "enum": ["passing", "partial", "failing", "not_applicable"] },
+              "oauthRuntime": { "enum": ["passing", "partial", "failing", "not_applicable"] }
             },
             "additionalProperties": false
           },

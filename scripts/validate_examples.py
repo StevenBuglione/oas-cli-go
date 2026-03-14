@@ -25,12 +25,24 @@ def validate(schema_name: str, example_name: str) -> None:
         raise SystemExit("\n".join(lines))
 
 
+def validate_rejects(schema_name: str, example_name: str) -> None:
+    schema = load_json(ROOT / "schemas" / schema_name)
+    example = load_json(ROOT / "examples" / example_name)
+    validator = Draft202012Validator(schema)
+    errors = sorted(validator.iter_errors(example), key=lambda error: list(error.path))
+    if not errors:
+        raise SystemExit(f"{example_name} unexpectedly passed {schema_name} validation")
+
+
 def main() -> None:
     validate("cli.schema.json", "project.cli.json")
     validate("skill-manifest.schema.json", "skill-manifest.json")
     validate("ntc.schema.json", "ntc.json")
     validate("compatibility-matrix.schema.json", "compatibility-matrix.json")
-    print("validated 4 example documents")
+    validate_rejects("cli.schema.json", "invalid-openapi-transport.cli.json")
+    validate_rejects("cli.schema.json", "invalid-openapi-oauth.cli.json")
+    validate_rejects("cli.schema.json", "invalid-mcp-uri.cli.json")
+    print("validated 4 example documents and 3 negative schema checks")
 
 
 if __name__ == "__main__":

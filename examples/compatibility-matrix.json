@@ -11,7 +11,9 @@
         "httpCaching": "passing",
         "refresh": "passing",
         "observabilityHooks": "passing",
-        "compatibilityMatrix": "passing"
+        "compatibilityMatrix": "passing",
+        "mcpTransports": "passing",
+        "oauthRuntime": "passing"
       },
       "notes": [
         "Reference implementation status after the 2026-03-13 remediation pass."

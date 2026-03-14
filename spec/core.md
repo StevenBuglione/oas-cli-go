@@ -2,7 +2,7 @@
 
 ## Scope
 
-OAS-CLI standardizes how OpenAPI-described HTTP services become agent-usable CLI tools without introducing a separate tool protocol. The core specification defines:
+OAS-CLI standardizes how OpenAPI-described HTTP services and native MCP servers become agent-usable CLI tools without requiring users to invent a second catalog by hand. The core specification defines:
 
 - discovery inputs and provenance requirements
 - normalized tool catalog structure
@@ -16,6 +16,7 @@ Implementations MUST support these source types:
 - `apiCatalog`: RFC 9727 API catalogs represented as `application/linkset+json`
 - `serviceRoot`: RFC 8631 service roots that advertise `service-desc` and `service-meta`
 - `openapi`: direct references to OpenAPI documents
+- `mcp`: native Model Context Protocol sources using `stdio`, legacy `sse`, or `streamable-http` transports
 
 Implementations MUST record provenance for every fetched discovery document, including the URL, fetch timestamp, and discovery method.
 
@@ -45,6 +46,8 @@ The runtime MUST:
 - enforce managed policy denies before any network execution
 - support curated mode and agent profile restrictions
 - resolve secret references at execution time
+- resolve OAuth2 / OpenID Connect credentials for OpenAPI tools when configured
+- resolve streamable-HTTP MCP transport auth before MCP discovery or execution when configured
 - support manual refresh of cached remote discovery inputs
 - emit structured observability events for runtime request lifecycles
 - emit an audit event for every allowed or denied invocation attempt
