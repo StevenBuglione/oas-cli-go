@@ -257,7 +257,7 @@ The transport client owns wire-level MCP concerns only. It does not know about O
 **Discovery-time auth:**
 
 - `stdio` uses no transport auth; discovery starts the subprocess and calls `ListTools`.
-- `sse` and `streamable-http` may require OAuth before discovery. The transport client asks the OAuth engine for a transport token before `ListTools` and reuses the same provider for later `CallTool` requests.
+- `sse` and `streamable-http` may require auth before discovery. The transport client asks the auth engine for a transport application plan before `ListTools` and reapplies the same config on later `CallTool` requests.
 - Static non-Authorization headers from config are attached to both discovery and execution requests.
 
 ### 3. MCP-to-OpenAPI catalog adapter
@@ -329,7 +329,8 @@ This keeps MCP normalization predictable and avoids inventing fake REST path/que
 - Discovery connections are short-lived.
 - The initial implementation opens execution connections per request and closes them when the tool call completes.
 - Connection pooling is explicitly deferred until the native execution path has test coverage across all transports.
-- Per-instance runtime state stores MCP connection metadata under existing instance-aware paths so simultaneous terminals and agents remain isolated.
+- Runtime cancellation closes the active MCP connection or subprocess context immediately and leaves no persistent connection handles behind.
+- MCP execution retries are disabled in v1 unless a future overlay explicitly marks a tool as safely retryable.
 
 ### 5. OAuth and auth engine
 
@@ -396,6 +397,10 @@ The implementation in this feature intentionally stops there. If an OpenAPI docu
 
 **OAuth field defaults and validation:**
 
+- `redirectURI`
+  - optional exact loopback redirect URI for `authorizationCode`
+  - when present, it overrides `callbackPort`
+  - when present, port fallback is disabled and the URI must be usable exactly as configured
 - `interactive`
   - valid for `authorizationCode` only
   - default: `true`
@@ -424,6 +429,7 @@ The implementation in this feature intentionally stops there. If an OpenAPI docu
 - Context cancellation or Ctrl-C aborts the auth attempt immediately.
 - If no loopback port can be acquired in the allowed range, auth fails before any token request is attempted.
 - If the provider returns no refresh token, the runtime treats the token as non-refreshable and reacquires it interactively on expiry.
+- If an OpenAPI `oauth2` scheme declares multiple flows, the secret config must set `mode` explicitly and that mode must name one of the declared flows; otherwise execution fails with an ambiguous-flow error before token acquisition.
 
 **OAuth resolution matrix:**
 
@@ -447,6 +453,7 @@ The documentation and examples must show both lookup shapes:
 - If two schemes in the same AND alternative try to write different values to the same header, query key, cookie name, or TLS slot, that alternative is rejected as unsatisfiable and the runtime moves to the next OR alternative.
 - `Authorization` is treated as a single-valued target. A bearer token, basic auth credential, or custom API-key header named `Authorization` cannot coexist in the same AND alternative.
 - The auth engine returns a normalized application plan of `{headers, query, cookies, tls, tokenMetadata}`; executors apply that plan without reinterpreting scheme semantics.
+- MCP transport auth uses that same application-plan shape, but only the transport-safe subset (`headers`, `query`, `cookies`, `tls`) is allowed. The MCP transport client receives the plan and applies it during discovery and execution requests.
 
 **Token-key derivation:**
 
@@ -466,7 +473,7 @@ The documentation and examples must show both lookup shapes:
 
 1. Config loader merges scopes and normalizes `mcpServers` into canonical `sources` / `services`.
 2. Catalog builder sees a source with `type: "mcp"`.
-3. If the source has transport `oauth`, the OAuth engine acquires or refreshes the transport token before discovery.
+3. If the source has transport `oauth`, the auth engine resolves a transport application plan before discovery.
 4. MCP discovery connects to the server and lists tools.
 5. Disabled tools are filtered before normalization.
 6. MCP tool schemas are converted into synthetic OpenAPI.
@@ -479,7 +486,7 @@ The documentation and examples must show both lookup shapes:
 2. Runtime resolves the normalized tool and its source transport auth metadata.
 3. Policy and curation checks run as usual.
 4. The execution router sees `backend.kind == "mcp"`.
-5. If the source has transport `oauth`, the OAuth engine acquires or refreshes the transport token before the connection is opened.
+5. If the source has transport `oauth`, the auth engine resolves a transport application plan before the connection is opened.
 6. The MCP executor connects for the configured source.
 7. The original MCP tool name is called with validated arguments.
 8. Result content is normalized back into the existing CLI response model.
@@ -510,6 +517,14 @@ The documentation and examples must show both lookup shapes:
 - OAuth acquisition failures are surfaced explicitly with provider, flow, and endpoint context; no silent fallback to unauthenticated execution.
 - OpenAPI `implicit` and `password` flows fail with an explicit unsupported-flow error that names the scheme and the supported replacement modes.
 - Token cache corruption triggers a cache-reset-and-reauthorize path for only the affected provider, not the entire runtime.
+
+## Caching
+
+- MCP sources participate in **catalog caching**, not tool-result caching, in v1.
+- The catalog cache key for an MCP source includes the source name, transport kind, endpoint or command signature, disabled-tools list, and normalized auth identity inputs that affect discovery shape.
+- Access tokens themselves are never part of a cache key.
+- `refresh` invalidates the generated MCP catalog snapshot and rebuilds it through fresh discovery.
+- Tool execution responses from MCP are never cached in v1.
 
 ## Testing Strategy
 
