@@ -14,6 +14,7 @@ The design must solve both gaps without forcing users into an external wrapper o
 - Add real runtime support for OpenAPI `oauth2` and `openIdConnect` schemes, including token acquisition and refresh.
 - Preserve multi-instance isolation by storing MCP runtime state and OAuth token state under existing per-instance paths.
 - Update implementation, spec, conformance, and docs together.
+- Keep this spec focused on the first implementation target: `stdio` + `streamable-http` MCP support and shared OAuth/OIDC runtime support.
 
 ## Non-Goals
 
@@ -82,7 +83,7 @@ The feature is split into five units with clear boundaries.
 
 **Canonical `sources.<name>` MCP fields:**
 
-- `transport.type` (`stdio`, `sse`, `streamable-http`)
+- `transport.type` (`stdio`, `streamable-http`)
 - `transport.command`
 - `transport.args`
 - `transport.env`
@@ -91,6 +92,13 @@ The feature is split into five units with clear boundaries.
 - `transport.headerSecrets`
 - `disabledTools`
 - `oauth`
+
+**Transport field matrix:**
+
+| Transport | Required fields | Optional fields | Invalid fields |
+| --- | --- | --- | --- |
+| `stdio` | `transport.command` | `transport.args`, `transport.env`, `disabledTools` | `transport.url`, `transport.headers`, `transport.headerSecrets`, `oauth` |
+| `streamable-http` | `transport.url` | `transport.headers`, `transport.headerSecrets`, `disabledTools`, `oauth` | `transport.command`, `transport.args`, `transport.env` |
 
 `oauth` is transport-level authentication for the MCP server itself. It is distinct from per-tool OpenAPI security requirements. Transport OAuth is used when the runtime must authenticate before `ListTools` or `CallTool` can succeed.
 
@@ -244,7 +252,6 @@ This gives users a near drop-in migration path while keeping internal config uni
 
 - new `pkg/mcp/client/`
 - new `pkg/mcp/client/stdio.go`
-- new `pkg/mcp/client/sse.go`
 - new `pkg/mcp/client/streamablehttp.go`
 
 **Interface:**
@@ -266,17 +273,19 @@ This gives users a near drop-in migration path while keeping internal config uni
 - `content`: ordered MCP content array
 - `isError`: whether the MCP server marked the result as an error payload
 
-**Transport coverage by phase:**
+**Transport coverage for this spec:**
 
-- Phase 1: `stdio`, `streamable-http`
-- Phase 2: `sse`
+- `stdio`
+- `streamable-http`
+
+`sse` is explicitly deferred to a follow-up spec once the native MCP foundation is merged.
 
 The transport client owns wire-level MCP concerns only. It does not know about OpenAPI normalization, policy, or workflow binding.
 
 **Discovery-time auth:**
 
 - `stdio` uses no transport auth; discovery starts the subprocess and calls `ListTools`.
-- `sse` and `streamable-http` may require auth before discovery. The transport client asks the auth engine for a transport application plan before `ListTools` and reapplies the same config on later `CallTool` requests.
+- `streamable-http` may require auth before discovery. The transport client asks the auth engine for a transport application plan before `ListTools` and reapplies the same config on later `CallTool` requests.
 - Static non-Authorization headers from config are attached to both discovery and execution requests.
 
 **Timeout and remote-error rules:**
@@ -308,8 +317,9 @@ The transport client owns wire-level MCP concerns only. It does not know about O
   - original MCP tool name
   - disabled-tools filtering outcome
 - Operation IDs are stable and derived as `<service>.<tool>` before slugification, so workflows and guidance can bind to a durable identifier.
-- If two generated operations would collide after normalization, the runtime appends a deterministic short hash of `<source-name>::<original-tool-name>` to the synthetic operation ID while preserving the unmodified MCP tool name in backend metadata.
+- If two generated operations would collide after normalization, the runtime appends a deterministic short hash of `<source-name>::<original-tool-name>` to both the synthetic operation ID and the synthetic path slug while preserving the unmodified MCP tool name in backend metadata.
 - The final post-collision operation ID is the externally visible tool ID used by workflows, guidance, policy, and audit records.
+- If `disabledTools` removes a tool that is still referenced by a workflow step, overlay patch target, or policy entry, catalog build fails with a source-scoped error naming the missing tool and the referencing artifact.
 
 **Adapter to catalog metadata handoff:**
 
@@ -324,7 +334,7 @@ The transport client owns wire-level MCP concerns only. It does not know about O
 **Schema-mapping contract:**
 
 - Every MCP tool becomes a synthetic `POST` operation.
-- The operation path is `/_mcp/<service-slug>/<tool-slug>`.
+- The operation path is `/_mcp/<service-slug>/<tool-slug-or-collision-suffix>`.
 - MCP tool input is always represented as a JSON request body, never as path or query parameters, because MCP tool invocation is RPC-style rather than resource-style.
 - If the MCP input schema is an object, it becomes the request-body schema directly.
 - If the MCP input schema is absent, the request body schema is an empty object.
@@ -388,6 +398,8 @@ This keeps MCP normalization predictable and avoids inventing fake REST path/que
 - Keep static secret types (`env`, `file`, `exec`, `osKeychain`).
 - Add a new secret type: `oauth2`.
 - Add MCP-server-local `oauth` config for `.mcp.json` compatibility under MCP sources or `mcpServers`.
+- `clientId` may be either a literal string or a nested secret ref using `env`, `file`, `exec`, or `osKeychain`.
+- `clientSecret` may use only nested secret refs with `env`, `file`, `exec`, or `osKeychain`; literal strings are invalid.
 - Catalog build stores OAuth scheme metadata for each tool, including:
   - scheme name
   - scheme type (`oauth2` or `openIdConnect`)
@@ -403,6 +415,17 @@ This keeps MCP normalization predictable and avoids inventing fake REST path/que
   - each requirement carries scheme name, scheme type, application target (`header`, `query`, `cookie`, `tls`), and any OAuth flow metadata needed by runtime resolution
 
 The runtime auth engine consumes that normalized contract directly; executors never re-parse raw OpenAPI security definitions.
+
+**Auth engine interface:**
+
+- `ResolveHTTPAuth(ctx, serviceName, toolID, securityAlternatives) (ApplicationPlan, error)`
+- `ResolveMCPTransportAuth(ctx, sourceName, sourceAuthConfig) (ApplicationPlan, error)`
+- `InvalidateCachedToken(ctx, cacheKey) error`
+
+`pkg/auth` owns token lookup, acquisition, refresh, invalidation, and conversion into an `ApplicationPlan`.
+`pkg/catalog/build.go` and the MCP transport client call `ResolveMCPTransportAuth` during discovery when a remote MCP source requires auth.
+`internal/runtime/server.go` calls `ResolveHTTPAuth` during tool execution.
+Executors only apply the returned `ApplicationPlan`.
 
 **`secrets` example for OpenAPI OAuth:**
 
@@ -508,26 +531,33 @@ The documentation and examples must show both lookup shapes:
 **OpenAPI security requirement handling:**
 
 - A single security requirement object means logical AND across its schemes; all listed schemes must resolve successfully.
-- Multiple security requirement objects mean logical OR; the runtime evaluates them in order and uses the first fully satisfiable alternative.
-- If no alternative is satisfiable, execution fails with an auth-resolution error that lists the scheme names it attempted.
+- Multiple security requirement objects mean logical OR.
+- The runtime evaluates OR alternatives in two passes:
+  - first, in source order, considering only alternatives that can be satisfied without starting an interactive auth flow
+  - second, in source order, considering the remaining alternatives with interactive auth allowed
+- If no alternative is satisfiable after both passes, execution fails with an auth-resolution error that lists the scheme names it attempted.
 - `oauth2` / `openIdConnect` can compose with `apiKey`, `http`, or future cookie-based credentials in the same AND alternative only when their concrete application targets do not conflict.
 - If two schemes in the same AND alternative try to write different values to the same header, query key, cookie name, or TLS slot, that alternative is rejected as unsatisfiable and the runtime moves to the next OR alternative.
 - `Authorization` is treated as a single-valued target. A bearer token, basic auth credential, or custom API-key header named `Authorization` cannot coexist in the same AND alternative.
 - The auth engine returns a normalized application plan of `{headers, query, cookies, tls, tokenMetadata}`; executors apply that plan without reinterpreting scheme semantics.
 - MCP transport auth uses that same application-plan shape, but only the transport-safe subset (`headers`, `query`, `cookies`, `tls`) is allowed. The MCP transport client receives the plan and applies it during discovery and execution requests.
+- `transport.headerSecrets` may resolve only through static string-yielding secret types (`env`, `file`, `exec`, `osKeychain`). Referencing `type: "oauth2"` from `headerSecrets` is a validation error.
 
 **Token-key derivation:**
 
 - Token cache files live under the existing per-instance state directory.
-- Each cached token key is derived from the stable tuple `{auth-kind, issuer, client-id, sorted-scopes, audience, scheme-name-or-source-name}`.
+- Each cached token key is derived from the stable tuple `{auth-kind, issuer-or-endpoint-tuple, client-id, sorted-scopes, audience, scheme-name-or-source-name}`.
 - The on-disk filename uses a readable slug prefix plus a hash suffix so collisions stay impossible while manual inspection remains practical.
-- The cache-key normalization uses lower-cased issuer URLs without trailing slashes, the exact client ID, sorted unique scopes, optional audience, and either the scheme name or source name.
+- The cache-key normalization uses either a lower-cased issuer URL without trailing slashes or the normalized `{authorizationURL, tokenURL}` tuple when no issuer exists, plus the exact client ID, sorted unique scopes, optional audience, and either the scheme name or source name.
 
 **Storage and isolation:**
 
 - OAuth tokens are stored under per-instance state directories, for example:
   - `<state>/oauth/<provider-key>.json`
 - That preserves the existing multi-instance guarantees and prevents one terminal session from trampling another session’s refresh state.
+- Token refresh is single-flight per cache key within one runtime process.
+- Token files are written with `0600` permissions through temp-file-plus-atomic-rename semantics.
+- OAuth authorization-code `state` values are generated per attempt, stored only in memory, and must match on callback before any token exchange occurs.
 
 ## Data Flow
 
@@ -589,6 +619,16 @@ The documentation and examples must show both lookup shapes:
 - Tool execution responses from MCP are never cached in v1.
 - The deterministic tool-collision hash is the first 10 lowercase hex characters of `sha256(<source-name>::<original-tool-name>)`.
 
+For MCP catalog caching, the normalized auth identity inputs are exactly:
+
+- auth mode
+- issuer or explicit auth/token endpoint tuple
+- client ID
+- sorted unique scopes
+- optional audience
+- sorted literal transport headers
+- SHA-256 digests of resolved `headerSecrets` values, keyed by header name
+
 ## Testing Strategy
 
 ### Unit tests
@@ -602,7 +642,6 @@ The documentation and examples must show both lookup shapes:
 
 - Fake stdio MCP server
 - Fake streamable-http MCP server
-- Fake SSE MCP server
 - Fake OAuth issuer covering authorization-code, client-credentials, and OIDC discovery
 - Runtime execution tests that prove MCP-backed and HTTP-backed tools can coexist in one catalog
 
@@ -629,11 +668,9 @@ The documentation and examples must show both lookup shapes:
 - MCP and OAuth state is per-instance from day one to preserve multi-terminal safety.
 - The implementation should start from `origin/main` and land as one coordinated feature set across `oas-cli-go`, `oas-cli-spec`, and `oas-cli-conformance`.
 
-## Implementation Phasing
+## Implementation Scope for This Spec
 
-The work is one feature set, but the implementation plan must phase it explicitly:
-
-### Phase 1: foundations and core coverage
+The implementation plan derived from this spec covers exactly:
 
 - config normalization for `mcpServers` and canonical `type: "mcp"`
 - stdio MCP discovery and execution
@@ -642,9 +679,6 @@ The work is one feature set, but the implementation plan must phase it explicitl
 - OAuth `authorizationCode`, `clientCredentials`, and `openIdConnect`
 - docs, spec, and conformance updates for the above
 
-### Phase 2: transport completion
+## Follow-up Work
 
-- SSE MCP transport on the same discovery/execution interfaces
-- additional integration coverage for remote MCP auth, cancellation cleanup, and reconnect behavior
-
-Phase 1 is the minimum bar for the first implementation push. Phase 2 follows on the same branch before declaring the full MCP transport surface complete.
+SSE transport support is intentionally excluded from this spec and should be handled by a separate follow-up spec once the native MCP foundation is merged and verified.
