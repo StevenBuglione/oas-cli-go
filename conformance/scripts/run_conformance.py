@@ -24,6 +24,10 @@ def resolve_schema_root(explicit_root: Path | None = None) -> Path:
     if env_root:
         candidates.append(Path(env_root))
 
+    # Monorepo layout: spec/ lives at the same level as conformance/
+    candidates.append(ROOT.parent / "spec" / "schemas")
+
+    # Legacy fallback: sibling oas-cli-spec repository
     candidates.append(ROOT.parent / "oas-cli-spec" / "schemas")
 
     for candidate in candidates:
