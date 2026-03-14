@@ -55,7 +55,7 @@ product-tests/
 | Mode | Command | What it does |
 | --- | --- | --- |
 | Smoke | `make smoke` | Checks prerequisites and validates all compose config files — no services started |
-| Full | `make full` | Validates prerequisites and configs (smoke), then brings up services and runs the full capability suite |
+| Full | `make full` | Validates prerequisites and configs (smoke), then brings up and tears down services — placeholder; individual capability targets not yet wired in |
 
 Smoke runs in CI automatically on every push and PR. Full is for local pre-merge validation.
 
