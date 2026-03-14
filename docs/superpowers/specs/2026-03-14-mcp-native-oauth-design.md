@@ -209,6 +209,7 @@ This gives users a near drop-in migration path while keeping internal config uni
         },
         "scopes": ["mcp.read"],
         "callbackPort": 8790,
+        "interactive": true,
         "tokenStorage": "instance"
       }
     }
@@ -219,9 +220,15 @@ This gives users a near drop-in migration path while keeping internal config uni
 **Precedence rules:**
 
 - `oauth` authenticates the MCP transport itself and is consulted before discovery or execution.
-- Per-tool OpenAPI `security` requirements are still resolved through `secrets`.
-- If a tool requires both transport OAuth and tool-level auth, both are applied; transport auth gets the MCP session established, and tool-level auth is applied to the synthesized tool execution metadata.
+- MCP-generated operations in v1 do not synthesize additional per-tool `security` requirements; MCP auth is transport-level only in this feature set.
 - When `oauth` is configured, it owns the `Authorization` header for the transport. User-supplied `headers.Authorization` is rejected as a configuration error to avoid ambiguous precedence.
+
+**Service cardinality in v1:**
+
+- Each MCP source owns exactly one service in v1.
+- The service name is the source name.
+- Additional `services.<name>` configuration may enrich that same service, but a second service pointing at the same MCP source is rejected.
+- This keeps tool IDs, synthetic paths, workflow binding, and auth lookup deterministic.
 
 ### 2. MCP transport client
 
@@ -356,7 +363,7 @@ This keeps MCP normalization predictable and avoids inventing fake REST path/que
 ```json
 {
   "secrets": {
-    "petstore_oauth": {
+    "pets.petstore_oauth": {
       "type": "oauth2",
       "mode": "authorizationCode",
       "issuer": "https://auth.example.com",
@@ -372,6 +379,7 @@ This keeps MCP normalization predictable and avoids inventing fake REST path/que
       "scopes": ["pets.read", "pets.write"],
       "audience": "pets-api",
       "callbackPort": 8788,
+      "interactive": true,
       "tokenStorage": "instance"
     }
   }
@@ -388,10 +396,14 @@ The implementation in this feature intentionally stops there. If an OpenAPI docu
 
 **OAuth field defaults and validation:**
 
+- `interactive`
+  - valid for `authorizationCode` only
+  - default: `true`
+  - when `false`, the runtime must not open a browser or wait for loopback auth; it fails immediately with a non-interactive-auth-required error
 - `callbackPort`
   - valid for `authorizationCode` only
   - default: first free port in the inclusive range `8787-8899`
-  - if the configured port is busy, runtime falls back to the next free port in that range when discovery is allowed to prompt; otherwise it fails with a port-in-use error that names the provider
+  - if the configured port is busy, runtime falls back to the next free port in that range only when `interactive` is `true`; otherwise it fails with a port-in-use error that names the provider
 - `tokenStorage`
   - valid values: `instance`, `memory`
   - default: `instance`
@@ -407,6 +419,8 @@ The implementation in this feature intentionally stops there. If an OpenAPI docu
 - The runtime opens the system browser by default.
 - If browser launch fails or the runtime is headless, it prints the authorization URL and waits for loopback completion instead of silently failing.
 - Loopback callbacks bind to `127.0.0.1` only.
+- Loopback wait timeout defaults to 120 seconds.
+- Context cancellation or Ctrl-C aborts the auth attempt immediately.
 - If no loopback port can be acquired in the allowed range, auth fails before any token request is attempted.
 - If the provider returns no refresh token, the runtime treats the token as non-refreshable and reacquires it interactively on expiry.
 
@@ -417,6 +431,11 @@ The implementation in this feature intentionally stops there. If an OpenAPI docu
 | `oauth2` | `secrets[service-name.scheme-name]` first, then `secrets[scheme-name]` | explicit values in the secret first, then OpenAPI scheme metadata | union of secret default scopes and tool-required scopes | refresh token if present, otherwise reacquire by configured mode |
 | `openIdConnect` | `secrets[service-name.scheme-name]` first, then `secrets[scheme-name]` | explicit issuer in the secret first, then `openIdConnectUrl` from scheme metadata, then OIDC discovery | union of secret default scopes and tool-required scopes | refresh token if present, otherwise reacquire by configured mode |
 | MCP transport `oauth` | source-local `oauth` block | explicit values in the MCP source config | exactly the scopes declared in the source-local block | refresh token if present, otherwise reacquire by configured mode |
+
+The documentation and examples must show both lookup shapes:
+
+- shared secret: `secrets["petstore_oauth"]`
+- service-specific override: `secrets["pets.petstore_oauth"]`
 
 **OpenAPI security requirement handling:**
 
@@ -452,11 +471,11 @@ The implementation in this feature intentionally stops there. If an OpenAPI docu
 ### MCP tool execution
 
 1. `oascli` asks the runtime to execute a tool.
-2. Runtime resolves the normalized tool and its auth requirements.
+2. Runtime resolves the normalized tool and its source transport auth metadata.
 3. Policy and curation checks run as usual.
 4. The execution router sees `backend.kind == "mcp"`.
 5. If the source has transport `oauth`, the OAuth engine acquires or refreshes the transport token before the connection is opened.
-6. The MCP executor connects or reuses a connection for the configured source.
+6. The MCP executor connects for the configured source.
 7. The original MCP tool name is called with validated arguments.
 8. Result content is normalized back into the existing CLI response model.
 
@@ -470,13 +489,13 @@ The implementation in this feature intentionally stops there. If an OpenAPI docu
   - `content`: the ordered raw MCP content array
 - MCP tool errors are surfaced as execution failures with the MCP error code, message, and attached data when present.
 
-### OAuth-backed HTTP or MCP auth
+### OAuth-backed HTTP auth and MCP transport auth
 
-1. Catalog build records the security requirements for a tool.
-2. Runtime matches each requirement to a configured secret or MCP server auth block.
+1. Catalog build records OpenAPI security requirements for HTTP-backed tools and transport OAuth metadata for MCP-backed sources.
+2. Runtime matches HTTP tool requirements to configured `secrets` and matches MCP transport auth to the source-local `oauth` block.
 3. The OAuth engine loads or acquires an access token.
 4. Tokens are refreshed or renewed as needed and stored under instance state.
-5. The executor applies the resulting credential to the HTTP request or MCP transport.
+5. The executor applies the resulting credential to the HTTP request or to the MCP transport connection setup.
 
 ## Error Handling
 
