@@ -21,8 +21,9 @@ test-mcp-stdio:
 test-mcp-remote: mcp-remote-up
 	@echo "==> Waiting for remote MCP service..."
 	@sleep 8
-	go test ../... -run TestCapabilityExecuteMCPRemote -count=1 -v -timeout 60s
-	$(MAKE) mcp-remote-down
+	go test ../... -run TestCapabilityExecuteMCPRemote -count=1 -v -timeout 60s; \
+	  $(MAKE) mcp-remote-down; \
+	  exit $$?
 
 smoke: check-prereqs
 	@echo "==> Validating compose configs..."
