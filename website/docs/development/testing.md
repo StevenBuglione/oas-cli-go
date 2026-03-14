@@ -65,7 +65,7 @@ If you change config semantics, catalog output, schema-facing behavior, or anyth
 | Mode | Command | What it does | When to run |
 | --- | --- | --- | --- |
 | Smoke | `make product-test-smoke` | Checks prerequisites (Go, Docker, npx) and validates all `docker compose` config files without starting services | Every PR; runs in CI automatically |
-| Full | `make product-test-full` | Brings up services and runs all capability tests | Before merging changes that touch product behaviour or infra configs |
+| Full | `make product-test-full` | Validates smoke prerequisites/configs, starts services, then tears them down (capability test runs are a placeholder — no test targets execute yet) | Before merging changes that touch product behaviour or infra configs |
 
 ### Running product tests locally
 
