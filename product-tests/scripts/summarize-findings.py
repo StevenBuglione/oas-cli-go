@@ -84,7 +84,7 @@ def format_rubric_text(rubric: dict, schema_errors: list[str]) -> str:
         for err in schema_errors:
             lines.append(f"│    - {err}")
 
-    criteria: list[dict] = rubric.get("criteria", [])
+    criteria: list[dict] = rubric.get("criteria") or []
     pass_count = sum(1 for c in criteria if c.get("pass", True))
     fail_count = len(criteria) - pass_count
     lines.append(f"│  Criteria: {pass_count} passed, {fail_count} failed (total {len(criteria)})")
@@ -95,7 +95,7 @@ def format_rubric_text(rubric: dict, schema_errors: list[str]) -> str:
             lines.append(f"│    ✗ [{c.get('id', '?')}] {c.get('description', '')} "
                          f"— expected {c.get('expected', '?')!r}, got {c.get('actual', '?')!r}{note}")
 
-    gaps: list[dict] = rubric.get("knownGaps", [])
+    gaps: list[dict] = rubric.get("knownGaps") or []
     if gaps:
         still_fail = [g for g in gaps if g.get("stillFails", True)]
         now_pass = [g for g in gaps if not g.get("stillFails", True)]
@@ -103,7 +103,7 @@ def format_rubric_text(rubric: dict, schema_errors: list[str]) -> str:
         for g in now_pass:
             lines.append(f"│    ⚡ FIXED [{g.get('id', '?')}] {g.get('description', '')}")
 
-    findings: list[str] = rubric.get("findings", [])
+    findings: list[str] = rubric.get("findings") or []
     if findings:
         lines.append("│  Findings:")
         for f in findings:

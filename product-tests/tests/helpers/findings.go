@@ -56,8 +56,11 @@ type FindingsRecorder struct {
 // NewFindingsRecorder creates a recorder for the named campaign.
 func NewFindingsRecorder(campaign string) *FindingsRecorder {
 	return &FindingsRecorder{
-		campaign: campaign,
-		runAt:    time.Now().UTC().Format(time.RFC3339),
+		campaign:  campaign,
+		runAt:     time.Now().UTC().Format(time.RFC3339),
+		criteria:  []RubricCriterion{},
+		knownGaps: []KnownGapEntry{},
+		findings:  []string{},
 	}
 }
 

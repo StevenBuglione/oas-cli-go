@@ -146,8 +146,8 @@ def print_summary(rubrics: list[dict], go_returncode: int) -> int:
     rows: list[tuple[str, str, int, int, int]] = []  # (campaign, pass, total, fail, gaps)
 
     for rub in rubrics:
-        criteria: list[dict] = rub.get("criteria", [])
-        gaps: list[dict] = rub.get("knownGaps", [])
+        criteria: list[dict] = rub.get("criteria") or []
+        gaps: list[dict] = rub.get("knownGaps") or []
         n_total = len(criteria)
         n_fail = sum(1 for c in criteria if not c.get("pass", True))
         n_gaps = len(gaps)
