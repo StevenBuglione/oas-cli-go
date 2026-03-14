@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -330,6 +331,144 @@ paths:
 	defer allowResp.Body.Close()
 	if allowResp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200 for allowed tool, got %d", allowResp.StatusCode)
+	}
+}
+
+func TestServerExecutesMCPTools(t *testing.T) {
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 is required for MCP runtime integration test")
+	}
+
+	dir := t.TempDir()
+	serverPath := writeRuntimeFile(t, dir, "fake_mcp_server.py", `
+import json
+import sys
+
+TOOLS = [
+    {
+        "name": "ping",
+        "description": "Ping the MCP server",
+        "inputSchema": {
+            "type": "object",
+            "properties": {}
+        }
+    }
+]
+
+def read_message():
+    headers = {}
+    while True:
+        line = sys.stdin.buffer.readline()
+        if not line:
+            return None
+        if line in (b"\n", b"\r\n"):
+            break
+        key, value = line.decode("utf-8").split(":", 1)
+        headers[key.strip().lower()] = value.strip()
+    length = int(headers.get("content-length", "0"))
+    if length <= 0:
+        return None
+    payload = sys.stdin.buffer.read(length)
+    if not payload:
+        return None
+    return json.loads(payload.decode("utf-8"))
+
+def write_message(message):
+    encoded = json.dumps(message).encode("utf-8")
+    sys.stdout.buffer.write(f"Content-Length: {len(encoded)}\r\n\r\n".encode("utf-8"))
+    sys.stdout.buffer.write(encoded)
+    sys.stdout.buffer.flush()
+
+while True:
+    message = read_message()
+    if message is None:
+        break
+    method = message.get("method")
+    if method == "initialize":
+        write_message({
+            "jsonrpc": "2.0",
+            "id": message["id"],
+            "result": {
+                "protocolVersion": "2025-03-26",
+                "capabilities": {"tools": {}},
+                "serverInfo": {"name": "fake-mcp", "version": "1.0.0"}
+            }
+        })
+    elif method == "notifications/initialized":
+        continue
+    elif method == "tools/list":
+        write_message({
+            "jsonrpc": "2.0",
+            "id": message["id"],
+            "result": {"tools": TOOLS}
+        })
+    elif method == "tools/call":
+        write_message({
+            "jsonrpc": "2.0",
+            "id": message["id"],
+            "result": {
+                "structuredContent": {"ok": True, "name": message["params"]["name"]},
+                "content": [{"type": "text", "text": "pong"}],
+                "isError": False
+            }
+        })
+    else:
+        write_message({
+            "jsonrpc": "2.0",
+            "id": message.get("id"),
+            "error": {"code": -32601, "message": f"unsupported method: {method}"}
+        })
+`)
+
+	configPath := writeRuntimeFile(t, dir, ".cli.json", `{
+	  "cli": "1.0.0",
+	  "mode": { "default": "discover" },
+	  "sources": {
+	    "docs": {
+	      "type": "mcp",
+	      "enabled": true,
+	      "transport": {
+	        "type": "stdio",
+	        "command": "python3",
+	        "args": ["`+serverPath+`"]
+	      }
+	    }
+	  },
+	  "services": {
+	    "docs": {
+	      "source": "docs",
+	      "alias": "docs"
+	    }
+	  }
+	}`)
+
+	server := runtime.NewServer(runtime.Options{AuditPath: filepath.Join(dir, "audit.log"), Observer: obs.NewNop()})
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	requestBody := bytes.NewBufferString(`{
+	  "configPath": "` + configPath + `",
+	  "toolId": "docs:ping"
+	}`)
+	resp, err := http.Post(httpServer.URL+"/v1/tools/execute", "application/json", requestBody)
+	if err != nil {
+		t.Fatalf("execute request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for MCP tool execution, got %d", resp.StatusCode)
+	}
+
+	var payload map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode execute response: %v", err)
+	}
+	body, ok := payload["body"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected JSON body payload, got %#v", payload)
+	}
+	if isError, exists := body["isError"]; exists && isError != false {
+		t.Fatalf("expected non-error MCP result, got %#v", body)
 	}
 }
 

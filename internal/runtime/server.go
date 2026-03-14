@@ -190,13 +190,7 @@ func (server *Server) handleExecuteTool(w http.ResponseWriter, r *http.Request) 
 	}
 
 	execStart := time.Now()
-	result, err := httpexec.Execute(ctx, server.client, httpexec.Request{
-		Tool:     *tool,
-		PathArgs: request.PathArgs,
-		Flags:    request.Flags,
-		Body:     request.Body,
-		Auth:     server.resolveAuth(cfg.Config, *tool),
-	})
+	result, err := server.executeTool(ctx, cfg.Config, *tool, request)
 	if err != nil {
 		finishErr = err
 		server.recordEvent(*tool, request.AgentProfile, policy.Decision{Allowed: false, ReasonCode: "execution_error"}, 0, 0, 0)
@@ -216,6 +210,27 @@ func (server *Server) handleExecuteTool(w http.ResponseWriter, r *http.Request) 
 		response.Text = string(result.Body)
 	}
 	writeJSON(w, http.StatusOK, response)
+}
+
+func (server *Server) executeTool(ctx context.Context, cfg config.Config, tool catalog.Tool, request executeToolRequest) (*httpexec.Result, error) {
+	serviceConfig, ok := cfg.Services[tool.ServiceID]
+	if ok {
+		if sourceConfig, exists := cfg.Sources[serviceConfig.Source]; exists && sourceConfig.Type == "mcp" {
+			return httpexec.ExecuteMCP(ctx, httpexec.MCPRequest{
+				Tool:   tool,
+				Source: sourceConfig,
+				Body:   request.Body,
+			})
+		}
+	}
+
+	return httpexec.Execute(ctx, server.client, httpexec.Request{
+		Tool:     tool,
+		PathArgs: request.PathArgs,
+		Flags:    request.Flags,
+		Body:     request.Body,
+		Auth:     server.resolveAuth(cfg, tool),
+	})
 }
 
 func (server *Server) handleWorkflowRun(w http.ResponseWriter, r *http.Request) {
