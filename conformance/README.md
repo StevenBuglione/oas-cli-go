@@ -2,7 +2,7 @@
 
 Language-neutral fixtures and expected outputs for validating OAS-CLI implementations.
 
-> **Monorepo note:** This directory is a first-class subproject of [oas-cli-go](../../README.md). The runner uses `spec/schemas/` (the sibling subproject) as the default schema root, so you do not need to check out a separate repository.
+> **Monorepo note:** This directory is a first-class subproject of [oas-cli-go](../README.md). The runner uses `spec/schemas/` (the sibling subproject) as the default schema root, so you do not need to check out a separate repository.
 
 ## Contents
 
