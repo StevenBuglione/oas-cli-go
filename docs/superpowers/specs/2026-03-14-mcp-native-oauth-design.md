@@ -78,19 +78,55 @@ The feature is split into five units with clear boundaries.
 - `mcpServers` normalization only runs for names that are not already present in `sources`.
 - If the same name appears in both `sources` and `mcpServers`, config load fails with an ambiguity error even if the values appear equivalent. The user must keep exactly one owner for each source name.
 - Auto-generated services are created only when `services.<name>` does not already exist. Explicit services always own overlays, workflows, aliases, and future service-level options.
+- If `services.<name>` exists, matches an MCP source name, and omits `source`, normalization injects `source: "<name>"` before schema validation. If it sets a different `source`, config load fails.
 
 **Supported MCP server fields:**
 
-- `command`
-- `args`
-- `env`
-- `type` (`stdio`, `sse`, `streamable-http`)
-- `url`
-- `headers`
+- `transport.type` (`stdio`, `sse`, `streamable-http`)
+- `transport.command`
+- `transport.args`
+- `transport.env`
+- `transport.url`
+- `transport.headers`
 - `disabledTools`
 - `oauth`
 
 `oauth` is transport-level authentication for the MCP server itself. It is distinct from per-tool OpenAPI security requirements. Transport OAuth is used when the runtime must authenticate before `ListTools` or `CallTool` can succeed.
+
+The canonical `sources.<name>` shape is nested:
+
+```json
+{
+  "type": "mcp",
+  "transport": {
+    "type": "streamable-http",
+    "url": "https://mcp.example.com/mcp",
+    "headers": {
+      "X-Tenant": "docs"
+    }
+  },
+  "disabledTools": ["admin.delete"],
+  "oauth": {
+    "mode": "authorizationCode",
+    "issuer": "https://auth.example.com",
+    "clientId": {
+      "type": "env",
+      "value": "REMOTE_MCP_CLIENT_ID"
+    },
+    "clientSecret": {
+      "type": "osKeychain",
+      "service": "oas-cli",
+      "account": "remote-mcp-client-secret"
+    },
+    "scopes": ["mcp.read"],
+    "audience": "mcp.example.com",
+    "callbackPort": 8790,
+    "tokenStorage": "instance"
+  }
+}
+```
+
+The compatibility `mcpServers` shape stays flat for migration, and normalization rewrites it into the nested canonical source shape before any later validation or catalog work.
 
 **Canonical `.cli.json` example:**
 
@@ -229,6 +265,23 @@ The transport client owns wire-level MCP concerns only. It does not know about O
 - Operation IDs are stable and derived as `<service>.<tool>` before slugification, so workflows and guidance can bind to a durable identifier.
 - If two generated operations would collide after normalization, the runtime appends a deterministic short hash of `<source-name>::<original-tool-name>` to the synthetic operation ID while preserving the unmodified MCP tool name in backend metadata.
 
+**Schema-mapping contract:**
+
+- Every MCP tool becomes a synthetic `POST` operation.
+- The operation path is `/_mcp/<service-slug>/<tool-slug>`.
+- MCP tool input is always represented as a JSON request body, never as path or query parameters, because MCP tool invocation is RPC-style rather than resource-style.
+- If the MCP input schema is an object, it becomes the request-body schema directly.
+- If the MCP input schema is absent, the request body schema is an empty object.
+- If the MCP input schema is a non-object JSON schema, it is wrapped as `{ "input": <original-schema> }` so the CLI still has a stable object-shaped body contract.
+- Supported JSON Schema features are the subset already accepted by the existing OpenAPI normalization path for request bodies.
+- Unsupported constructs such as cyclic `$ref` graphs or discriminator-free ambiguous unions fail catalog build with the source and tool name in the error.
+- The synthetic response schema is a stable MCP envelope:
+  - `structuredContent` for machine-readable structured payloads when present
+  - `content` for the ordered MCP content array
+  - `isError` when the MCP server marks the tool result as an error payload
+
+This keeps MCP normalization predictable and avoids inventing fake REST path/query semantics.
+
 **Important constraint:** the generated OpenAPI is for **catalog normalization**, not for HTTP execution. The runtime must still know that these tools are MCP-backed.
 
 ### 4. Execution router
@@ -256,7 +309,8 @@ The transport client owns wire-level MCP concerns only. It does not know about O
 **Connection lifecycle:**
 
 - Discovery connections are short-lived.
-- Execution connections may be pooled per source inside the runtime process when safe.
+- The initial implementation opens execution connections per request and closes them when the tool call completes.
+- Connection pooling is explicitly deferred until the native execution path has test coverage across all transports.
 - Per-instance runtime state stores MCP connection metadata under existing instance-aware paths so simultaneous terminals and agents remain isolated.
 
 ### 5. OAuth and auth engine
@@ -305,6 +359,7 @@ The transport client owns wire-level MCP concerns only. It does not know about O
         "account": "petstore-client-secret"
       },
       "scopes": ["pets.read", "pets.write"],
+      "audience": "pets-api",
       "callbackPort": 8788,
       "tokenStorage": "instance"
     }
@@ -324,9 +379,15 @@ The implementation in this feature intentionally stops there. If an OpenAPI docu
 
 | Tool requirement | Runtime lookup key | Endpoint source | Effective scopes | Refresh behavior |
 | --- | --- | --- | --- | --- |
-| `oauth2` | `secrets[scheme-name]` | explicit values in the secret first, then OpenAPI scheme metadata | union of secret default scopes and tool-required scopes | refresh token if present, otherwise reacquire by configured mode |
-| `openIdConnect` | `secrets[scheme-name]` | explicit issuer in the secret first, then `openIdConnectUrl` from scheme metadata, then OIDC discovery | union of secret default scopes and tool-required scopes | refresh token if present, otherwise reacquire by configured mode |
+| `oauth2` | `secrets[service-name.scheme-name]` first, then `secrets[scheme-name]` | explicit values in the secret first, then OpenAPI scheme metadata | union of secret default scopes and tool-required scopes | refresh token if present, otherwise reacquire by configured mode |
+| `openIdConnect` | `secrets[service-name.scheme-name]` first, then `secrets[scheme-name]` | explicit issuer in the secret first, then `openIdConnectUrl` from scheme metadata, then OIDC discovery | union of secret default scopes and tool-required scopes | refresh token if present, otherwise reacquire by configured mode |
 | MCP transport `oauth` | source-local `oauth` block | explicit values in the MCP source config | exactly the scopes declared in the source-local block | refresh token if present, otherwise reacquire by configured mode |
+
+**OpenAPI security requirement handling:**
+
+- A single security requirement object means logical AND across its schemes; all listed schemes must resolve successfully.
+- Multiple security requirement objects mean logical OR; the runtime evaluates them in order and uses the first fully satisfiable alternative.
+- If no alternative is satisfiable, execution fails with an auth-resolution error that lists the scheme names it attempted.
 
 **Token-key derivation:**
 
