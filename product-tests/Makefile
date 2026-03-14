@@ -31,6 +31,6 @@ smoke: check-prereqs
 	docker compose -f mcp/remote/docker-compose.yml config --quiet
 	@echo "==> Smoke OK (infrastructure configs valid)"
 
-full: services-up smoke
+full: smoke services-up
 	@echo "==> Full suite placeholder — add test targets here"
 	$(MAKE) services-down

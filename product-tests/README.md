@@ -54,8 +54,8 @@ product-tests/
 
 | Mode | Command | What it does |
 | --- | --- | --- |
-| Smoke | `make smoke` | Validates all compose config files — no services started |
-| Full | `make full` | Brings up services and runs the full capability suite |
+| Smoke | `make smoke` | Checks prerequisites and validates all compose config files — no services started |
+| Full | `make full` | Validates prerequisites and configs (smoke), then brings up services and runs the full capability suite |
 
 Smoke runs in CI automatically on every push and PR. Full is for local pre-merge validation.
 
@@ -78,13 +78,17 @@ make services-down
 ### Catalog
 
 ```sh
+go test ./tests/... -run TestCapabilityCatalogREST -count=1 -v
+go test ./tests/... -run TestCapabilityCatalogMCP -count=1 -v
+
+# or run both with a prefix match
 go test ./tests/... -run TestCapabilityCatalog -count=1 -v
 ```
 
 ### Auth and policy
 
 ```sh
-go test ./tests/... -run TestCapabilityAuthPolicy -count=1 -v
+go test ./tests/... -run TestCapabilityAuthAndPolicy -count=1 -v
 ```
 
 ### Execute — REST
@@ -131,11 +135,12 @@ MCP_REMOTE_HOST=192.168.1.10:3001 go test ./tests/... -run TestCapabilityExecute
 ### Refresh and audit
 
 ```sh
-go test ./tests/... -run TestCapabilityRefreshAudit -count=1 -v
+go test ./tests/... -run TestCapabilityRefresh -count=1 -v
+go test ./tests/... -run TestCapabilityAudit -count=1 -v
 ```
 
 ### Multi-instance
 
 ```sh
-go test ./tests/... -run TestCapabilityMultiinstance -count=1 -v
+go test ./tests/... -run TestMultiInstance -count=1 -v
 ```
