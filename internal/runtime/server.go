@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -11,6 +12,7 @@ import (
 	stdruntime "runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/StevenBuglione/oas-cli-go/pkg/audit"
@@ -23,23 +25,70 @@ import (
 )
 
 type Options struct {
-	AuditPath         string
-	CacheDir          string
-	StateDir          string
-	DefaultConfigPath string
-	HTTPClient        *http.Client
-	Observer          obs.Observer
-	KeychainResolver  func(string) (string, error)
+	AuditPath            string
+	CacheDir             string
+	StateDir             string
+	DefaultConfigPath    string
+	InstanceID           string
+	RuntimeURL           string
+	HeartbeatSeconds     int
+	MissedHeartbeatLimit int
+	ShutdownMode         string
+	HTTPClient           *http.Client
+	Observer             obs.Observer
+	KeychainResolver     func(string) (string, error)
+	Shutdown             func() error
 }
 
 type Server struct {
-	auditStore        *audit.FileStore
-	client            *http.Client
-	cacheDir          string
-	stateDir          string
-	defaultConfigPath string
-	observer          obs.Observer
-	keychainResolver  func(string) (string, error)
+	auditStore           *audit.FileStore
+	client               *http.Client
+	cacheDir             string
+	stateDir             string
+	defaultConfigPath    string
+	instanceID           string
+	runtimeURL           string
+	heartbeatSeconds     int
+	missedHeartbeatLimit int
+	shutdownMode         string
+	observer             obs.Observer
+	keychainResolver     func(string) (string, error)
+	shutdown             func() error
+	leaseMu              sync.Mutex
+	leases               map[string]sessionLease
+}
+
+type sessionLease struct {
+	ExpiresAt time.Time
+	Timer     *time.Timer
+}
+
+type authResult struct {
+	Enabled      bool
+	Principal    string
+	Scopes       []string
+	AllowedTools map[string]struct{}
+}
+
+type runtimeAuthError struct {
+	StatusCode int
+	Code       string
+	Message    string
+}
+
+func (e *runtimeAuthError) Error() string {
+	if e.Message != "" {
+		return e.Message
+	}
+	return e.Code
+}
+
+type introspectionResponse struct {
+	Active   bool            `json:"active"`
+	Scope    string          `json:"scope,omitempty"`
+	Subject  string          `json:"sub,omitempty"`
+	ClientID string          `json:"client_id,omitempty"`
+	Audience json.RawMessage `json:"aud,omitempty"`
 }
 
 type effectiveCatalogResponse struct {
@@ -103,13 +152,20 @@ func NewServer(options Options) *Server {
 		options.Observer = obs.NewNop()
 	}
 	return &Server{
-		auditStore:        audit.NewFileStore(options.AuditPath),
-		client:            options.HTTPClient,
-		cacheDir:          options.CacheDir,
-		stateDir:          firstNonEmpty(options.StateDir, filepath.Dir(options.AuditPath)),
-		defaultConfigPath: options.DefaultConfigPath,
-		observer:          options.Observer,
-		keychainResolver:  options.KeychainResolver,
+		auditStore:           audit.NewFileStore(options.AuditPath),
+		client:               options.HTTPClient,
+		cacheDir:             options.CacheDir,
+		stateDir:             firstNonEmpty(options.StateDir, filepath.Dir(options.AuditPath)),
+		defaultConfigPath:    options.DefaultConfigPath,
+		instanceID:           options.InstanceID,
+		runtimeURL:           options.RuntimeURL,
+		heartbeatSeconds:     options.HeartbeatSeconds,
+		missedHeartbeatLimit: options.MissedHeartbeatLimit,
+		shutdownMode:         options.ShutdownMode,
+		observer:             options.Observer,
+		keychainResolver:     options.KeychainResolver,
+		shutdown:             options.Shutdown,
+		leases:               map[string]sessionLease{},
 	}
 }
 
@@ -120,6 +176,11 @@ func (server *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/workflows/run", server.handleWorkflowRun)
 	mux.HandleFunc("/v1/refresh", server.handleRefresh)
 	mux.HandleFunc("/v1/audit/events", server.handleAuditEvents)
+	mux.HandleFunc("/v1/auth/browser-config", server.handleBrowserConfig)
+	mux.HandleFunc("/v1/runtime/info", server.handleRuntimeInfo)
+	mux.HandleFunc("/v1/runtime/heartbeat", server.handleRuntimeHeartbeat)
+	mux.HandleFunc("/v1/runtime/stop", server.handleRuntimeStop)
+	mux.HandleFunc("/v1/runtime/session-close", server.handleRuntimeSessionClose)
 	return mux
 }
 
@@ -140,12 +201,28 @@ func (server *Server) handleEffectiveCatalog(w http.ResponseWriter, r *http.Requ
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	authz, err := server.authorizeRequest(ctx, r, cfg.Config, ntc)
+	if err != nil {
+		finishErr = err
+		if authErr, ok := err.(*runtimeAuthError); ok {
+			server.recordCatalogEvent("", authErr.Code)
+			http.Error(w, authErr.Code, authErr.StatusCode)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	mode := r.URL.Query().Get("mode")
 	agentProfile := r.URL.Query().Get("agentProfile")
-	view := selectView(cfg.Config, ntc, mode, agentProfile)
+	filteredCatalog := ntc
+	if authz.Enabled {
+		filteredCatalog = filterCatalog(ntc, authz.AllowedTools)
+		server.recordCatalogEvent(authz.Principal, "catalog_filtered")
+	}
+	view := selectView(cfg.Config, filteredCatalog, mode, agentProfile)
 	server.observer.Emit(ctx, obs.Event{Name: "runtime.catalog.effective", Operation: "catalog.effective", StatusCode: http.StatusOK, Duration: time.Since(start), RequestID: requestID})
-	writeJSON(w, http.StatusOK, effectiveCatalogResponse{Catalog: ntc, View: view})
+	writeJSON(w, http.StatusOK, effectiveCatalogResponse{Catalog: filteredCatalog, View: view})
 }
 
 func (server *Server) handleExecuteTool(w http.ResponseWriter, r *http.Request) {
@@ -172,6 +249,16 @@ func (server *Server) handleExecuteTool(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	authz, err := server.authorizeRequest(ctx, r, cfg.Config, ntc)
+	if err != nil {
+		finishErr = err
+		if authErr, ok := err.(*runtimeAuthError); ok {
+			http.Error(w, authErr.Code, authErr.StatusCode)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	tool := ntc.FindTool(request.ToolID)
 	if tool == nil {
@@ -179,6 +266,13 @@ func (server *Server) handleExecuteTool(w http.ResponseWriter, r *http.Request) 
 		server.observer.Emit(ctx, obs.Event{Name: "runtime.tools.execute", Operation: request.ToolID, Duration: time.Since(start), ErrorCategory: "tool_not_found", RequestID: requestID})
 		http.Error(w, "tool not found", http.StatusNotFound)
 		return
+	}
+	if authz.Enabled {
+		if _, ok := authz.AllowedTools[tool.ID]; !ok {
+			server.recordEvent(*tool, request.AgentProfile, policy.Decision{Allowed: false, ReasonCode: "authz_denied"}, 0, 0, 0)
+			http.Error(w, "authz_denied", http.StatusForbidden)
+			return
+		}
 	}
 
 	decision := policy.Decide(cfg.Config, *tool, policy.Context{
@@ -282,6 +376,16 @@ func (server *Server) handleWorkflowRun(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	authz, err := server.authorizeRequest(ctx, r, cfg.Config, ntc)
+	if err != nil {
+		finishErr = err
+		if authErr, ok := err.(*runtimeAuthError); ok {
+			http.Error(w, authErr.Code, authErr.StatusCode)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	for _, workflow := range ntc.Workflows {
 		if workflow.WorkflowID != request.WorkflowID {
@@ -294,6 +398,13 @@ func (server *Server) handleWorkflowRun(w http.ResponseWriter, r *http.Request) 
 				finishErr = fmt.Errorf("workflow references unknown tool")
 				http.Error(w, "workflow references unknown tool", http.StatusBadRequest)
 				return
+			}
+			if authz.Enabled {
+				if _, ok := authz.AllowedTools[tool.ID]; !ok {
+					server.observer.Emit(ctx, obs.Event{Name: "runtime.workflows.run", Operation: request.WorkflowID, Duration: time.Since(start), ErrorCategory: "authz_denied", RequestID: requestID})
+					http.Error(w, "authz_denied", http.StatusForbidden)
+					return
+				}
 			}
 			decision := policy.Decide(cfg.Config, *tool, policy.Context{
 				Mode:            request.Mode,
@@ -342,11 +453,20 @@ func (server *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
 		request.ConfigPath = r.URL.Query().Get("config")
 	}
 
-	_, ntc, err := server.loadCatalog(ctx, request.ConfigPath, true)
+	cfg, ntc, err := server.loadCatalog(ctx, request.ConfigPath, true)
 	if err != nil {
 		finishErr = err
 		server.observer.Emit(ctx, obs.Event{Name: "runtime.refresh", Operation: "refresh", Duration: time.Since(start), ErrorCategory: "refresh_error", RequestID: requestID})
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if _, err := server.authenticateRequest(ctx, r, cfg.Config); err != nil {
+		finishErr = err
+		if authErr, ok := err.(*runtimeAuthError); ok {
+			http.Error(w, authErr.Code, authErr.StatusCode)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -369,13 +489,395 @@ func (server *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, response)
 }
 
-func (server *Server) handleAuditEvents(w http.ResponseWriter, _ *http.Request) {
+func (server *Server) handleAuditEvents(w http.ResponseWriter, r *http.Request) {
+	configPath := r.URL.Query().Get("config")
+	if configPath == "" {
+		configPath = server.defaultConfigPath
+	}
+	if configPath != "" {
+		cfg, err := config.LoadEffective(config.LoadOptions{ProjectPath: configPath})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if _, err := server.authenticateRequest(r.Context(), r, cfg.Config); err != nil {
+			if authErr, ok := err.(*runtimeAuthError); ok {
+				http.Error(w, authErr.Code, authErr.StatusCode)
+				return
+			}
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
 	events, err := server.auditStore.List()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	writeJSON(w, http.StatusOK, events)
+}
+
+func (server *Server) handleBrowserConfig(w http.ResponseWriter, r *http.Request) {
+	configPath := r.URL.Query().Get("config")
+	if configPath == "" {
+		configPath = server.defaultConfigPath
+	}
+	if configPath == "" {
+		http.Error(w, "config query parameter is required", http.StatusBadRequest)
+		return
+	}
+	cfg, err := config.LoadEffective(config.LoadOptions{ProjectPath: configPath})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	authCfg := runtimeServerAuthConfig(cfg.Config)
+	if authCfg == nil || authCfg.AuthorizationURL == "" || authCfg.TokenURL == "" || authCfg.BrowserClientID == "" {
+		http.Error(w, "browser login is not configured", http.StatusNotFound)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"authorizationURL": authCfg.AuthorizationURL,
+		"tokenURL":         authCfg.TokenURL,
+		"clientId":         authCfg.BrowserClientID,
+		"audience":         authCfg.Audience,
+	})
+}
+
+func (server *Server) handleRuntimeInfo(w http.ResponseWriter, r *http.Request) {
+	if ok := server.requireConfiguredAuth(w, r, false); !ok {
+		return
+	}
+	response := map[string]any{
+		"instanceId": server.instanceID,
+		"url":        server.runtimeURL,
+		"auditPath":  server.auditStorePath(),
+		"stateDir":   server.stateDir,
+		"cacheDir":   server.cacheDir,
+	}
+	if server.lifecycleEnabled() {
+		response["lifecycle"] = map[string]any{
+			"capabilities":         []string{"heartbeat", "session-close"},
+			"heartbeatSeconds":     server.heartbeatSeconds,
+			"missedHeartbeatLimit": server.missedHeartbeatLimit,
+			"shutdown":             server.shutdownMode,
+			"activeSessions":       server.activeLeaseCount(),
+		}
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
+func (server *Server) handleRuntimeHeartbeat(w http.ResponseWriter, r *http.Request) {
+	if ok := server.requireConfiguredAuth(w, r, false); !ok {
+		return
+	}
+	var request struct {
+		SessionID string `json:"sessionId"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if strings.TrimSpace(request.SessionID) == "" {
+		http.Error(w, "sessionId is required", http.StatusBadRequest)
+		return
+	}
+	server.renewLease(strings.TrimSpace(request.SessionID))
+	writeJSON(w, http.StatusOK, map[string]any{
+		"renewed":        true,
+		"sessionId":      strings.TrimSpace(request.SessionID),
+		"activeSessions": server.activeLeaseCount(),
+	})
+}
+
+func (server *Server) handleRuntimeStop(w http.ResponseWriter, r *http.Request) {
+	if ok := server.requireConfiguredAuth(w, r, false); !ok {
+		return
+	}
+	if server.shutdown == nil {
+		http.Error(w, "runtime stop is not configured", http.StatusNotImplemented)
+		return
+	}
+	if err := server.shutdown(); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"stopped": true})
+}
+
+func (server *Server) handleRuntimeSessionClose(w http.ResponseWriter, r *http.Request) {
+	if ok := server.requireConfiguredAuth(w, r, false); !ok {
+		return
+	}
+	var request struct {
+		SessionID string `json:"sessionId"`
+	}
+	if r.Body != nil {
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil && err != io.EOF {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+	if strings.TrimSpace(request.SessionID) != "" {
+		server.removeLease(strings.TrimSpace(request.SessionID))
+	}
+	if err := os.RemoveAll(filepath.Join(server.stateDir, "oauth")); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"closed":         true,
+		"activeSessions": server.activeLeaseCount(),
+	})
+}
+
+func (server *Server) authorizeRequest(ctx context.Context, request *http.Request, cfg config.Config, ntc *catalog.NormalizedCatalog) (*authResult, error) {
+	authz, err := server.authenticateRequest(ctx, request, cfg)
+	if err != nil {
+		return nil, err
+	}
+	if authz.Enabled {
+		authz.AllowedTools = authorizedTools(cfg, ntc, authz.Scopes)
+	}
+	return authz, nil
+}
+
+func (server *Server) authenticateRequest(ctx context.Context, request *http.Request, cfg config.Config) (*authResult, error) {
+	authCfg := runtimeServerAuthConfig(cfg)
+	if authCfg == nil || authCfg.Mode == "" {
+		return &authResult{}, nil
+	}
+	token, err := bearerToken(request.Header.Get("Authorization"))
+	if err != nil {
+		return nil, &runtimeAuthError{StatusCode: http.StatusUnauthorized, Code: "authn_failed", Message: err.Error()}
+	}
+	introspection, err := server.introspectToken(ctx, *authCfg, token)
+	if err != nil {
+		return nil, &runtimeAuthError{StatusCode: http.StatusUnauthorized, Code: "authn_failed", Message: err.Error()}
+	}
+	return &authResult{
+		Enabled:   true,
+		Principal: firstNonEmpty(introspection.Subject, introspection.ClientID),
+		Scopes:    strings.Fields(introspection.Scope),
+	}, nil
+}
+
+func runtimeServerAuthConfig(cfg config.Config) *config.RuntimeServerAuthConfig {
+	if cfg.Runtime == nil || cfg.Runtime.Server == nil {
+		return nil
+	}
+	return cfg.Runtime.Server.Auth
+}
+
+func bearerToken(header string) (string, error) {
+	if header == "" {
+		return "", fmt.Errorf("missing bearer token")
+	}
+	parts := strings.SplitN(header, " ", 2)
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") || strings.TrimSpace(parts[1]) == "" {
+		return "", fmt.Errorf("invalid bearer token")
+	}
+	return strings.TrimSpace(parts[1]), nil
+}
+
+func (server *Server) introspectToken(ctx context.Context, authCfg config.RuntimeServerAuthConfig, token string) (*introspectionResponse, error) {
+	form := strings.NewReader("token=" + urlEncode(token))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, authCfg.IntrospectionURL, form)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if authCfg.ClientID != nil {
+		clientID, err := resolveSecret(config.PolicyConfig{}, config.Secret{Type: authCfg.ClientID.Type, Value: authCfg.ClientID.Value, Command: authCfg.ClientID.Command}, server.keychainResolver)
+		if err != nil {
+			return nil, err
+		}
+		req.Form = map[string][]string{"token": {token}, "client_id": {clientID}}
+	}
+	if authCfg.ClientSecret != nil {
+		clientSecret, err := resolveSecret(config.PolicyConfig{}, config.Secret{Type: authCfg.ClientSecret.Type, Value: authCfg.ClientSecret.Value, Command: authCfg.ClientSecret.Command}, server.keychainResolver)
+		if err != nil {
+			return nil, err
+		}
+		req.Form.Set("client_secret", clientSecret)
+		req.Body = io.NopCloser(strings.NewReader(req.Form.Encode()))
+		req.ContentLength = int64(len(req.Form.Encode()))
+	}
+	resp, err := server.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("token introspection failed with status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	var introspection introspectionResponse
+	if err := json.NewDecoder(resp.Body).Decode(&introspection); err != nil {
+		return nil, err
+	}
+	if !introspection.Active {
+		return nil, fmt.Errorf("token is inactive")
+	}
+	if !audienceIncludes(introspection.Audience, authCfg.Audience) {
+		return nil, fmt.Errorf("token audience mismatch")
+	}
+	return &introspection, nil
+}
+
+func audienceIncludes(raw json.RawMessage, expected string) bool {
+	if expected == "" {
+		return true
+	}
+	var single string
+	if err := json.Unmarshal(raw, &single); err == nil {
+		return single == expected
+	}
+	var many []string
+	if err := json.Unmarshal(raw, &many); err == nil {
+		for _, item := range many {
+			if item == expected {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func authorizedTools(cfg config.Config, ntc *catalog.NormalizedCatalog, scopes []string) map[string]struct{} {
+	union := map[string]struct{}{}
+	explicit := map[string]struct{}{}
+	hasUnion := false
+	for _, scope := range scopes {
+		switch {
+		case strings.HasPrefix(scope, "bundle:"):
+			hasUnion = true
+			serviceID := strings.TrimPrefix(scope, "bundle:")
+			for _, tool := range ntc.Tools {
+				if tool.ServiceID == serviceID {
+					union[tool.ID] = struct{}{}
+				}
+			}
+		case strings.HasPrefix(scope, "profile:"):
+			hasUnion = true
+			profileName := strings.TrimPrefix(scope, "profile:")
+			for toolID := range authorizedProfileTools(cfg, ntc, profileName) {
+				union[toolID] = struct{}{}
+			}
+		case strings.HasPrefix(scope, "tool:"):
+			toolID := strings.TrimPrefix(scope, "tool:")
+			if ntc.FindTool(toolID) != nil {
+				explicit[toolID] = struct{}{}
+			}
+		}
+	}
+	final := map[string]struct{}{}
+	switch {
+	case len(explicit) > 0 && hasUnion:
+		for toolID := range explicit {
+			if _, ok := union[toolID]; ok {
+				final[toolID] = struct{}{}
+			}
+		}
+	case len(explicit) > 0:
+		for toolID := range explicit {
+			final[toolID] = struct{}{}
+		}
+	case hasUnion:
+		for toolID := range union {
+			final[toolID] = struct{}{}
+		}
+	default:
+		return final
+	}
+	for toolID := range final {
+		if policy.MatchesAny(cfg.Policy.ManagedDeny, toolID) || policy.MatchesAny(cfg.Policy.Deny, toolID) {
+			delete(final, toolID)
+		}
+	}
+	return final
+}
+
+func authorizedProfileTools(cfg config.Config, ntc *catalog.NormalizedCatalog, profileName string) map[string]struct{} {
+	allowed := map[string]struct{}{}
+	profile, ok := cfg.Agents.Profiles[profileName]
+	if !ok {
+		return allowed
+	}
+	mode := profile.Mode
+	if mode == "" {
+		mode = cfg.Mode.Default
+	}
+	if mode != "curated" {
+		for _, tool := range ntc.Tools {
+			allowed[tool.ID] = struct{}{}
+		}
+		return allowed
+	}
+	toolSet := cfg.Curation.ToolSets[profile.ToolSet]
+	for _, tool := range ntc.Tools {
+		if policy.ToolAllowed(tool.ID, toolSet) {
+			allowed[tool.ID] = struct{}{}
+		}
+	}
+	return allowed
+}
+
+func filterCatalog(ntc *catalog.NormalizedCatalog, allowed map[string]struct{}) *catalog.NormalizedCatalog {
+	filtered := *ntc
+	filtered.Tools = make([]catalog.Tool, 0, len(ntc.Tools))
+	services := map[string]struct{}{}
+	for _, tool := range ntc.Tools {
+		if _, ok := allowed[tool.ID]; ok {
+			filtered.Tools = append(filtered.Tools, tool)
+			services[tool.ServiceID] = struct{}{}
+		}
+	}
+	filtered.Services = make([]catalog.Service, 0, len(ntc.Services))
+	for _, service := range ntc.Services {
+		if _, ok := services[service.ID]; ok {
+			filtered.Services = append(filtered.Services, service)
+		}
+	}
+	filtered.Workflows = make([]catalog.Workflow, 0, len(ntc.Workflows))
+	for _, workflow := range ntc.Workflows {
+		allowedWorkflow := true
+		for _, step := range workflow.Steps {
+			if _, ok := allowed[step.ToolID]; !ok {
+				allowedWorkflow = false
+				break
+			}
+		}
+		if allowedWorkflow {
+			filtered.Workflows = append(filtered.Workflows, workflow)
+		}
+	}
+	filtered.EffectiveViews = make([]catalog.EffectiveView, 0, len(ntc.EffectiveViews))
+	for _, view := range ntc.EffectiveViews {
+		filteredView := catalog.EffectiveView{Name: view.Name, Mode: view.Mode}
+		for _, tool := range view.Tools {
+			if _, ok := allowed[tool.ID]; ok {
+				filteredView.Tools = append(filteredView.Tools, tool)
+			}
+		}
+		filtered.EffectiveViews = append(filtered.EffectiveViews, filteredView)
+	}
+	return &filtered
+}
+
+func (server *Server) recordCatalogEvent(agentProfile, reason string) {
+	_ = server.auditStore.Append(audit.Event{
+		Timestamp:    time.Now().UTC(),
+		AgentProfile: agentProfile,
+		ToolID:       "catalog.effective",
+		Decision:     "allowed",
+		ReasonCode:   reason,
+	})
+}
+
+func urlEncode(value string) string {
+	replacer := strings.NewReplacer("%", "%25", "&", "%26", "=", "%3D", "+", "%2B", " ", "%20")
+	return replacer.Replace(value)
 }
 
 func (server *Server) loadCatalog(ctx context.Context, configPath string, forceRefresh bool) (*config.EffectiveConfig, *catalog.NormalizedCatalog, error) {
@@ -518,8 +1020,106 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
+func (server *Server) auditStorePath() string {
+	if server.auditStore == nil {
+		return ""
+	}
+	return server.auditStore.Path()
+}
+
+func (server *Server) lifecycleEnabled() bool {
+	return server.heartbeatSeconds > 0 && server.missedHeartbeatLimit > 0
+}
+
+func (server *Server) leaseTTL() time.Duration {
+	return time.Duration(server.heartbeatSeconds*server.missedHeartbeatLimit) * time.Second
+}
+
+func (server *Server) activeLeaseCount() int {
+	server.leaseMu.Lock()
+	defer server.leaseMu.Unlock()
+	return len(server.leases)
+}
+
+func (server *Server) renewLease(sessionID string) {
+	if !server.lifecycleEnabled() {
+		return
+	}
+	expiresAt := time.Now().Add(server.leaseTTL())
+	server.leaseMu.Lock()
+	existing, ok := server.leases[sessionID]
+	if ok && existing.Timer != nil {
+		existing.Timer.Stop()
+	}
+	lease := sessionLease{ExpiresAt: expiresAt}
+	lease.Timer = time.AfterFunc(server.leaseTTL(), func() {
+		server.expireLease(sessionID, expiresAt)
+	})
+	server.leases[sessionID] = lease
+	server.leaseMu.Unlock()
+}
+
+func (server *Server) expireLease(sessionID string, expiresAt time.Time) {
+	server.leaseMu.Lock()
+	lease, ok := server.leases[sessionID]
+	if !ok || !lease.ExpiresAt.Equal(expiresAt) {
+		server.leaseMu.Unlock()
+		return
+	}
+	delete(server.leases, sessionID)
+	remaining := len(server.leases)
+	server.leaseMu.Unlock()
+	if remaining == 0 && server.shutdownMode == "when-owner-exits" && server.shutdown != nil {
+		_ = server.shutdown()
+	}
+}
+
+func (server *Server) removeLease(sessionID string) {
+	server.leaseMu.Lock()
+	lease, ok := server.leases[sessionID]
+	if ok && lease.Timer != nil {
+		lease.Timer.Stop()
+		delete(server.leases, sessionID)
+	}
+	remaining := len(server.leases)
+	server.leaseMu.Unlock()
+	if ok && remaining == 0 && server.shutdownMode == "when-owner-exits" && server.shutdown != nil {
+		_ = server.shutdown()
+	}
+}
+
+func (server *Server) requireConfiguredAuth(w http.ResponseWriter, r *http.Request, requireDefaultConfig bool) bool {
+	configPath := r.URL.Query().Get("config")
+	if configPath == "" {
+		configPath = server.defaultConfigPath
+	}
+	if configPath == "" {
+		if requireDefaultConfig {
+			http.Error(w, "config query parameter is required", http.StatusBadRequest)
+			return false
+		}
+		return true
+	}
+	cfg, err := config.LoadEffective(config.LoadOptions{ProjectPath: configPath})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return false
+	}
+	if _, err := server.authenticateRequest(r.Context(), r, cfg.Config); err != nil {
+		if authErr, ok := err.(*runtimeAuthError); ok {
+			http.Error(w, authErr.Code, authErr.StatusCode)
+			return false
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return false
+	}
+	return true
+}
+
 func resolveSecret(policyConfig config.PolicyConfig, secret config.Secret, keychainResolver func(string) (string, error)) (string, error) {
 	switch secret.Type {
+	case "literal":
+		return secret.Value, nil
 	case "env":
 		return os.Getenv(secret.Value), nil
 	case "file":
