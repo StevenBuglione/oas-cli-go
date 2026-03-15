@@ -447,7 +447,10 @@
           "then": {
             "required": [
               "transport"
-            ]
+            ],
+            "properties": {
+              "uri": false
+            }
           }
         },
         {
@@ -468,7 +471,12 @@
           "then": {
             "required": [
               "uri"
-            ]
+            ],
+            "properties": {
+              "transport": false,
+              "disabledTools": false,
+              "oauth": false
+            }
           }
         }
       ],

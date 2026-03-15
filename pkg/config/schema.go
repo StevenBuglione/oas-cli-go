@@ -45,13 +45,31 @@ func validateDocument(data []byte, partial bool) error {
 		}
 		diagnostics = append(diagnostics, Diagnostic{
 			Path:    path,
-			Message: item.Description(),
+			Message: normalizeSchemaMessage(path, item.Description()),
 		})
 	}
 	if len(diagnostics) == 0 {
 		return nil
 	}
 	return &ValidationError{Diagnostics: diagnostics}
+}
+
+func normalizeSchemaMessage(path, message string) string {
+	if message != "False always fails validation" {
+		return message
+	}
+	switch {
+	case strings.HasSuffix(path, ".transport"):
+		return "is only allowed for mcp sources"
+	case strings.HasSuffix(path, ".disabledTools"):
+		return "is only allowed for mcp sources"
+	case strings.HasSuffix(path, ".oauth"):
+		return "is only allowed for mcp sources"
+	case strings.HasSuffix(path, ".uri"):
+		return "is not allowed for mcp sources"
+	default:
+		return message
+	}
 }
 
 func shouldSkipSchemaDiagnostic(path, message string) bool {
@@ -283,16 +301,22 @@ func mustBuildScopeSchema() string {
 }
 
 func relaxSchema(value any) {
+	relaxSchemaWithContext(value, "")
+}
+
+func relaxSchemaWithContext(value any, parentKey string) {
 	switch typed := value.(type) {
 	case map[string]any:
-		delete(typed, "required")
+		if parentKey != "if" {
+			delete(typed, "required")
+		}
 		delete(typed, "minProperties")
-		for _, nested := range typed {
-			relaxSchema(nested)
+		for key, nested := range typed {
+			relaxSchemaWithContext(nested, key)
 		}
 	case []any:
 		for _, nested := range typed {
-			relaxSchema(nested)
+			relaxSchemaWithContext(nested, parentKey)
 		}
 	}
 }

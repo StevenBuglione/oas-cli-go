@@ -38,6 +38,8 @@ This implementation also carries a local copy at `pkg/config/cli.schema.json`, a
 | `disabledTools` | string[] | no | MCP tools removed before normalization |
 | `oauth` | object | streamable-http only | Source-local MCP transport OAuth (`clientCredentials` only) |
 
+For `openapi`, `serviceRoot`, and `apiCatalog` sources, `uri` is the only discovery endpoint field. MCP-only fields (`transport`, `disabledTools`, and source-local `oauth`) are rejected by the schema.
+
 ## `runtime`
 
 | Field | Type | Meaning |
