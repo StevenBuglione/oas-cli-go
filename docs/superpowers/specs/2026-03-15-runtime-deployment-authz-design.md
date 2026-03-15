@@ -102,9 +102,15 @@ Default local ownership model:
 Runtime identity and fingerprinting:
 
 - local runtime identity is derived from the effective runtime-relevant config fingerprint plus session identity, and plus `shareKey` when group sharing is enabled
-- the config fingerprint is computed from a canonical serialization of only the fields that affect attach compatibility: the effective runtime block, effective local MCP source definitions, service-to-source mappings used by those local MCP sources, and policy fields that affect local launch or attach authorization
+- the config fingerprint is computed from canonical JSON with sorted object keys and stable array ordering
+- fingerprint inputs are limited to fields that affect attach compatibility: `runtime.mode`, the effective `runtime.local` block, local MCP source definitions including transport type and launch metadata, service-to-source mappings that expose those local MCP sources, and policy fields that affect local launch, attach, or execution gating
 - secret values are excluded from the fingerprint; secret references are included by stable reference name
 - attach succeeds only when the daemon reports the same fingerprint the client computed
+
+Concrete fingerprint example:
+
+- included: MCP stdio command, args, working directory, env secret-ref names, Docker image/compose target names, service bindings, `share`, `shareKey`, heartbeat policy
+- excluded: resolved secret values, cached tokens, audit file locations, transient PID/port data
 
 Heartbeat and lease behavior:
 
@@ -197,8 +203,10 @@ Acquisition and lifecycle rules:
 
 - the client presents a pre-issued ephemeral bearer token for the agent/session, or obtains one from a configured OAuth2 or token-exchange source before first remote use
 - the token must carry the audience and scopes required for the target remote runtime
+- refresh credentials, when supported, are stored only in the same ephemeral session scope as the access token and are never promoted to longer-lived workspace or machine storage
 - refresh is allowed only for the lifetime of the owning session
 - on `authn_failed` caused by expiry, the client may attempt one refresh when refresh configuration exists
+- if expiry is detected during preflight, the client refreshes before sending the command; if expiry is discovered mid-command, the in-flight command fails with `authn_failed` and the next command may attempt the single refresh path
 - if refresh is unavailable, revoked, or fails, the command fails closed and requires a new session token
 - revocation or expiry invalidates any cached remote authorization envelope for that session
 - remote daemons do not mint broader replacement tokens on behalf of the client
@@ -214,6 +222,8 @@ Requirements:
 - per-session auth caches are not shared across agents
 - cached remote auth state is wiped when the session/VM ends
 - authorization failures should be surfaced as precise authz/authn errors
+- an empty authorized tool set returns an empty catalog successfully rather than an internal error
+- remote session records are keyed by remote session ID and destroyed on explicit session close, lease expiry, or token revocation
 
 Where practical, tools outside the authorized envelope should be absent from catalog responses rather than merely failing later at execution time.
 
@@ -298,6 +308,7 @@ Audit destinations:
 - embedded and local-daemon modes continue to emit per-instance local audit records
 - remote mode emits server-side audit records keyed by remote session principal and instance identity
 - client-side connection failures should still produce local diagnostic events even when execution never reaches the remote daemon
+- audit events must distinguish start, attach, attach-conflict, crash, lease-expiry shutdown, token refresh, authn failure, and authz denial
 
 ### 8. Client and daemon contract
 
@@ -327,7 +338,8 @@ Local runtime failures:
 
 - if `local` mode or `auto` promotion requires a daemon and startup fails, the command fails with a runtime-start error
 - if attach metadata does not match the expected config fingerprint or share rules, the client must fail closed rather than attach to the wrong daemon
-- if a managed daemon crashes mid-session, the next client command may attempt a single clean restart for the same owner session before surfacing an error
+- if a second client attempts to attach to an `exclusive` runtime, return `runtime_attach_conflict`
+- if a managed daemon crashes mid-session, the next client command may perform one restart attempt for the same owner session: clear stale runtime registration, terminate any stale child-process tree it owns if still present, start a fresh daemon, re-run handshake once, then surface the error if any step fails
 
 Remote runtime failures:
 
