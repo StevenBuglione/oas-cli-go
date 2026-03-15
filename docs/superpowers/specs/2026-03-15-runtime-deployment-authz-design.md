@@ -72,6 +72,12 @@ Runtime selection must follow a deterministic precedence order:
 
 Flags remain explicit escape hatches for debugging and emergency override, but normal operation should flow from `.cli.json`. Environment variables remain a compatibility layer rather than the preferred control plane.
 
+Operational definitions:
+
+- a "local MCP server" means an MCP source whose transport is executed or hosted from the local machine, including `stdio`-launched servers and locally managed Docker-backed MCP endpoints
+- `auto` promotion is triggered when the effective merged configuration includes at least one such local MCP source
+- "session identity" means a generated client session ID bound to the current terminal, agent process, or explicitly declared shared-runtime key
+
 ### 2. Local managed runtime behavior
 
 When the effective runtime mode is local, `oascli` must ensure a compatible `oasclird` instance is running and attach to it automatically.
@@ -100,6 +106,13 @@ Attach and sharing rules:
 - a second terminal with the same config gets a distinct managed runtime rather than silently attaching
 - `share=group` allows attach only when an explicit share key matches
 - attach must fail closed when runtime metadata does not match the caller's expected config fingerprint, share mode, or owner rules
+
+Sharing interface:
+
+- `runtime.local.share` is an enum with values `exclusive` or `group`
+- when `share=group`, `runtime.local.shareKey` is required
+- the share key participates in runtime identity derivation and attach eligibility
+- clients may attach only when config fingerprint, share mode, and share key all match
 
 This makes cleanup deterministic and prevents a second terminal from accidentally keeping a stale daemon alive.
 
@@ -174,7 +187,8 @@ The exact schema can evolve during implementation, but the interface should be s
       "heartbeatSeconds": 15,
       "missedHeartbeatLimit": 3,
       "shutdown": "when-owner-exits",
-      "share": "exclusive"
+      "share": "exclusive",
+      "shareKey": "team-a"
     },
     "remote": {
       "url": "https://runtime.example.com",
@@ -205,6 +219,7 @@ Planning-level field expectations:
 - `runtime.remote.url` is required when `mode=remote`
 - `runtime.remote.oauth.scopes` is optional but strongly expected for least-privilege remote deployments
 - `runtime.local.share` must validate against a closed enum such as `exclusive` or `group`
+- `runtime.local.shareKey` is forbidden unless `share=group`
 - `runtime.local.shutdown` must validate against a closed enum such as `when-owner-exits` or `manual`
 
 ### 6. Catalog and execution semantics
@@ -241,7 +256,20 @@ Audit destinations:
 - remote mode emits server-side audit records keyed by remote session principal and instance identity
 - client-side connection failures should still produce local diagnostic events even when execution never reaches the remote daemon
 
-### 8. Failure and recovery behavior
+### 8. Client and daemon contract
+
+The `oascli` and `oasclird` boundary needs a minimal, explicit contract so runtime resolution, attach rules, and authorization are plannable as independent units.
+
+The contract must include:
+
+- a runtime-info handshake that exposes contract version, instance identity, runtime mode, config fingerprint, share mode, share key presence, and owner/session metadata
+- catalog responses that carry the effective authorization envelope version used to filter results
+- execute responses and failures that use structured error categories such as `runtime_start_failed`, `runtime_attach_mismatch`, `runtime_unreachable`, `authn_failed`, `authz_denied`, and `contract_mismatch`
+- version negotiation rules where unsupported required capabilities fail closed instead of silently degrading behavior
+
+The client must validate handshake metadata before attaching to a local managed runtime or trusting a remote daemon for catalog and execution.
+
+### 9. Failure and recovery behavior
 
 Failure behavior must be explicit because agents need deterministic outcomes.
 
@@ -286,12 +314,14 @@ Implementation should be considered complete only when product tests cover:
 - owner-session teardown and cleanup of managed local daemons
 - explicit shared-vs-exclusive local runtime behavior
 - attach rejection on config fingerprint or share-rule mismatch
+- attach rejection on share-key mismatch
 - single-restart behavior after managed-daemon crash
 - remote catalog filtering by bundle, tool, and profile scopes
 - remote execution denial outside granted scopes
 - ephemeral remote auth cache wipe on session end
 - remote token expiry and revocation handling
 - version-skew and contract-mismatch behavior
+- handshake validation for local attach and remote connect paths
 - audit output reflecting runtime mode and principal context
 
 ## Open implementation notes
