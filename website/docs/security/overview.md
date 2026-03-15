@@ -13,9 +13,14 @@ The current implementation focuses heavily on the second layer and leaves the fi
 
 ## Runtime trust boundary
 
-`oasclird` does **not** authenticate its own HTTP callers. By default it binds to localhost, which is the main built-in safety mechanism.
+`oasclird` can run either:
 
-If you expose the runtime on a broader network, add your own controls such as:
+- unauthenticated on loopback-only local deployments
+- with runtime auth enabled through `runtime.server.auth`
+
+The current server-side auth mode is `oauth2Introspection`. When enabled, the daemon validates bearer tokens, derives runtime scopes from the introspection response, filters catalogs by those scopes, and rejects out-of-scope execution requests.
+
+If you expose the runtime on a broader network, do not rely on bind address alone. Use runtime auth and deployment controls such as:
 
 - firewall rules
 - reverse proxy auth
@@ -30,10 +35,12 @@ Upstream auth comes from three pieces working together:
 - `secrets` entries in config keyed by security scheme name
 - runtime secret and OAuth resolution at execution time
 
-For MCP `streamable-http` sources there is a second auth layer:
+For MCP `streamable-http` and legacy `sse` sources there is a second auth layer:
 
 - source-local `oauth` authenticates the MCP transport itself with `clientCredentials`
 - `transport.headerSecrets` inject static header values resolved through top-level `secrets`
+
+Transport OAuth tokens are cached per runtime instance. If the provider returns a refresh token, later MCP requests refresh the transport token before expiry, reuse the refreshed token across concurrent clients that share the same instance state, and fail closed with a reauthorization-required error after the single refresh budget is exhausted or refresh fails.
 
 See [Auth resolution](./auth-resolution) and [Secret sources](./secret-sources).
 

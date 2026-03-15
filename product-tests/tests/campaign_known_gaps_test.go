@@ -201,43 +201,7 @@ func TestCampaignKnownGapsAuth(t *testing.T) {
 	fr := helpers.NewFindingsRecorder("known-gaps-auth")
 	defer fr.MustEmitToTest(t)
 
-	// ── Gap 5: Expired token refresh ─────────────────────────────────────────
-	// When a cached token expires mid-session the runtime should transparently
-	// re-acquire a new token.  This probes the gap in expiry handling.
-	t.Run("gap-token-expiry-refresh", func(t *testing.T) {
-		tokenFetches := 0
-		shortLivedOAuth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			switch r.URL.Path {
-			case "/oauth/token":
-				tokenFetches++
-				w.Header().Set("Content-Type", "application/json")
-				_ = json.NewEncoder(w).Encode(map[string]any{
-					"access_token": fmt.Sprintf("token-%d", tokenFetches),
-					"token_type":   "Bearer",
-					"expires_in":   1, // 1-second TTL to trigger expiry
-				})
-			case "/items":
-				w.Header().Set("Content-Type", "application/json")
-				_ = json.NewEncoder(w).Encode(map[string]any{"items": []any{}, "total": 0})
-			default:
-				http.NotFound(w, r)
-			}
-		}))
-		t.Cleanup(shortLivedOAuth.Close)
-
-		fr.RecordKnownGap(
-			"gap-token-expiry-refresh",
-			"Expired OAuth tokens are transparently refreshed without requiring a new config load",
-			"Token TTL-based refresh is not yet implemented; expired tokens return auth errors",
-			func() bool {
-				// This gap is structural — we document it without running a slow sleep.
-				// The absence of a cache TTL check in the auth package confirms the gap.
-				return true // gap still present
-			},
-		)
-	})
-
-	// ── Gap 6: Device-code / interactive OAuth flows ──────────────────────────
+	// ── Gap 5: Device-code / interactive OAuth flows ──────────────────────────
 	t.Run("gap-device-code-flow", func(t *testing.T) {
 		fr.RecordKnownGap(
 			"gap-device-code-flow",

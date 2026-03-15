@@ -12,13 +12,17 @@ import (
 )
 
 type MCPRequest struct {
-	Tool       catalog.Tool
-	Source     config.Source
-	Secrets    map[string]config.Secret
-	Policy     config.PolicyConfig
-	StateDir   string
-	HTTPClient *http.Client
-	Body       []byte
+	Tool              catalog.Tool
+	Source            config.Source
+	Secrets           map[string]config.Secret
+	Policy            config.PolicyConfig
+	StateDir          string
+	HTTPClient        *http.Client
+	Body              []byte
+	ProcessSupervisor interface {
+		Track(pid int) error
+		Release(pid int) error
+	}
 }
 
 func ExecuteMCP(ctx context.Context, request MCPRequest) (*Result, error) {
@@ -30,7 +34,22 @@ func ExecuteMCP(ctx context.Context, request MCPRequest) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer client.Close()
+	if reporter, ok := client.(mcpclient.ProcessReporter); ok && request.ProcessSupervisor != nil {
+		if pid := reporter.ProcessID(); pid > 0 {
+			if err := request.ProcessSupervisor.Track(pid); err != nil {
+				_ = client.Close()
+				return nil, err
+			}
+			defer func() {
+				_ = client.Close()
+				_ = request.ProcessSupervisor.Release(pid)
+			}()
+		} else {
+			defer client.Close()
+		}
+	} else {
+		defer client.Close()
+	}
 
 	toolName := request.Tool.OperationID
 	if request.Tool.Backend != nil && request.Tool.Backend.ToolName != "" {

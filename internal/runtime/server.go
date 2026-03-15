@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -32,34 +33,39 @@ type Options struct {
 	DefaultConfigPath    string
 	InstanceID           string
 	RuntimeURL           string
+	RuntimeMode          string
 	HeartbeatSeconds     int
 	MissedHeartbeatLimit int
 	ShutdownMode         string
 	SessionScope         string
 	ShareMode            string
+	ShareKeyPresent      bool
 	ConfigFingerprint    string
 	// GracePeriod is the maximum time to wait for in-flight requests to drain
 	// before triggering shutdown when a session lease expires.  Defaults to 5s.
-	GracePeriod          time.Duration
-	HTTPClient           *http.Client
-	Observer             obs.Observer
-	KeychainResolver     func(string) (string, error)
-	Shutdown             func() error
+	GracePeriod      time.Duration
+	HTTPClient       *http.Client
+	Observer         obs.Observer
+	KeychainResolver func(string) (string, error)
+	Shutdown         func() error
 }
 
 type Server struct {
 	auditStore           *audit.FileStore
 	client               *http.Client
+	processSupervisor    *httpexec.ProcessSupervisor
 	cacheDir             string
 	stateDir             string
 	defaultConfigPath    string
 	instanceID           string
 	runtimeURL           string
+	runtimeMode          string
 	heartbeatSeconds     int
 	missedHeartbeatLimit int
 	shutdownMode         string
 	sessionScope         string
 	shareMode            string
+	shareKeyPresent      bool
 	configFingerprint    string
 	gracePeriod          time.Duration
 	observer             obs.Observer
@@ -169,16 +175,19 @@ func NewServer(options Options) *Server {
 	return &Server{
 		auditStore:           audit.NewFileStore(options.AuditPath),
 		client:               options.HTTPClient,
+		processSupervisor:    httpexec.NewProcessSupervisor(firstNonEmpty(options.StateDir, filepath.Dir(options.AuditPath))),
 		cacheDir:             options.CacheDir,
 		stateDir:             firstNonEmpty(options.StateDir, filepath.Dir(options.AuditPath)),
 		defaultConfigPath:    options.DefaultConfigPath,
 		instanceID:           options.InstanceID,
 		runtimeURL:           options.RuntimeURL,
+		runtimeMode:          options.RuntimeMode,
 		heartbeatSeconds:     options.HeartbeatSeconds,
 		missedHeartbeatLimit: options.MissedHeartbeatLimit,
 		shutdownMode:         options.ShutdownMode,
 		sessionScope:         options.SessionScope,
 		shareMode:            options.ShareMode,
+		shareKeyPresent:      options.ShareKeyPresent,
 		configFingerprint:    options.ConfigFingerprint,
 		gracePeriod:          options.GracePeriod,
 		observer:             options.Observer,
@@ -355,13 +364,14 @@ func (server *Server) executeTool(ctx context.Context, cfg config.Config, tool c
 	if tool.Backend != nil && tool.Backend.Kind == "mcp" {
 		if sourceConfig, exists := cfg.Sources[tool.Backend.SourceID]; exists && sourceConfig.Type == "mcp" {
 			return httpexec.ExecuteMCP(ctx, httpexec.MCPRequest{
-				Tool:       tool,
-				Source:     sourceConfig,
-				Secrets:    cfg.Secrets,
-				Policy:     cfg.Policy,
-				StateDir:   server.stateDir,
-				HTTPClient: server.client,
-				Body:       request.Body,
+				Tool:              tool,
+				Source:            sourceConfig,
+				Secrets:           cfg.Secrets,
+				Policy:            cfg.Policy,
+				StateDir:          server.stateDir,
+				HTTPClient:        server.client,
+				Body:              request.Body,
+				ProcessSupervisor: server.processSupervisor,
 			})
 		}
 	}
@@ -369,18 +379,19 @@ func (server *Server) executeTool(ctx context.Context, cfg config.Config, tool c
 	if ok {
 		if sourceConfig, exists := cfg.Sources[serviceConfig.Source]; exists && sourceConfig.Type == "mcp" {
 			return httpexec.ExecuteMCP(ctx, httpexec.MCPRequest{
-				Tool:       tool,
-				Source:     sourceConfig,
-				Secrets:    cfg.Secrets,
-				Policy:     cfg.Policy,
-				StateDir:   server.stateDir,
-				HTTPClient: server.client,
-				Body:       request.Body,
+				Tool:              tool,
+				Source:            sourceConfig,
+				Secrets:           cfg.Secrets,
+				Policy:            cfg.Policy,
+				StateDir:          server.stateDir,
+				HTTPClient:        server.client,
+				Body:              request.Body,
+				ProcessSupervisor: server.processSupervisor,
 			})
 		}
 	}
 
-	authSchemes, err := server.resolveAuth(ctx, cfg, tool)
+	authPlan, err := server.resolveAuthPlan(ctx, cfg, tool)
 	if err != nil {
 		return nil, err
 	}
@@ -389,7 +400,7 @@ func (server *Server) executeTool(ctx context.Context, cfg config.Config, tool c
 		PathArgs: request.PathArgs,
 		Flags:    request.Flags,
 		Body:     request.Body,
-		Auth:     authSchemes,
+		AuthPlan: authPlan,
 	})
 }
 
@@ -603,6 +614,7 @@ func (server *Server) handleRuntimeInfo(w http.ResponseWriter, r *http.Request) 
 		"capabilities":    ServerCapabilities,
 		"instanceId":      server.instanceID,
 		"url":             server.runtimeURL,
+		"runtimeMode":     server.effectiveRuntimeMode(),
 		"auditPath":       server.auditStorePath(),
 		"stateDir":        server.stateDir,
 		"cacheDir":        server.cacheDir,
@@ -615,11 +627,22 @@ func (server *Server) handleRuntimeInfo(w http.ResponseWriter, r *http.Request) 
 			"shutdown":             server.shutdownMode,
 			"sessionScope":         server.sessionScope,
 			"shareMode":            server.shareMode,
+			"shareKeyPresent":      server.shareKeyPresent,
 			"configFingerprint":    server.configFingerprint,
 			"activeSessions":       server.activeLeaseCount(),
 		}
 	}
 	writeJSON(w, http.StatusOK, response)
+}
+
+func (server *Server) effectiveRuntimeMode() string {
+	if strings.TrimSpace(server.runtimeMode) != "" {
+		return server.runtimeMode
+	}
+	if server.lifecycleEnabled() {
+		return "local"
+	}
+	return "embedded"
 }
 
 func (server *Server) handleRuntimeHeartbeat(w http.ResponseWriter, r *http.Request) {
@@ -1038,6 +1061,21 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(value)
+}
+
+func (server *Server) CloseWithContext(ctx context.Context) error {
+	server.leaseMu.Lock()
+	for sessionID, lease := range server.leases {
+		if lease.Timer != nil {
+			lease.Timer.Stop()
+		}
+		delete(server.leases, sessionID)
+	}
+	server.leaseMu.Unlock()
+	if server.processSupervisor == nil {
+		return nil
+	}
+	return errors.Join(server.processSupervisor.Shutdown(ctx))
 }
 
 func first(values []string) string {

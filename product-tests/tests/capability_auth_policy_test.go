@@ -195,6 +195,114 @@ func TestCapabilityAuthAndPolicy(t *testing.T) {
 		}
 	})
 
+	t.Run("AuthAlternativesPreferNonInteractiveAPIKeyExecution", func(t *testing.T) {
+		if err := os.Setenv("AUTH_ALT_API_KEY", "static-secret"); err != nil {
+			t.Fatalf("setenv: %v", err)
+		}
+		if err := os.Setenv("PATH", ""); err != nil {
+			t.Fatalf("setenv PATH: %v", err)
+		}
+		t.Cleanup(func() {
+			_ = os.Unsetenv("AUTH_ALT_API_KEY")
+		})
+
+		var tokenCalls int32
+		api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/items":
+				if got := r.URL.Query().Get("api_key"); got != "static-secret" {
+					t.Fatalf("expected api_key query auth, got %q", got)
+				}
+				if got := r.Header.Get("Authorization"); got != "" {
+					t.Fatalf("did not expect Authorization header, got %q", got)
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(map[string]any{"items": []any{}, "total": 0})
+			case "/oauth/token":
+				atomic.AddInt32(&tokenCalls, 1)
+				http.NotFound(w, r)
+			default:
+				http.NotFound(w, r)
+			}
+		}))
+		t.Cleanup(api.Close)
+
+		dir := t.TempDir()
+		openapiPath := writeFile(t, dir, "auth-alternatives.openapi.yaml", `openapi: 3.1.0
+info:
+  title: Auth Alternatives API
+  version: "1.0.0"
+servers:
+  - url: `+api.URL+`
+components:
+  securitySchemes:
+    petstore_oauth:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: https://auth.example.com/authorize
+          tokenUrl: https://auth.example.com/token
+          scopes:
+            pets.read: Read pets
+    api_key:
+      type: apiKey
+      in: query
+      name: api_key
+paths:
+  /items:
+    get:
+      operationId: listItems
+      security:
+        - petstore_oauth: [pets.read]
+        - api_key: []
+      responses:
+        "200":
+          description: OK
+`)
+		configPath := writeFile(t, dir, ".cli.json", `{
+  "cli": "1.0.0",
+  "mode": { "default": "discover" },
+  "sources": {
+    "protectedSource": {
+      "type": "openapi",
+      "uri": "`+openapiPath+`",
+      "enabled": true
+    }
+  },
+  "services": {
+    "protected": {
+      "source": "protectedSource",
+      "alias": "protected"
+    }
+  },
+  "secrets": {
+    "protected.petstore_oauth": {
+      "type": "oauth2",
+      "mode": "authorizationCode",
+      "authorizationURL": "https://auth.example.com/authorize",
+      "tokenURL": "https://auth.example.com/token",
+      "clientId": { "type": "literal", "value": "browser-client" }
+    },
+    "protected.api_key": {
+      "type": "env",
+      "value": "AUTH_ALT_API_KEY"
+    }
+  }
+}`)
+
+		srv := runtime.NewServer(runtime.Options{AuditPath: filepath.Join(dir, "audit.log"), StateDir: filepath.Join(dir, "state")})
+		runtimeSrv := httptest.NewServer(srv.Handler())
+		t.Cleanup(runtimeSrv.Close)
+
+		result := executeTool(t, runtimeSrv.URL, configPath, "protected:listItems", nil)
+		if got, ok := result["statusCode"].(float64); !ok || got != 200 {
+			t.Fatalf("expected statusCode 200, got %v", result)
+		}
+		if tokenCalls != 0 {
+			t.Fatalf("expected no oauth token requests when api key alternative is available, got %d", tokenCalls)
+		}
+	})
+
 	t.Run("InvalidClientReturnsError", func(t *testing.T) {
 		if err := os.Setenv("TEST_CLIENT_ID", "wrong-client"); err != nil {
 			t.Fatalf("setenv: %v", err)

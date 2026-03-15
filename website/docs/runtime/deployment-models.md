@@ -136,15 +136,17 @@ If you pass `--state-dir` (or `OASCLI_STATE_DIR`), `oascli` also derives the cac
 
 ## Stale runtime registry fallback
 
-If `runtime.json` points at a runtime URL that no longer answers TCP connections, `oascli`:
+If `runtime.json` points at a daemon whose recorded PID is no longer alive, or at a runtime URL that no longer answers TCP connections, `oascli`:
 
-1. removes the stale registry file
-2. ignores that URL
-3. falls back to the default runtime URL
+1. terminates any recorded managed MCP child processes for that dead daemon
+2. removes the stale registry file
+3. ignores that URL
+4. either restarts the managed local runtime or falls back to the default runtime URL, depending on deployment mode
+
+Managed `oasclird` also removes its own `runtime.json` on shutdown so normal stop/close flows do not leave behind stale registry entries.
 
 What it does **not** do:
 
-- it does not restart `oasclird`
 - it does not search for another daemon automatically
 - it does not persist a new URL unless a daemon writes a fresh `runtime.json`
 

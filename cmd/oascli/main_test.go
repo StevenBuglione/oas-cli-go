@@ -2,10 +2,15 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,6 +18,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/StevenBuglione/oas-cli-go/pkg/catalog"
 	configpkg "github.com/StevenBuglione/oas-cli-go/pkg/config"
@@ -411,6 +417,297 @@ func TestResolveCommandOptionsFallsBackWhenRuntimeRegistryIsStale(t *testing.T) 
 	}
 	if resolved.RuntimeURL != "http://127.0.0.1:8765" {
 		t.Fatalf("expected stale runtime registry to fall back to default runtime, got %q", resolved.RuntimeURL)
+	}
+	if _, err := os.Stat(paths.RuntimePath); !os.IsNotExist(err) {
+		t.Fatalf("expected stale runtime registry to be removed, stat err=%v", err)
+	}
+}
+
+func TestResolveCommandOptionsCleansManagedMCPProcessesWhenLocalRuntimeRegistryIsStale(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("managed process cleanup test uses POSIX sleep")
+	}
+
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, ".cli.json")
+	if err := os.WriteFile(configPath, []byte(`{
+	  "cli": "1.0.0",
+	  "mode": { "default": "discover" },
+	  "runtime": {
+	    "mode": "local",
+	    "local": {
+	      "sessionScope": "terminal",
+	      "heartbeatSeconds": 15,
+	      "missedHeartbeatLimit": 3,
+	      "shutdown": "when-owner-exits",
+	      "share": "exclusive"
+	    }
+	  },
+	  "mcpServers": {
+	    "filesystem": {
+	      "type": "stdio",
+	      "command": "npx"
+	    }
+	  }
+	}`), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	deadServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	deadURL := deadServer.URL
+	deadServer.Close()
+
+	stateDir := filepath.Join(dir, "state")
+	paths, err := instance.Resolve(instance.Options{
+		InstanceID: "stale",
+		StateRoot:  stateDir,
+		CacheRoot:  filepath.Join(stateDir, "cache"),
+	})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if err := instance.WriteRuntimeInfo(paths.RuntimePath, instance.RuntimeInfo{
+		InstanceID: "stale",
+		URL:        deadURL,
+		AuditPath:  paths.AuditPath,
+		CacheDir:   paths.CacheDir,
+	}); err != nil {
+		t.Fatalf("WriteRuntimeInfo: %v", err)
+	}
+
+	sleep := exec.Command("sleep", "30")
+	if err := sleep.Start(); err != nil {
+		t.Fatalf("start sleep: %v", err)
+	}
+	waitDone := make(chan error, 1)
+	go func() {
+		waitDone <- sleep.Wait()
+	}()
+	t.Cleanup(func() {
+		select {
+		case <-waitDone:
+			return
+		default:
+		}
+		if sleep.Process != nil {
+			_ = sleep.Process.Signal(syscall.SIGKILL)
+		}
+		select {
+		case <-waitDone:
+		case <-time.After(2 * time.Second):
+		}
+	})
+
+	registryPath := filepath.Join(paths.StateDir, "managed-mcp-pids.json")
+	if err := os.MkdirAll(filepath.Dir(registryPath), 0o755); err != nil {
+		t.Fatalf("mkdir managed registry dir: %v", err)
+	}
+	if err := os.WriteFile(registryPath, []byte(fmt.Sprintf(`{"pids":[%d]}`, sleep.Process.Pid)), 0o644); err != nil {
+		t.Fatalf("write managed registry: %v", err)
+	}
+
+	previousStarter := managedRuntimeStarter
+	previousHandshake := localSessionHandshake
+	t.Cleanup(func() {
+		managedRuntimeStarter = previousStarter
+		localSessionHandshake = previousHandshake
+	})
+	managedRuntimeStarter = func(options CommandOptions) (string, error) {
+		return "http://127.0.0.1:18888", nil
+	}
+	localSessionHandshake = func(options CommandOptions) (CommandOptions, error) { return options, nil }
+
+	resolved, err := resolveCommandOptions(CommandOptions{
+		ConfigPath:        configPath,
+		RuntimeDeployment: "local",
+		InstanceID:        "stale",
+		StateDir:          stateDir,
+	})
+	if err != nil {
+		t.Fatalf("resolveCommandOptions: %v", err)
+	}
+	if resolved.RuntimeURL != "http://127.0.0.1:18888" {
+		t.Fatalf("expected managed local runtime url after stale cleanup, got %q", resolved.RuntimeURL)
+	}
+
+	select {
+	case err := <-waitDone:
+		if err != nil && !strings.Contains(err.Error(), "signal: terminated") && !strings.Contains(err.Error(), "signal: killed") {
+			t.Fatalf("expected stale managed process to be terminated, got wait err %v", err)
+		}
+	case <-time.After(1500 * time.Millisecond):
+		t.Fatal("expected stale managed process to be terminated before local runtime restart")
+	}
+}
+
+func TestResolveCommandOptionsFailsWhenManagedCleanupFailsForStaleLocalRuntime(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, ".cli.json")
+	if err := os.WriteFile(configPath, []byte(`{
+	  "cli": "1.0.0",
+	  "mode": { "default": "discover" },
+	  "runtime": {
+	    "mode": "local",
+	    "local": {
+	      "sessionScope": "terminal",
+	      "heartbeatSeconds": 15,
+	      "missedHeartbeatLimit": 3,
+	      "shutdown": "when-owner-exits",
+	      "share": "exclusive"
+	    }
+	  },
+	  "mcpServers": {
+	    "filesystem": {
+	      "type": "stdio",
+	      "command": "npx"
+	    }
+	  }
+	}`), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	deadServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	deadURL := deadServer.URL
+	deadServer.Close()
+
+	stateDir := filepath.Join(dir, "state")
+	paths, err := instance.Resolve(instance.Options{
+		InstanceID: "stale",
+		StateRoot:  stateDir,
+		CacheRoot:  filepath.Join(stateDir, "cache"),
+	})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if err := instance.WriteRuntimeInfo(paths.RuntimePath, instance.RuntimeInfo{
+		InstanceID: "stale",
+		URL:        deadURL,
+		AuditPath:  paths.AuditPath,
+		CacheDir:   paths.CacheDir,
+	}); err != nil {
+		t.Fatalf("WriteRuntimeInfo: %v", err)
+	}
+
+	previousCleanup := cleanupManagedProcesses
+	previousStarter := managedRuntimeStarter
+	t.Cleanup(func() {
+		cleanupManagedProcesses = previousCleanup
+		managedRuntimeStarter = previousStarter
+	})
+	cleanupManagedProcesses = func(_ context.Context, _ string) error {
+		return fmt.Errorf("cleanup failed")
+	}
+	started := 0
+	managedRuntimeStarter = func(options CommandOptions) (string, error) {
+		started++
+		return "http://127.0.0.1:18888", nil
+	}
+
+	_, err = resolveCommandOptions(CommandOptions{
+		ConfigPath:        configPath,
+		RuntimeDeployment: "local",
+		InstanceID:        "stale",
+		StateDir:          stateDir,
+	})
+	if err == nil || !strings.Contains(err.Error(), "cleanup failed") {
+		t.Fatalf("expected stale managed cleanup failure, got %v", err)
+	}
+	if started != 0 {
+		t.Fatalf("expected local runtime restart to fail closed, starter ran %d times", started)
+	}
+}
+
+func TestResolveCommandOptionsTreatsDeadRuntimePIDAsStaleEvenWhenURLIsReachable(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, ".cli.json")
+	if err := os.WriteFile(configPath, []byte(`{
+	  "cli": "1.0.0",
+	  "mode": { "default": "discover" },
+	  "runtime": {
+	    "mode": "local",
+	    "local": {
+	      "sessionScope": "terminal",
+	      "heartbeatSeconds": 15,
+	      "missedHeartbeatLimit": 3,
+	      "shutdown": "when-owner-exits",
+	      "share": "exclusive"
+	    }
+	  },
+	  "mcpServers": {
+	    "filesystem": {
+	      "type": "stdio",
+	      "command": "npx"
+	    }
+	  }
+	}`), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer listener.Close()
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			_ = conn.Close()
+		}
+	}()
+
+	stateDir := filepath.Join(dir, "state")
+	paths, err := instance.Resolve(instance.Options{
+		InstanceID: "stale",
+		StateRoot:  stateDir,
+		CacheRoot:  filepath.Join(stateDir, "cache"),
+	})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if err := instance.WriteRuntimeInfo(paths.RuntimePath, instance.RuntimeInfo{
+		InstanceID: "stale",
+		URL:        "http://" + listener.Addr().String(),
+		PID:        999999,
+		AuditPath:  paths.AuditPath,
+		CacheDir:   paths.CacheDir,
+	}); err != nil {
+		t.Fatalf("WriteRuntimeInfo: %v", err)
+	}
+
+	previousStarter := managedRuntimeStarter
+	previousHandshake := localSessionHandshake
+	t.Cleanup(func() {
+		managedRuntimeStarter = previousStarter
+		localSessionHandshake = previousHandshake
+	})
+	started := 0
+	managedRuntimeStarter = func(options CommandOptions) (string, error) {
+		started++
+		return "http://127.0.0.1:18889", nil
+	}
+	localSessionHandshake = func(options CommandOptions) (CommandOptions, error) { return options, nil }
+
+	resolved, err := resolveCommandOptions(CommandOptions{
+		ConfigPath:        configPath,
+		RuntimeDeployment: "local",
+		InstanceID:        "stale",
+		StateDir:          stateDir,
+	})
+	if err != nil {
+		t.Fatalf("resolveCommandOptions: %v", err)
+	}
+	if started != 1 {
+		t.Fatalf("expected stale runtime with dead pid to restart once, got %d", started)
+	}
+	if resolved.RuntimeURL != "http://127.0.0.1:18889" {
+		t.Fatalf("expected replacement managed runtime url, got %q", resolved.RuntimeURL)
 	}
 	if _, err := os.Stat(paths.RuntimePath); !os.IsNotExist(err) {
 		t.Fatalf("expected stale runtime registry to be removed, stat err=%v", err)
@@ -884,6 +1181,239 @@ func TestRootCommandUsesOAuthClientRemoteRuntimeBearerToken(t *testing.T) {
 	}
 }
 
+func TestHTTPRuntimeClientRefreshesExpiredOAuthClientTokenOnce(t *testing.T) {
+	t.Setenv("OAS_REMOTE_CLIENT_ID", "runtime-client")
+	t.Setenv("OAS_REMOTE_CLIENT_SECRET", "runtime-secret")
+
+	tokenFetches := 0
+	authServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/token" {
+			http.NotFound(w, r)
+			return
+		}
+		if err := r.ParseForm(); err != nil {
+			t.Fatalf("ParseForm: %v", err)
+		}
+		tokenFetches++
+		expiresIn := 3600
+		if tokenFetches == 1 {
+			expiresIn = 1
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"access_token": fmt.Sprintf("oauth-client-token-%d", tokenFetches),
+			"token_type":   "Bearer",
+			"expires_in":   expiresIn,
+		})
+	}))
+	defer authServer.Close()
+
+	var seenAuth []string
+	runtimeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenAuth = append(seenAuth, r.Header.Get("Authorization"))
+		switch r.URL.Path {
+		case "/v1/catalog/effective":
+			if got := r.Header.Get("Authorization"); got == "Bearer oauth-client-token-1" && len(seenAuth) > 1 {
+				http.Error(w, "authn_failed", http.StatusUnauthorized)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"catalog": map[string]any{
+					"services": []map[string]any{},
+					"tools":    []map[string]any{},
+				},
+				"view": map[string]any{
+					"name":  "discover",
+					"mode":  "discover",
+					"tools": []map[string]any{},
+				},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer runtimeServer.Close()
+
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, ".cli.json")
+	if err := os.WriteFile(configPath, []byte(fmt.Sprintf(`{
+	  "cli": "1.0.0",
+	  "mode": { "default": "discover" },
+	  "runtime": {
+	    "mode": "remote",
+	    "remote": {
+	      "url": %q,
+	      "oauth": {
+	        "mode": "oauthClient",
+	        "audience": "oasclird",
+	        "scopes": ["bundle:payments"],
+	        "client": {
+	          "tokenURL": %q,
+	          "clientId": { "type": "env", "value": "OAS_REMOTE_CLIENT_ID" },
+	          "clientSecret": { "type": "env", "value": "OAS_REMOTE_CLIENT_SECRET" }
+	        }
+	      }
+	    }
+	  },
+	  "sources": {
+	    "tickets": {
+	      "type": "openapi",
+	      "uri": "https://example.com/openapi.json"
+	    }
+	  },
+	  "services": {
+	    "tickets": {
+	      "source": "tickets"
+	    }
+	  }
+	}`, runtimeServer.URL, authServer.URL+"/token")), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	resolved, err := resolveCommandOptions(CommandOptions{
+		ConfigPath: configPath,
+		StateDir:   filepath.Join(dir, "state"),
+	})
+	if err != nil {
+		t.Fatalf("resolveCommandOptions: %v", err)
+	}
+	client, err := newRuntimeClient(resolved)
+	if err != nil {
+		t.Fatalf("newRuntimeClient: %v", err)
+	}
+
+	if _, err := client.FetchCatalog(resolved); err != nil {
+		t.Fatalf("initial FetchCatalog: %v", err)
+	}
+
+	time.Sleep(1100 * time.Millisecond)
+
+	if _, err := client.FetchCatalog(resolved); err != nil {
+		t.Fatalf("expected expired remote runtime token to refresh, got %v", err)
+	}
+	if tokenFetches != 2 {
+		t.Fatalf("expected exactly 2 token fetches after one refresh, got %d", tokenFetches)
+	}
+	if got := seenAuth[len(seenAuth)-1]; got != "Bearer oauth-client-token-2" {
+		t.Fatalf("expected refreshed bearer token on second catalog fetch, got %q", got)
+	}
+}
+
+func TestHTTPRuntimeClientRefreshesAfterAuthnFailedOnNextRequest(t *testing.T) {
+	t.Setenv("OAS_REMOTE_CLIENT_ID", "runtime-client")
+	t.Setenv("OAS_REMOTE_CLIENT_SECRET", "runtime-secret")
+
+	tokenFetches := 0
+	authServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/token" {
+			http.NotFound(w, r)
+			return
+		}
+		if err := r.ParseForm(); err != nil {
+			t.Fatalf("ParseForm: %v", err)
+		}
+		tokenFetches++
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"access_token": fmt.Sprintf("oauth-client-token-%d", tokenFetches),
+			"token_type":   "Bearer",
+			"expires_in":   3600,
+		})
+	}))
+	defer authServer.Close()
+
+	var seenAuth []string
+	executeCalls := 0
+	runtimeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenAuth = append(seenAuth, r.Header.Get("Authorization"))
+		switch r.URL.Path {
+		case "/v1/tools/execute":
+			executeCalls++
+			if executeCalls == 1 {
+				http.Error(w, "authn_failed", http.StatusUnauthorized)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"statusCode": 200, "body": map[string]any{"ok": true}})
+		case "/v1/catalog/effective":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"catalog": map[string]any{
+					"services": []map[string]any{},
+					"tools":    []map[string]any{},
+				},
+				"view": map[string]any{
+					"name":  "discover",
+					"mode":  "discover",
+					"tools": []map[string]any{},
+				},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer runtimeServer.Close()
+
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, ".cli.json")
+	if err := os.WriteFile(configPath, []byte(fmt.Sprintf(`{
+	  "cli": "1.0.0",
+	  "mode": { "default": "discover" },
+	  "runtime": {
+	    "mode": "remote",
+	    "remote": {
+	      "url": %q,
+	      "oauth": {
+	        "mode": "oauthClient",
+	        "audience": "oasclird",
+	        "scopes": ["bundle:payments"],
+	        "client": {
+	          "tokenURL": %q,
+	          "clientId": { "type": "env", "value": "OAS_REMOTE_CLIENT_ID" },
+	          "clientSecret": { "type": "env", "value": "OAS_REMOTE_CLIENT_SECRET" }
+	        }
+	      }
+	    }
+	  },
+	  "sources": {
+	    "tickets": {
+	      "type": "openapi",
+	      "uri": "https://example.com/openapi.json"
+	    }
+	  },
+	  "services": {
+	    "tickets": {
+	      "source": "tickets"
+	    }
+	  }
+	}`, runtimeServer.URL, authServer.URL+"/token")), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	resolved, err := resolveCommandOptions(CommandOptions{
+		ConfigPath: configPath,
+		StateDir:   filepath.Join(dir, "state"),
+	})
+	if err != nil {
+		t.Fatalf("resolveCommandOptions: %v", err)
+	}
+	client, err := newRuntimeClient(resolved)
+	if err != nil {
+		t.Fatalf("newRuntimeClient: %v", err)
+	}
+
+	_, err = client.Execute(executeRequest{ToolID: "tickets:listTickets"})
+	if err == nil || !strings.Contains(err.Error(), "authn_failed") {
+		t.Fatalf("expected first execute to fail with authn_failed, got %v", err)
+	}
+
+	if _, err := client.FetchCatalog(resolved); err != nil {
+		t.Fatalf("expected next request to refresh after authn_failed, got %v", err)
+	}
+	if tokenFetches != 2 {
+		t.Fatalf("expected exactly 2 token fetches after next-request refresh, got %d", tokenFetches)
+	}
+	if got := seenAuth[len(seenAuth)-1]; got != "Bearer oauth-client-token-2" {
+		t.Fatalf("expected refreshed bearer token after authn_failed, got %q", got)
+	}
+}
+
 func TestRootCommandUsesRemoteBrowserLoginBearerToken(t *testing.T) {
 	previousAcquirer := runtimeBrowserLoginTokenAcquirer
 	t.Cleanup(func() { runtimeBrowserLoginTokenAcquirer = previousAcquirer })
@@ -988,6 +1518,182 @@ func TestRootCommandUsesRemoteBrowserLoginBearerToken(t *testing.T) {
 	}
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("Execute returned error: %v", err)
+	}
+}
+
+func TestRootCommandCompletesRemoteBrowserLoginAuthorizationCodeFlow(t *testing.T) {
+	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
+		t.Skip("browser login integration test requires open/xdg-open support")
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen for callback port: %v", err)
+	}
+	callbackPort := listener.Addr().(*net.TCPAddr).Port
+	listener.Close()
+	redirectURI := fmt.Sprintf("http://127.0.0.1:%d/callback", callbackPort)
+
+	dir := t.TempDir()
+	openerName := "xdg-open"
+	if runtime.GOOS == "darwin" {
+		openerName = "open"
+	}
+	openerPath := filepath.Join(dir, openerName)
+	if err := os.WriteFile(openerPath, []byte("#!/bin/sh\ncurl -fsSL \"$1\" >/dev/null\n"), 0o755); err != nil {
+		t.Fatalf("write fake browser opener: %v", err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	previousAcquirer := runtimeBrowserLoginTokenAcquirer
+	t.Cleanup(func() { runtimeBrowserLoginTokenAcquirer = previousAcquirer })
+	runtimeBrowserLoginTokenAcquirer = acquireRuntimeBrowserLoginToken
+
+	var authServer *httptest.Server
+	var codeChallenge string
+	var authorizeCalls, tokenCalls int
+	authServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/authorize":
+			authorizeCalls++
+			query := r.URL.Query()
+			if got := query.Get("response_type"); got != "code" {
+				t.Fatalf("expected response_type=code, got %q", got)
+			}
+			if got := query.Get("client_id"); got != "browser-client" {
+				t.Fatalf("expected client_id browser-client, got %q", got)
+			}
+			if got := query.Get("redirect_uri"); got != redirectURI {
+				t.Fatalf("expected redirect_uri %q, got %q", redirectURI, got)
+			}
+			if got := query.Get("scope"); got != "bundle:payments" {
+				t.Fatalf("expected scope bundle:payments, got %q", got)
+			}
+			if got := query.Get("audience"); got != "oasclird" {
+				t.Fatalf("expected audience oasclird, got %q", got)
+			}
+			if got := query.Get("code_challenge_method"); got != "S256" {
+				t.Fatalf("expected code_challenge_method S256, got %q", got)
+			}
+			codeChallenge = query.Get("code_challenge")
+			if codeChallenge == "" {
+				t.Fatalf("expected PKCE code challenge")
+			}
+			http.Redirect(w, r, redirectURI+"?code=browser-auth-code&state="+url.QueryEscape(query.Get("state")), http.StatusFound)
+		case "/token":
+			tokenCalls++
+			if err := r.ParseForm(); err != nil {
+				t.Fatalf("parse token form: %v", err)
+			}
+			if got := r.Form.Get("grant_type"); got != "authorization_code" {
+				t.Fatalf("expected authorization_code grant, got %q", got)
+			}
+			if got := r.Form.Get("code"); got != "browser-auth-code" {
+				t.Fatalf("expected browser-auth-code, got %q", got)
+			}
+			if got := r.Form.Get("redirect_uri"); got != redirectURI {
+				t.Fatalf("expected redirect URI %q, got %q", redirectURI, got)
+			}
+			verifier := r.Form.Get("code_verifier")
+			if verifier == "" {
+				t.Fatalf("expected PKCE verifier")
+			}
+			sum := sha256.Sum256([]byte(verifier))
+			if challenge := base64.RawURLEncoding.EncodeToString(sum[:]); challenge != codeChallenge {
+				t.Fatalf("expected verifier to match challenge, got %q want %q", challenge, codeChallenge)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"access_token": "browser-login-token-live",
+				"token_type":   "Bearer",
+				"expires_in":   3600,
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer authServer.Close()
+
+	runtimeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/auth/browser-config":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"authorizationURL": authServer.URL + "/authorize",
+				"tokenURL":         authServer.URL + "/token",
+				"clientId":         "browser-client",
+				"audience":         "oasclird",
+			})
+		case "/v1/catalog/effective":
+			if got := r.Header.Get("Authorization"); got != "Bearer browser-login-token-live" {
+				t.Fatalf("expected real browser login bearer token, got %q", got)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"catalog": map[string]any{
+					"services": []map[string]any{},
+					"tools":    []map[string]any{},
+				},
+				"view": map[string]any{
+					"name":  "discover",
+					"mode":  "discover",
+					"tools": []map[string]any{},
+				},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer runtimeServer.Close()
+
+	configPath := filepath.Join(dir, ".cli.json")
+	if err := os.WriteFile(configPath, []byte(fmt.Sprintf(`{
+	  "cli": "1.0.0",
+	  "mode": { "default": "discover" },
+	  "runtime": {
+	    "mode": "remote",
+	    "remote": {
+	      "url": %q,
+	      "oauth": {
+	        "mode": "browserLogin",
+	        "audience": "oasclird",
+	        "scopes": ["bundle:payments"],
+	        "browserLogin": {
+	          "callbackPort": %d
+	        }
+	      }
+	    }
+	  },
+	  "sources": {
+	    "tickets": {
+	      "type": "openapi",
+	      "uri": "https://example.com/openapi.json"
+	    }
+	  },
+	  "services": {
+	    "tickets": {
+	      "source": "tickets"
+	    }
+	  }
+	}`, runtimeServer.URL, callbackPort)), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	cmd, err := NewRootCommand(CommandOptions{
+		ConfigPath: configPath,
+		StateDir:   filepath.Join(dir, "state"),
+		Stdout:     &stdout,
+		Stderr:     &stdout,
+	}, []string{"catalog", "list", "--format", "json"})
+	if err != nil {
+		t.Fatalf("NewRootCommand returned error: %v", err)
+	}
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if authorizeCalls != 1 {
+		t.Fatalf("expected one authorization request, got %d", authorizeCalls)
+	}
+	if tokenCalls != 1 {
+		t.Fatalf("expected one token request, got %d", tokenCalls)
 	}
 }
 
@@ -1158,6 +1864,7 @@ func TestManagedRuntimeArgsIncludeLifecycleFlags(t *testing.T) {
 		"--session-scope", "shared-group",
 		"--share", "group",
 		"--config-fingerprint", "fp-1",
+		"--share-key-present", "true",
 	}
 	for i := 0; i < len(expected); i += 2 {
 		found := false
@@ -1484,5 +2191,66 @@ func TestResolveCommandOptionsFailsOnRuntimeAttachMismatch(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "runtime_attach_mismatch") {
 		t.Fatalf("expected runtime_attach_mismatch error, got %v", err)
+	}
+}
+
+func TestResolveCommandOptionsFailsOnContractMismatch(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, ".cli.json")
+	if err := os.WriteFile(configPath, []byte(`{
+	  "cli": "1.0.0",
+	  "mode": { "default": "discover" },
+	  "runtime": {
+	    "mode": "local",
+	    "local": {
+	      "sessionScope": "terminal",
+	      "heartbeatSeconds": 15,
+	      "missedHeartbeatLimit": 3,
+	      "shutdown": "when-owner-exits",
+	      "share": "exclusive"
+	    }
+	  },
+	  "mcpServers": {
+	    "filesystem": {
+	      "type": "stdio",
+	      "command": "npx"
+	    }
+	  }
+	}`), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	previousHandshake := localSessionHandshake
+	t.Cleanup(func() { localSessionHandshake = previousHandshake })
+	localSessionHandshake = performLocalSessionHandshake
+
+	runtimeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/runtime/info":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"contractVersion": "2.0",
+				"capabilities":    []string{"catalog", "execute", "refresh", "audit"},
+				"lifecycle": map[string]any{
+					"capabilities": []string{"heartbeat"},
+				},
+			})
+		case "/v1/runtime/heartbeat":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"renewed":   true,
+				"sessionId": "sess-1",
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer runtimeServer.Close()
+
+	_, err := resolveCommandOptions(CommandOptions{
+		ConfigPath:        configPath,
+		RuntimeDeployment: "local",
+		RuntimeURL:        runtimeServer.URL,
+	})
+	if err == nil || !strings.Contains(err.Error(), "contract_mismatch") {
+		t.Fatalf("expected contract_mismatch error, got %v", err)
 	}
 }

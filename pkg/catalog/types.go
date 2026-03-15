@@ -122,28 +122,33 @@ type ToolBackend struct {
 }
 
 type Tool struct {
-	ID          string            `json:"id"`
-	ServiceID   string            `json:"serviceId"`
-	OperationID string            `json:"operationId,omitempty"`
-	Method      string            `json:"method"`
-	Path        string            `json:"path"`
-	Group       string            `json:"group"`
-	Command     string            `json:"command"`
-	Aliases     []string          `json:"aliases,omitempty"`
-	Summary     string            `json:"summary,omitempty"`
-	Description string            `json:"description,omitempty"`
-	Hidden      bool              `json:"hidden,omitempty"`
-	PathParams  []Parameter       `json:"pathParams,omitempty"`
-	Flags       []Parameter       `json:"flags,omitempty"`
-	RequestBody *RequestBody      `json:"requestBody,omitempty"`
-	Auth        []AuthRequirement `json:"auth,omitempty"`
-	Safety      Safety            `json:"safety"`
-	Output      *OutputHints      `json:"output,omitempty"`
-	Pagination  *PaginationHints  `json:"pagination,omitempty"`
-	Retry       *RetryHints       `json:"retry,omitempty"`
-	Guidance    *Guidance         `json:"guidance,omitempty"`
-	Servers     []string          `json:"servers,omitempty"`
-	Backend     *ToolBackend      `json:"backend,omitempty"`
+	ID               string            `json:"id"`
+	ServiceID        string            `json:"serviceId"`
+	OperationID      string            `json:"operationId,omitempty"`
+	Method           string            `json:"method"`
+	Path             string            `json:"path"`
+	Group            string            `json:"group"`
+	Command          string            `json:"command"`
+	Aliases          []string          `json:"aliases,omitempty"`
+	Summary          string            `json:"summary,omitempty"`
+	Description      string            `json:"description,omitempty"`
+	Hidden           bool              `json:"hidden,omitempty"`
+	PathParams       []Parameter       `json:"pathParams,omitempty"`
+	Flags            []Parameter       `json:"flags,omitempty"`
+	RequestBody      *RequestBody      `json:"requestBody,omitempty"`
+	AuthAlternatives []AuthAlternative `json:"authAlternatives,omitempty"`
+	Auth             []AuthRequirement `json:"auth,omitempty"`
+	Safety           Safety            `json:"safety"`
+	Output           *OutputHints      `json:"output,omitempty"`
+	Pagination       *PaginationHints  `json:"pagination,omitempty"`
+	Retry            *RetryHints       `json:"retry,omitempty"`
+	Guidance         *Guidance         `json:"guidance,omitempty"`
+	Servers          []string          `json:"servers,omitempty"`
+	Backend          *ToolBackend      `json:"backend,omitempty"`
+}
+
+type AuthAlternative struct {
+	Requirements []AuthRequirement `json:"requirements,omitempty"`
 }
 
 type AuthRequirement struct {

@@ -28,6 +28,7 @@ type Paths struct {
 type RuntimeInfo struct {
 	InstanceID string `json:"instanceId"`
 	URL        string `json:"url"`
+	PID        int    `json:"pid,omitempty"`
 	AuditPath  string `json:"auditPath,omitempty"`
 	CacheDir   string `json:"cacheDir,omitempty"`
 }

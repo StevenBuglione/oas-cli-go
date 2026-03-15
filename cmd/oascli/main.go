@@ -19,6 +19,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -26,6 +27,7 @@ import (
 	oauthruntime "github.com/StevenBuglione/oas-cli-go/pkg/auth"
 	"github.com/StevenBuglione/oas-cli-go/pkg/catalog"
 	configpkg "github.com/StevenBuglione/oas-cli-go/pkg/config"
+	toolsexec "github.com/StevenBuglione/oas-cli-go/pkg/exec"
 	"github.com/StevenBuglione/oas-cli-go/pkg/instance"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -35,6 +37,7 @@ type CommandOptions struct {
 	RuntimeURL        string
 	RuntimeDeployment string
 	RuntimeToken      string
+	RuntimeAuth       *runtimeTokenSession
 	ConfigPath        string
 	Mode              string
 	AgentProfile      string
@@ -98,9 +101,76 @@ type runtimeClient interface {
 	SessionClose() (map[string]any, error)
 }
 
+const tokenRefreshGrace = 30 * time.Second
+
+type runtimeSessionToken struct {
+	AccessToken string
+	ExpiresAt   time.Time
+}
+
+type runtimeTokenSession struct {
+	mu        sync.Mutex
+	token     runtimeSessionToken
+	refresh   func(context.Context) (runtimeSessionToken, error)
+	refreshed bool
+}
+
+type runtimeHTTPError struct {
+	StatusCode int
+	Body       string
+}
+
+func (e *runtimeHTTPError) Error() string { return e.Body }
+
+func newRuntimeTokenSession(token runtimeSessionToken, refresh func(context.Context) (runtimeSessionToken, error)) *runtimeTokenSession {
+	return &runtimeTokenSession{token: token, refresh: refresh}
+}
+
+func (session *runtimeTokenSession) tokenForPreflight(ctx context.Context, grace time.Duration) (string, error) {
+	if session == nil {
+		return "", nil
+	}
+	session.mu.Lock()
+	defer session.mu.Unlock()
+
+	if !session.token.isExpiring(grace) {
+		return session.token.AccessToken, nil
+	}
+	if session.refresh == nil || session.refreshed {
+		return "", &runtimeHTTPError{StatusCode: http.StatusUnauthorized, Body: "authn_failed"}
+	}
+	refreshedToken, err := session.refresh(ctx)
+	if err != nil {
+		return "", &runtimeHTTPError{StatusCode: http.StatusUnauthorized, Body: "authn_failed"}
+	}
+	session.refreshed = true
+	session.token = refreshedToken
+	return session.token.AccessToken, nil
+}
+
+func (session *runtimeTokenSession) handleAuthnFailed() error {
+	if session == nil {
+		return &runtimeHTTPError{StatusCode: http.StatusUnauthorized, Body: "authn_failed"}
+	}
+	session.mu.Lock()
+	defer session.mu.Unlock()
+	if session.refresh == nil || session.refreshed {
+		return &runtimeHTTPError{StatusCode: http.StatusUnauthorized, Body: "authn_failed"}
+	}
+	session.token.ExpiresAt = time.Unix(0, 0)
+	return nil
+}
+
+func (token runtimeSessionToken) isExpiring(grace time.Duration) bool {
+	if token.ExpiresAt.IsZero() {
+		return false
+	}
+	return time.Now().After(token.ExpiresAt.Add(-grace))
+}
+
 type httpRuntimeClient struct {
 	baseURL           string
-	token             string
+	session           *runtimeTokenSession
 	sessionID         string
 	configFingerprint string
 }
@@ -118,6 +188,8 @@ var runtimeBrowserLoginTokenAcquirer = acquireRuntimeBrowserLoginToken
 var terminalSessionIdentityProvider = detectTerminalSessionIdentity
 var agentSessionIdentityProvider = detectAgentSessionIdentity
 var localSessionHandshake = performLocalSessionHandshake
+var cleanupManagedProcesses = toolsexec.CleanupManagedProcesses
+var runtimeProcessAlive = toolsexec.ProcessAlive
 
 func main() {
 	options := bootstrapFromArgs(os.Args[1:])
@@ -461,20 +533,44 @@ func fetchCatalogHTTP(baseURL string, options CommandOptions) (runtimeCatalogRes
 }
 
 func (client httpRuntimeClient) FetchCatalog(options CommandOptions) (runtimeCatalogResponse, error) {
-	options.RuntimeToken = client.token
-	return fetchCatalogHTTP(client.baseURL, options)
+	endpoint, err := url.Parse(client.baseURL + "/v1/catalog/effective")
+	if err != nil {
+		return runtimeCatalogResponse{}, err
+	}
+	query := endpoint.Query()
+	if options.ConfigPath != "" {
+		query.Set("config", options.ConfigPath)
+	}
+	if options.Mode != "" {
+		query.Set("mode", options.Mode)
+	}
+	if options.AgentProfile != "" {
+		query.Set("agentProfile", options.AgentProfile)
+	}
+	endpoint.RawQuery = query.Encode()
+	var response runtimeCatalogResponse
+	if err := client.do(http.MethodGet, endpoint.String(), nil, &response); err != nil {
+		return runtimeCatalogResponse{}, err
+	}
+	return response, nil
 }
 
 func (client httpRuntimeClient) Execute(request executeRequest) (executeResponse, error) {
-	return postJSON[executeResponse](client.baseURL+"/v1/tools/execute", request, client.token)
+	var response executeResponse
+	err := client.do(http.MethodPost, client.baseURL+"/v1/tools/execute", request, &response)
+	return response, err
 }
 
 func (client httpRuntimeClient) RunWorkflow(request map[string]any) (map[string]any, error) {
-	return postJSON[map[string]any](client.baseURL+"/v1/workflows/run", request, client.token)
+	var response map[string]any
+	err := client.do(http.MethodPost, client.baseURL+"/v1/workflows/run", request, &response)
+	return response, err
 }
 
 func (client httpRuntimeClient) RuntimeInfo() (map[string]any, error) {
-	return getJSON[map[string]any](client.baseURL+"/v1/runtime/info", client.token)
+	var response map[string]any
+	err := client.do(http.MethodGet, client.baseURL+"/v1/runtime/info", nil, &response)
+	return response, err
 }
 
 func (client httpRuntimeClient) Heartbeat(sessionID string) (map[string]any, error) {
@@ -482,15 +578,60 @@ func (client httpRuntimeClient) Heartbeat(sessionID string) (map[string]any, err
 	if client.configFingerprint != "" {
 		payload["configFingerprint"] = client.configFingerprint
 	}
-	return postJSON[map[string]any](client.baseURL+"/v1/runtime/heartbeat", payload, client.token)
+	var response map[string]any
+	err := client.do(http.MethodPost, client.baseURL+"/v1/runtime/heartbeat", payload, &response)
+	return response, err
 }
 
 func (client httpRuntimeClient) Stop() (map[string]any, error) {
-	return postJSON[map[string]any](client.baseURL+"/v1/runtime/stop", map[string]any{}, client.token)
+	var response map[string]any
+	err := client.do(http.MethodPost, client.baseURL+"/v1/runtime/stop", map[string]any{}, &response)
+	return response, err
 }
 
 func (client httpRuntimeClient) SessionClose() (map[string]any, error) {
-	return postJSON[map[string]any](client.baseURL+"/v1/runtime/session-close", map[string]any{"sessionId": client.sessionID}, client.token)
+	var response map[string]any
+	err := client.do(http.MethodPost, client.baseURL+"/v1/runtime/session-close", map[string]any{"sessionId": client.sessionID}, &response)
+	return response, err
+}
+
+func (client httpRuntimeClient) do(method, endpoint string, payload any, output any) error {
+	var body io.Reader
+	if payload != nil {
+		data, err := json.Marshal(payload)
+		if err != nil {
+			return err
+		}
+		body = bytes.NewReader(data)
+	}
+	req, err := http.NewRequest(method, endpoint, body)
+	if err != nil {
+		return err
+	}
+	if payload != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	token, err := client.session.tokenForPreflight(req.Context(), tokenRefreshGrace)
+	if err != nil {
+		return err
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		data, _ := io.ReadAll(resp.Body)
+		httpErr := &runtimeHTTPError{StatusCode: resp.StatusCode, Body: strings.TrimSpace(string(data))}
+		if resp.StatusCode == http.StatusUnauthorized && httpErr.Body == "authn_failed" {
+			_ = client.session.handleAuthnFailed()
+		}
+		return httpErr
+	}
+	return json.NewDecoder(resp.Body).Decode(output)
 }
 
 func (client embeddedRuntimeClient) FetchCatalog(options CommandOptions) (runtimeCatalogResponse, error) {
@@ -779,15 +920,18 @@ func resolveCommandOptions(options CommandOptions) (CommandOptions, error) {
 	}
 	if options.RuntimeToken == "" && options.RuntimeDeployment == "remote" {
 		if runtimeCfg, ok := loadCachedRuntimeConfig(); ok && runtimeCfg.Remote != nil && runtimeCfg.Remote.OAuth != nil {
-			token, err := resolveRuntimeToken(options, *runtimeCfg.Remote.OAuth)
+			token, session, err := resolveRuntimeToken(options, *runtimeCfg.Remote.OAuth)
 			if err != nil {
 				return options, err
 			}
 			options.RuntimeToken = token
+			options.RuntimeAuth = session
 		}
 	}
 	if options.RuntimeURL == "" {
-		if runtimeURL, ok := resolveRuntimeURLFromInstance(options); ok {
+		if runtimeURL, ok, err := resolveRuntimeURLFromInstance(options); err != nil {
+			return options, err
+		} else if ok {
 			options.RuntimeURL = runtimeURL
 		}
 	}
@@ -866,66 +1010,37 @@ func hasLocalMCPSource(cfg configpkg.Config) bool {
 	return false
 }
 
-func resolveRuntimeToken(options CommandOptions, oauth configpkg.RemoteOAuthConfig) (string, error) {
+func resolveRuntimeToken(options CommandOptions, oauth configpkg.RemoteOAuthConfig) (string, *runtimeTokenSession, error) {
 	switch oauth.Mode {
 	case "", "providedToken":
+		token := ""
 		if strings.HasPrefix(oauth.TokenRef, "env:") {
-			return os.Getenv(strings.TrimPrefix(oauth.TokenRef, "env:")), nil
+			token = os.Getenv(strings.TrimPrefix(oauth.TokenRef, "env:"))
 		}
-		return "", nil
+		return token, newRuntimeTokenSession(runtimeSessionToken{AccessToken: token}, nil), nil
 	case "oauthClient":
 		if oauth.Client == nil {
-			return "", fmt.Errorf("runtime.remote.oauth.client is required for oauthClient mode")
+			return "", nil, fmt.Errorf("runtime.remote.oauth.client is required for oauthClient mode")
 		}
-		secret := configpkg.Secret{
-			Type: "oauth2",
-			OAuthConfig: configpkg.OAuthConfig{
-				Mode:         "clientCredentials",
-				TokenURL:     oauth.Client.TokenURL,
-				ClientID:     oauth.Client.ClientID,
-				ClientSecret: oauth.Client.ClientSecret,
-				Scopes:       append([]string(nil), oauth.Scopes...),
-				Audience:     oauth.Audience,
-				TokenStorage: "memory",
-			},
+		acquire := func(ctx context.Context) (runtimeSessionToken, error) {
+			return resolveRuntimeOAuthClientToken(ctx, oauth)
 		}
-		requirement := catalog.AuthRequirement{
-			Type:   "oauth2",
-			Scopes: append([]string(nil), oauth.Scopes...),
-			OAuthFlows: []catalog.OAuthFlow{{
-				Mode:     "clientCredentials",
-				TokenURL: oauth.Client.TokenURL,
-			}},
-		}
-		providerKey := "runtime.remote"
-		if options.RuntimeURL != "" {
-			providerKey = providerKey + "." + options.RuntimeURL
-		}
-		token, err := oauthruntime.ResolveOAuthAccessToken(
-			context.Background(),
-			http.DefaultClient,
-			configpkg.PolicyConfig{},
-			secret,
-			requirement,
-			providerKey,
-			"",
-			nil,
-		)
+		token, err := acquire(context.Background())
 		if err != nil {
-			return "", err
+			return "", nil, err
 		}
-		return token, nil
+		return token.AccessToken, newRuntimeTokenSession(token, acquire), nil
 	case "browserLogin":
 		if options.RuntimeURL == "" {
-			return "", fmt.Errorf("runtime URL is required for browserLogin mode")
+			return "", nil, fmt.Errorf("runtime URL is required for browserLogin mode")
 		}
 		metadata, err := fetchRuntimeBrowserLoginMetadata(options.RuntimeURL)
 		if err != nil {
-			return "", err
+			return "", nil, err
 		}
 		paths, err := resolveInstancePaths(options)
 		if err != nil {
-			return "", err
+			return "", nil, err
 		}
 		request := runtimeBrowserLoginRequest{
 			Metadata: metadata,
@@ -939,10 +1054,79 @@ func resolveRuntimeToken(options CommandOptions, oauth configpkg.RemoteOAuthConf
 		if oauth.BrowserLogin != nil {
 			request.CallbackPort = oauth.BrowserLogin.CallbackPort
 		}
-		return runtimeBrowserLoginTokenAcquirer(request)
+		token, err := runtimeBrowserLoginTokenAcquirer(request)
+		if err != nil {
+			return "", nil, err
+		}
+		return token, newRuntimeTokenSession(runtimeSessionToken{AccessToken: token}, nil), nil
 	default:
-		return "", fmt.Errorf("runtime.remote.oauth.mode %q is not supported yet", oauth.Mode)
+		return "", nil, fmt.Errorf("runtime.remote.oauth.mode %q is not supported yet", oauth.Mode)
 	}
+}
+
+func resolveRuntimeOAuthClientToken(ctx context.Context, oauth configpkg.RemoteOAuthConfig) (runtimeSessionToken, error) {
+	if oauth.Client == nil {
+		return runtimeSessionToken{}, fmt.Errorf("runtime.remote.oauth.client is required for oauthClient mode")
+	}
+	clientID, err := resolveRuntimeOAuthSecret(oauth.Client.ClientID)
+	if err != nil {
+		return runtimeSessionToken{}, fmt.Errorf("resolve runtime oauth clientId: %w", err)
+	}
+	clientSecret, err := resolveRuntimeOAuthSecret(oauth.Client.ClientSecret)
+	if err != nil {
+		return runtimeSessionToken{}, fmt.Errorf("resolve runtime oauth clientSecret: %w", err)
+	}
+	form := url.Values{}
+	form.Set("grant_type", "client_credentials")
+	form.Set("client_id", clientID)
+	form.Set("client_secret", clientSecret)
+	if len(oauth.Scopes) > 0 {
+		form.Set("scope", strings.Join(oauth.Scopes, " "))
+	}
+	if oauth.Audience != "" {
+		form.Set("audience", oauth.Audience)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, oauth.Client.TokenURL, strings.NewReader(form.Encode()))
+	if err != nil {
+		return runtimeSessionToken{}, err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Accept", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return runtimeSessionToken{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return runtimeSessionToken{}, fmt.Errorf("runtime oauth token request failed with status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	var token struct {
+		AccessToken string `json:"access_token"`
+		ExpiresIn   int    `json:"expires_in"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&token); err != nil {
+		return runtimeSessionToken{}, err
+	}
+	if token.AccessToken == "" {
+		return runtimeSessionToken{}, fmt.Errorf("runtime oauth token response missing access_token")
+	}
+	expiresAt := time.Time{}
+	if token.ExpiresIn > 0 {
+		expiresAt = time.Now().Add(time.Duration(token.ExpiresIn) * time.Second)
+	}
+	return runtimeSessionToken{AccessToken: token.AccessToken, ExpiresAt: expiresAt}, nil
+}
+
+func resolveRuntimeOAuthSecret(secret *configpkg.SecretRef) (string, error) {
+	if secret == nil {
+		return "", fmt.Errorf("missing secret reference")
+	}
+	return oauthruntime.ResolveStaticSecret(configpkg.PolicyConfig{}, configpkg.Secret{
+		Type:    secret.Type,
+		Value:   secret.Value,
+		Command: append([]string(nil), secret.Command...),
+	}, nil)
 }
 
 func resolveLocalRuntimeInstanceID(options CommandOptions, local configpkg.LocalRuntimeConfig) string {
@@ -1009,6 +1193,9 @@ func performLocalSessionHandshake(options CommandOptions) (CommandOptions, error
 	if err != nil {
 		return options, err
 	}
+	if err := validateRuntimeContract(info, []string{"catalog"}); err != nil {
+		return options, err
+	}
 	lifecycle, _ := info["lifecycle"].(map[string]any)
 	if !lifecycleCapabilityEnabled(lifecycle, "heartbeat") {
 		options.HeartbeatEnabled = false
@@ -1025,6 +1212,39 @@ func performLocalSessionHandshake(options CommandOptions) (CommandOptions, error
 	}
 	options.HeartbeatEnabled = true
 	return options, nil
+}
+
+func validateRuntimeContract(info map[string]any, requiredCapabilities []string) error {
+	contractVersion, _ := info["contractVersion"].(string)
+	if strings.TrimSpace(contractVersion) == "" {
+		return nil
+	}
+	server := embeddedruntime.HandshakeInfo{
+		ContractVersion: contractVersion,
+		Capabilities:    stringSlice(info["capabilities"]),
+	}
+	client := embeddedruntime.HandshakeInfo{
+		ContractVersion:      embeddedruntime.CurrentContractVersion,
+		RequiredCapabilities: append([]string(nil), requiredCapabilities...),
+	}
+	return embeddedruntime.CheckCompatibility(client, server)
+}
+
+func stringSlice(value any) []string {
+	switch items := value.(type) {
+	case []string:
+		return append([]string(nil), items...)
+	case []any:
+		result := make([]string, 0, len(items))
+		for _, item := range items {
+			if text, ok := item.(string); ok && strings.TrimSpace(text) != "" {
+				result = append(result, text)
+			}
+		}
+		return result
+	default:
+		return nil
+	}
 }
 
 func lifecycleCapabilityEnabled(lifecycle map[string]any, capability string) bool {
@@ -1177,7 +1397,7 @@ func startManagedRuntime(options CommandOptions) (string, error) {
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		info, err := instance.ReadRuntimeInfo(paths.RuntimePath)
-		if err == nil && info.URL != "" && runtimeURLReachable(info.URL) {
+		if err == nil && runtimeInfoReachable(info) {
 			return info.URL, nil
 		}
 		time.Sleep(50 * time.Millisecond)
@@ -1214,6 +1434,9 @@ func managedRuntimeArgs(options CommandOptions, runtimeCfg *configpkg.RuntimeCon
 	if runtimeCfg.Local.Share != "" {
 		args = append(args, "--share", runtimeCfg.Local.Share)
 	}
+	if runtimeCfg.Local.ShareKey != "" {
+		args = append(args, "--share-key-present", "true")
+	}
 	if options.ConfigFingerprint != "" {
 		args = append(args, "--config-fingerprint", options.ConfigFingerprint)
 	}
@@ -1245,26 +1468,42 @@ func newRuntimeClient(options CommandOptions) (runtimeClient, error) {
 			AuditPath:         paths.AuditPath,
 			CacheDir:          paths.CacheDir,
 			DefaultConfigPath: options.ConfigPath,
+			RuntimeMode:       "embedded",
 		})
 		return embeddedRuntimeClient{handler: server.Handler(), sessionID: options.SessionID, configFingerprint: options.ConfigFingerprint}, nil
 	}
-	return httpRuntimeClient{baseURL: options.RuntimeURL, token: options.RuntimeToken, sessionID: options.SessionID, configFingerprint: options.ConfigFingerprint}, nil
+	return httpRuntimeClient{baseURL: options.RuntimeURL, session: options.RuntimeAuth, sessionID: options.SessionID, configFingerprint: options.ConfigFingerprint}, nil
 }
 
-func resolveRuntimeURLFromInstance(options CommandOptions) (string, bool) {
+func resolveRuntimeURLFromInstance(options CommandOptions) (string, bool, error) {
 	paths, err := resolveInstancePaths(options)
 	if err != nil {
-		return "", false
+		return "", false, nil
 	}
 	info, err := instance.ReadRuntimeInfo(paths.RuntimePath)
 	if err != nil || info.URL == "" {
-		return "", false
+		return "", false, nil
 	}
-	if !runtimeURLReachable(info.URL) {
+	if !runtimeInfoReachable(info) {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		if err := cleanupManagedProcesses(ctx, paths.StateDir); err != nil {
+			return "", false, err
+		}
 		_ = os.Remove(paths.RuntimePath)
-		return "", false
+		return "", false, nil
 	}
-	return info.URL, true
+	return info.URL, true, nil
+}
+
+func runtimeInfoReachable(info instance.RuntimeInfo) bool {
+	if info.URL == "" {
+		return false
+	}
+	if info.PID > 0 && !runtimeProcessAlive(info.PID) {
+		return false
+	}
+	return runtimeURLReachable(info.URL)
 }
 
 func runtimeURLReachable(runtimeURL string) bool {

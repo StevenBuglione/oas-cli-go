@@ -181,3 +181,16 @@ Example:
   }
 }
 ```
+
+## MCP transport `oauth`
+
+Remote MCP HTTP transports can also authenticate the transport itself with a source-local `oauth` block.
+
+Important runtime behavior:
+
+- only `clientCredentials` is allowed for MCP transport OAuth
+- `tokenURL` can be configured directly, or discovered through the configured OIDC issuer
+- transport tokens are cached per runtime instance
+- if the provider returns a refresh token, later `streamable-http` and `sse` requests refresh the token before expiry
+- concurrent MCP clients that share the same instance state reuse the same refreshed transport token instead of racing duplicate refresh requests
+- if refresh fails, or the refreshed token expires again, the transport fails closed and requires reauthorization instead of silently retrying forever

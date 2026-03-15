@@ -142,6 +142,13 @@ func (client *stdioClient) Close() error {
 	return client.cmd.Wait()
 }
 
+func (client *stdioClient) ProcessID() int {
+	if client.cmd == nil || client.cmd.Process == nil {
+		return 0
+	}
+	return client.cmd.Process.Pid
+}
+
 func (client *stdioClient) ensureInitialized() error {
 	client.mu.Lock()
 	defer client.mu.Unlock()

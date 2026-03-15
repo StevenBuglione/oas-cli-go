@@ -78,6 +78,9 @@ func TestServerRuntimeInfoIncludesLeaseMetadata(t *testing.T) {
 		HeartbeatSeconds:     15,
 		MissedHeartbeatLimit: 3,
 		ShutdownMode:         "when-owner-exits",
+		SessionScope:         "shared-group",
+		ShareMode:            "group",
+		ConfigFingerprint:    "fp-1",
 	})
 	httpServer := httptest.NewServer(server.Handler())
 	defer httpServer.Close()
@@ -113,6 +116,21 @@ func TestServerRuntimeInfoIncludesLeaseMetadata(t *testing.T) {
 	}
 	if got := lifecycle["shutdown"]; got != "when-owner-exits" {
 		t.Fatalf("expected shutdown mode when-owner-exits, got %#v", got)
+	}
+	if got := info["runtimeMode"]; got != "local" {
+		t.Fatalf("expected runtimeMode local, got %#v", got)
+	}
+	if got := lifecycle["sessionScope"]; got != "shared-group" {
+		t.Fatalf("expected sessionScope shared-group, got %#v", got)
+	}
+	if got := lifecycle["shareMode"]; got != "group" {
+		t.Fatalf("expected shareMode group, got %#v", got)
+	}
+	if got := lifecycle["configFingerprint"]; got != "fp-1" {
+		t.Fatalf("expected configFingerprint fp-1, got %#v", got)
+	}
+	if got := lifecycle["shareKeyPresent"]; got != false {
+		t.Fatalf("expected shareKeyPresent false, got %#v", got)
 	}
 }
 

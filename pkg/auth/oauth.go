@@ -51,7 +51,19 @@ var memoryTokenCache = struct {
 var openBrowser = defaultOpenBrowser
 var loopbackTimeout = 120 * time.Second
 
+var ErrInteractiveRequired = fmt.Errorf("interactive auth required")
+
+type ResolveOptions struct {
+	Interactive bool
+}
+
 func ResolveOAuthAccessToken(ctx context.Context, httpClient *http.Client, policy config.PolicyConfig, secret config.Secret, requirement catalog.AuthRequirement, providerKey, stateDir string, keychainResolver func(string) (string, error)) (string, error) {
+	return ResolveOAuthAccessTokenWithOptions(ctx, httpClient, policy, secret, requirement, providerKey, stateDir, keychainResolver, ResolveOptions{
+		Interactive: true,
+	})
+}
+
+func ResolveOAuthAccessTokenWithOptions(ctx context.Context, httpClient *http.Client, policy config.PolicyConfig, secret config.Secret, requirement catalog.AuthRequirement, providerKey, stateDir string, keychainResolver func(string) (string, error), opts ResolveOptions) (string, error) {
 	if httpClient == nil {
 		httpClient = http.DefaultClient
 	}
@@ -97,6 +109,9 @@ func ResolveOAuthAccessToken(ctx context.Context, httpClient *http.Client, polic
 			return "", err
 		} else if ok {
 			return token, nil
+		}
+		if !opts.Interactive {
+			return "", ErrInteractiveRequired
 		}
 		token, expiresAt, err := resolveAuthorizationCodeToken(ctx, httpClient, policy, secret, requirement, authorizationURL, tokenURL, clientID, keychainResolver)
 		if err != nil {

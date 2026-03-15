@@ -18,6 +18,16 @@ The catalog builder inspects operation-level or document-level security requirem
 - required scopes for OAuth-backed schemes
 - OAuth flow metadata such as token and authorization endpoints
 
+OpenAPI alternatives are preserved as alternatives instead of being flattened away. A security block such as:
+
+```yaml
+security:
+  - oauth: [pets.read]
+  - api_key: []
+```
+
+is treated as “`oauth` OR `api_key`”, while multiple schemes inside the same object remain an AND requirement.
+
 ## Step 2: match by security scheme name
 
 At execution time, the runtime looks up each auth requirement by name in `config.secrets`.
@@ -60,6 +70,17 @@ That means:
 - unreadable files are not caught during config load
 - a broken exec secret is not caught during config load
 
+## Step 4: choose an auth alternative
+
+At execution time, the runtime evaluates preserved auth alternatives in two passes:
+
+1. non-interactive first
+2. interactive fallback second
+
+That means a satisfiable static API key or client-credentials branch is preferred before the runtime attempts browser-based OAuth.
+
+If an alternative requires browser interaction (`authorizationCode`) and no cached token is already available, the non-interactive pass marks that branch as interactive-required and continues looking for another satisfiable alternative.
+
 ## Supported applied auth schemes
 
 The current executor automatically applies:
@@ -82,25 +103,13 @@ The current executor automatically applies:
 
 `implicit` and `password` are intentionally rejected with runtime errors.
 
-### Alternative security requirements are flattened
+### Secret failures are alternative-specific
 
-OpenAPI security requirement objects can express alternatives. The current extractor flattens and de-duplicates all referenced scheme names, then applies any secret it can resolve.
+If one auth branch cannot be resolved, the runtime does not silently mix partially resolved requirements into the outgoing request. It rejects that alternative and tries the next one.
 
-In practice, that means the runtime may apply multiple schemes at once instead of choosing one alternative branch.
+If no alternative can be satisfied, execution fails explicitly.
 
-### Secret failures do not all behave the same way
-
-If a secret lookup fails for `file`, `osKeychain`, or `exec`, the runtime usually omits that auth scheme from the outgoing request.
-
-`env` is different: an unset environment variable resolves to an empty string, so the runtime still applies the auth scheme with an empty value.
-
-In practice that can produce:
-
-- `Authorization: Bearer ` for bearer auth
-- `Authorization: Basic ` for basic auth with an empty credential payload
-- an empty API key header or query value
-
-The tool may then fail at the upstream API with `401` or `403`.
+`env` secrets still resolve to an empty string when the environment variable is unset, so an auth branch that depends on an unset env var may still produce an empty auth value.
 
 ## Recommendation
 

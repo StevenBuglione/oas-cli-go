@@ -202,31 +202,40 @@ Example response:
 
 ## `GET /v1/runtime/info`
 
-Returns basic runtime metadata for discovery and diagnostics.
+Returns runtime handshake metadata for discovery, diagnostics, and compatibility checks.
 
 Example response:
 
 ```json
 {
+  "contractVersion": "1.0",
+  "capabilities": ["catalog", "execute", "refresh", "audit"],
   "instanceId": "team-a",
   "url": "http://127.0.0.1:18765",
+  "runtimeMode": "local",
   "auditPath": "/state/instances/team-a/audit.log",
   "stateDir": "/state/instances/team-a",
   "cacheDir": "/cache/instances/team-a/http",
   "lifecycle": {
-    "capabilities": ["heartbeat", "sessionClose"],
+    "capabilities": ["heartbeat", "session-close"],
     "heartbeatSeconds": 15,
     "missedHeartbeatLimit": 3,
     "shutdown": "when-owner-exits",
     "sessionScope": "terminal",
     "shareMode": "exclusive",
+    "shareKeyPresent": false,
     "configFingerprint": "sha256:...",
     "activeSessions": 1
   }
 }
 ```
 
-The `lifecycle` block is present for lease-aware managed local runtimes and is what `oascli` uses to validate reuse before attaching.
+Notes:
+
+- `contractVersion` and top-level `capabilities` are the runtime handshake surface used by `oascli` compatibility checks.
+- `runtimeMode` is typically `embedded` or `local` in the current implementation.
+- `shareKeyPresent` is only a boolean marker; the daemon never echoes the raw `shareKey`.
+- The `lifecycle` block is present for lease-aware managed local runtimes and is what `oascli` uses to validate reuse before attaching.
 
 ## `POST /v1/runtime/heartbeat`
 
@@ -266,6 +275,7 @@ Success response:
 
 ```json
 {
-  "closed": true
+  "closed": true,
+  "activeSessions": 0
 }
 ```

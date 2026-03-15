@@ -29,6 +29,7 @@ A running daemon writes:
 {
   "instanceId": "team-a",
   "url": "http://127.0.0.1:9031",
+  "pid": 42421,
   "auditPath": "/state/instances/team-a/audit.log",
   "cacheDir": "/cache/instances/team-a/http"
 }
@@ -38,7 +39,14 @@ A running daemon writes:
 
 ## Stale registry cleanup
 
-If the stored URL no longer accepts TCP connections, `oascli` deletes the stale `runtime.json` file and falls back to the default runtime URL.
+If the recorded daemon PID is no longer alive, or the stored URL no longer accepts TCP connections, `oascli` treats that registration as stale. For managed local runtimes it first attempts to terminate any recorded MCP child processes from the dead daemon, then deletes the stale `runtime.json` file.
+
+Managed `oasclird` also removes `runtime.json` on shutdown after draining tracked managed MCP children.
+
+After cleanup, resolution continues normally:
+
+- local deployments restart `oasclird`
+- non-local resolution falls back to the default runtime URL
 
 ## Observability hooks
 

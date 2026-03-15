@@ -385,31 +385,32 @@ func buildTools(service Service, document *openapi3.T, guidance map[string]Guida
 				backend = operationStructExtension[ToolBackend](entry.op, "x-oascli-backend")
 			}
 			tool := Tool{
-				ID:          toolID,
-				ServiceID:   service.ID,
-				OperationID: operationID,
-				Method:      entry.method,
-				Path:        rawPath,
-				Group:       group,
-				Command:     command,
-				Aliases:     operationStringSliceExtension(entry.op, "x-cli-aliases"),
-				Summary:     entry.op.Summary,
-				Description: description,
-				Hidden:      operationBoolExtension(entry.op, "x-cli-hidden"),
-				PathParams:  pathParams,
-				Flags:       flags,
-				RequestBody: extractRequestBody(entry.op),
-				Auth:        extractAuth(document, entry.op),
-				Safety:      safety,
-				Output:      operationStructExtension[OutputHints](entry.op, "x-cli-output"),
-				Pagination:  operationStructExtension[PaginationHints](entry.op, "x-cli-pagination"),
-				Retry:       operationStructExtension[RetryHints](entry.op, "x-cli-retry"),
-				Servers:     service.Servers,
-				Backend:     backend,
+				ID:               toolID,
+				ServiceID:        service.ID,
+				OperationID:      operationID,
+				Method:           entry.method,
+				Path:             rawPath,
+				Group:            group,
+				Command:          command,
+				Aliases:          operationStringSliceExtension(entry.op, "x-cli-aliases"),
+				Summary:          entry.op.Summary,
+				Description:      description,
+				Hidden:           operationBoolExtension(entry.op, "x-cli-hidden"),
+				PathParams:       pathParams,
+				Flags:            flags,
+				RequestBody:      extractRequestBody(entry.op),
+				AuthAlternatives: extractAuthAlternatives(document, entry.op),
+				Safety:           safety,
+				Output:           operationStructExtension[OutputHints](entry.op, "x-cli-output"),
+				Pagination:       operationStructExtension[PaginationHints](entry.op, "x-cli-pagination"),
+				Retry:            operationStructExtension[RetryHints](entry.op, "x-cli-retry"),
+				Servers:          service.Servers,
+				Backend:          backend,
 			}
 			if currentGuidance, ok := guidance[tool.ID]; ok {
 				tool.Guidance = &currentGuidance
 			}
+			tool.Auth = flattenLegacyAuth(tool.AuthAlternatives)
 			tools = append(tools, tool)
 		}
 	}
@@ -657,7 +658,7 @@ func uniqueRefs(existing, additional []string) []string {
 	return values
 }
 
-func extractAuth(document *openapi3.T, operation *openapi3.Operation) []AuthRequirement {
+func extractAuthAlternatives(document *openapi3.T, operation *openapi3.Operation) []AuthAlternative {
 	security := operation.Security
 	if security == nil {
 		security = &document.Security
@@ -666,19 +667,15 @@ func extractAuth(document *openapi3.T, operation *openapi3.Operation) []AuthRequ
 		return nil
 	}
 
-	var requirements []AuthRequirement
-	seen := map[string]struct{}{}
+	var alternatives []AuthAlternative
 	for _, item := range *security {
+		alternative := AuthAlternative{}
 		for schemeName := range item {
-			if _, ok := seen[schemeName]; ok {
-				continue
-			}
-			seen[schemeName] = struct{}{}
 			schemeRef := document.Components.SecuritySchemes[schemeName]
 			if schemeRef == nil || schemeRef.Value == nil {
 				continue
 			}
-			requirements = append(requirements, AuthRequirement{
+			alternative.Requirements = append(alternative.Requirements, AuthRequirement{
 				Name:             schemeName,
 				Type:             schemeRef.Value.Type,
 				Scheme:           schemeRef.Value.Scheme,
@@ -688,6 +685,25 @@ func extractAuth(document *openapi3.T, operation *openapi3.Operation) []AuthRequ
 				OAuthFlows:       extractOAuthFlows(schemeRef.Value),
 				OpenIDConnectURL: schemeRef.Value.OpenIdConnectUrl,
 			})
+		}
+		if len(alternative.Requirements) > 0 {
+			alternatives = append(alternatives, alternative)
+		}
+	}
+	return alternatives
+}
+
+func flattenLegacyAuth(alternatives []AuthAlternative) []AuthRequirement {
+	seen := map[string]struct{}{}
+	var requirements []AuthRequirement
+	for _, alternative := range alternatives {
+		for _, requirement := range alternative.Requirements {
+			key := requirement.Type + "|" + requirement.Name + "|" + requirement.In + "|" + requirement.ParamName + "|" + requirement.Scheme
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			requirements = append(requirements, requirement)
 		}
 	}
 	return requirements

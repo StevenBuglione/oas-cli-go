@@ -119,6 +119,31 @@ func TestCapabilityExecuteMCPStdio(t *testing.T) {
 	})
 }
 
+func TestCapabilityExecuteMCPRemoteUnreachableFailsClosed(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	addr := listener.Addr().String()
+	listener.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	source := config.Source{
+		Type: "mcp",
+		Transport: &config.MCPTransport{
+			Type: "streamable-http",
+			URL:  "http://" + addr + "/mcp",
+		},
+	}
+
+	_, err = mcpclient.Open(source, nil, config.PolicyConfig{}, t.TempDir(), nil, ctx)
+	if err == nil {
+		t.Fatal("expected unreachable remote MCP server to fail closed")
+	}
+}
+
 // TestCapabilityExecuteMCPRemote validates the streamable-http MCP transport
 // using @modelcontextprotocol/server-everything running in Docker.
 //

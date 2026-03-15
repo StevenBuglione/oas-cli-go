@@ -349,3 +349,30 @@ func TestResolveOAuthAccessTokenCachesPerResolvedClientID(t *testing.T) {
 		t.Fatalf("expected second token from second client, got %q", secondToken)
 	}
 }
+
+func TestResolveOAuthAccessTokenReturnsInteractiveRequiredWhenAuthorizationCodeNeedsBrowser(t *testing.T) {
+	secret := config.Secret{
+		Type: "oauth2",
+		OAuthConfig: config.OAuthConfig{
+			Mode:             "authorizationCode",
+			AuthorizationURL: "https://auth.example.com/authorize",
+			TokenURL:         "https://auth.example.com/token",
+			ClientID:         &config.SecretRef{Type: "literal", Value: "browser-client"},
+		},
+	}
+	requirement := catalog.AuthRequirement{
+		Type: "oauth2",
+		OAuthFlows: []catalog.OAuthFlow{{
+			Mode:             "authorizationCode",
+			AuthorizationURL: "https://auth.example.com/authorize",
+			TokenURL:         "https://auth.example.com/token",
+		}},
+	}
+
+	_, err := ResolveOAuthAccessTokenWithOptions(context.Background(), http.DefaultClient, config.PolicyConfig{}, secret, requirement, "pets.oauth", t.TempDir(), nil, ResolveOptions{
+		Interactive: false,
+	})
+	if err == nil || !strings.Contains(err.Error(), "interactive") {
+		t.Fatalf("expected interactive-required error, got %v", err)
+	}
+}

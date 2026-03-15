@@ -22,13 +22,19 @@ type AuthScheme struct {
 	Value  string `json:"value,omitempty"`
 }
 
+type AuthApplicationPlan struct {
+	Headers map[string]string `json:"headers,omitempty"`
+	Query   map[string]string `json:"query,omitempty"`
+}
+
 type Request struct {
-	BaseURL  string            `json:"baseUrl,omitempty"`
-	Tool     catalog.Tool      `json:"tool"`
-	PathArgs []string          `json:"pathArgs,omitempty"`
-	Flags    map[string]string `json:"flags,omitempty"`
-	Body     []byte            `json:"body,omitempty"`
-	Auth     []AuthScheme      `json:"auth,omitempty"`
+	BaseURL  string              `json:"baseUrl,omitempty"`
+	Tool     catalog.Tool        `json:"tool"`
+	PathArgs []string            `json:"pathArgs,omitempty"`
+	Flags    map[string]string   `json:"flags,omitempty"`
+	Body     []byte              `json:"body,omitempty"`
+	Auth     []AuthScheme        `json:"auth,omitempty"`
+	AuthPlan AuthApplicationPlan `json:"authPlan,omitempty"`
 }
 
 type Result struct {
@@ -95,6 +101,7 @@ func Execute(ctx context.Context, client *http.Client, request Request) (*Result
 			req.Header.Set("Content-Type", "application/json")
 		}
 		applyAuth(req, request.Auth)
+		applyAuthPlan(req, request.AuthPlan)
 
 		resp, err := client.Do(req)
 		if err != nil {
@@ -155,4 +162,18 @@ func applyAuth(req *http.Request, auth []AuthScheme) {
 			req.URL.RawQuery = query.Encode()
 		}
 	}
+}
+
+func applyAuthPlan(req *http.Request, plan AuthApplicationPlan) {
+	for name, value := range plan.Headers {
+		req.Header.Set(name, value)
+	}
+	if len(plan.Query) == 0 {
+		return
+	}
+	query := req.URL.Query()
+	for name, value := range plan.Query {
+		query.Set(name, value)
+	}
+	req.URL.RawQuery = query.Encode()
 }

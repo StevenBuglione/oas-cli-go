@@ -18,6 +18,10 @@ type streamableHTTPClient struct {
 	httpClient  *http.Client
 	endpointURL string
 	headers     http.Header
+	source      config.Source
+	secrets     map[string]config.Secret
+	policy      config.PolicyConfig
+	stateDir    string
 
 	mu          sync.Mutex
 	nextID      int64
@@ -32,6 +36,10 @@ type sseClient struct {
 	messageURL   string
 	streamBody   io.ReadCloser
 	streamReader *bufio.Reader
+	source       config.Source
+	secrets      map[string]config.Secret
+	policy       config.PolicyConfig
+	stateDir     string
 
 	mu          sync.Mutex
 	nextID      int64
@@ -44,7 +52,7 @@ type sseEvent struct {
 }
 
 func openStreamableHTTP(source config.Source, secrets map[string]config.Secret, policy config.PolicyConfig, stateDir string, httpClient *http.Client, ctx context.Context) (Client, error) {
-	headers, err := resolveTransportHeaders(ctx, source, secrets, policy, stateDir, httpClient)
+	headers, _, err := resolveTransportHeaders(ctx, source, secrets, policy, stateDir, httpClient)
 	if err != nil {
 		return nil, err
 	}
@@ -55,6 +63,10 @@ func openStreamableHTTP(source config.Source, secrets map[string]config.Secret, 
 		httpClient:  httpClient,
 		endpointURL: source.Transport.URL,
 		headers:     headerMap(headers),
+		source:      source,
+		secrets:     secrets,
+		policy:      policy,
+		stateDir:    stateDir,
 		nextID:      1,
 	}
 	if err := client.ensureInitialized(ctx); err != nil {
@@ -64,7 +76,7 @@ func openStreamableHTTP(source config.Source, secrets map[string]config.Secret, 
 }
 
 func openSSE(source config.Source, secrets map[string]config.Secret, policy config.PolicyConfig, stateDir string, httpClient *http.Client, ctx context.Context) (Client, error) {
-	headers, err := resolveTransportHeaders(ctx, source, secrets, policy, stateDir, httpClient)
+	headers, _, err := resolveTransportHeaders(ctx, source, secrets, policy, stateDir, httpClient)
 	if err != nil {
 		return nil, err
 	}
@@ -75,6 +87,10 @@ func openSSE(source config.Source, secrets map[string]config.Secret, policy conf
 		httpClient: httpClient,
 		connectURL: source.Transport.URL,
 		headers:    headerMap(headers),
+		source:     source,
+		secrets:    secrets,
+		policy:     policy,
+		stateDir:   stateDir,
 		nextID:     1,
 	}
 	if err := client.ensureConnected(ctx); err != nil {
@@ -119,6 +135,9 @@ func (client *streamableHTTPClient) Close() error {
 	defer client.mu.Unlock()
 	if client.sessionID == "" {
 		return nil
+	}
+	if err := client.refreshTransportHeadersLocked(context.Background()); err != nil {
+		return err
 	}
 	req, err := http.NewRequest(http.MethodDelete, client.endpointURL, nil)
 	if err != nil {
@@ -213,6 +232,9 @@ func (client *streamableHTTPClient) doRequest(ctx context.Context, payload rpcRe
 }
 
 func (client *streamableHTTPClient) doPOST(ctx context.Context, payload rpcRequest, withAccept bool) (*http.Response, error) {
+	if err := client.refreshTransportHeadersLocked(ctx); err != nil {
+		return nil, err
+	}
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return nil, err
@@ -230,6 +252,18 @@ func (client *streamableHTTPClient) doPOST(ctx context.Context, payload rpcReque
 		req.Header.Set("Mcp-Session-Id", client.sessionID)
 	}
 	return client.httpClient.Do(req)
+}
+
+func (client *streamableHTTPClient) refreshTransportHeadersLocked(ctx context.Context) error {
+	if client.source.OAuth == nil {
+		return nil
+	}
+	token, err := resolveTransportOAuthToken(ctx, client.policy, *client.source.OAuth, client.endpointURL, client.stateDir, client.httpClient, nil)
+	if err != nil {
+		return err
+	}
+	client.headers.Set("Authorization", "Bearer "+token.AccessToken)
+	return nil
 }
 
 func (client *sseClient) ListTools(ctx context.Context) ([]ToolDescriptor, error) {
@@ -294,6 +328,9 @@ func (client *sseClient) ensureInitialized(ctx context.Context) error {
 func (client *sseClient) ensureConnected(ctx context.Context) error {
 	if client.streamReader != nil && client.messageURL != "" {
 		return nil
+	}
+	if err := client.refreshTransportHeadersLocked(ctx); err != nil {
+		return err
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, client.connectURL, nil)
@@ -384,6 +421,9 @@ func (client *sseClient) request(ctx context.Context, method string, params any,
 }
 
 func (client *sseClient) doPOST(ctx context.Context, payload rpcRequest) (*http.Response, error) {
+	if err := client.refreshTransportHeadersLocked(ctx); err != nil {
+		return nil, err
+	}
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return nil, err
@@ -396,6 +436,18 @@ func (client *sseClient) doPOST(ctx context.Context, payload rpcRequest) (*http.
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	return client.httpClient.Do(req)
+}
+
+func (client *sseClient) refreshTransportHeadersLocked(ctx context.Context) error {
+	if client.source.OAuth == nil {
+		return nil
+	}
+	token, err := resolveTransportOAuthToken(ctx, client.policy, *client.source.OAuth, client.connectURL, client.stateDir, client.httpClient, nil)
+	if err != nil {
+		return err
+	}
+	client.headers.Set("Authorization", "Bearer "+token.AccessToken)
+	return nil
 }
 
 func (client *sseClient) waitForResponse(id int64) (*rpcResponse, error) {

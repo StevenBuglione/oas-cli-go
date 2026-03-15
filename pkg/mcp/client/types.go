@@ -20,3 +20,7 @@ type Client interface {
 	CallTool(ctx context.Context, name string, args any) (ToolResult, error)
 	Close() error
 }
+
+type ProcessReporter interface {
+	ProcessID() int
+}

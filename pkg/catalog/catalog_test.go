@@ -474,6 +474,79 @@ actions:
 	}
 }
 
+func TestBuildCatalogPreservesSecurityAlternatives(t *testing.T) {
+	dir := t.TempDir()
+	specPath := writeFile(t, dir, "auth.openapi.yaml", `
+openapi: 3.1.0
+info:
+  title: Auth Alternatives API
+  version: "1.0.0"
+servers:
+  - url: https://api.example.com
+components:
+  securitySchemes:
+    oauth:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: https://auth.example.com/authorize
+          tokenUrl: https://auth.example.com/token
+          scopes:
+            pets.read: Read pets
+    api_key:
+      type: apiKey
+      in: query
+      name: api_key
+paths:
+  /pets:
+    get:
+      operationId: listPets
+      security:
+        - oauth: [pets.read]
+        - api_key: []
+      responses:
+        "200":
+          description: OK
+`)
+
+	ntc, err := catalog.Build(context.Background(), catalog.BuildOptions{
+		Config: config.Config{
+			CLI:  "1.0.0",
+			Mode: config.ModeConfig{Default: "discover"},
+			Sources: map[string]config.Source{
+				"authSource": {
+					Type:    "openapi",
+					URI:     filepath.ToSlash(specPath),
+					Enabled: true,
+				},
+			},
+			Services: map[string]config.Service{
+				"protected": {Source: "authSource", Alias: "protected"},
+			},
+		},
+		BaseDir: dir,
+	})
+	if err != nil {
+		t.Fatalf("Build returned error: %v", err)
+	}
+	if len(ntc.Tools) != 1 {
+		t.Fatalf("expected one tool, got %#v", ntc.Tools)
+	}
+	tool := ntc.Tools[0]
+	if len(tool.AuthAlternatives) != 2 {
+		t.Fatalf("expected 2 auth alternatives, got %#v", tool.AuthAlternatives)
+	}
+	if len(tool.AuthAlternatives[0].Requirements) != 1 || tool.AuthAlternatives[0].Requirements[0].Name != "oauth" {
+		t.Fatalf("expected oauth alternative first, got %#v", tool.AuthAlternatives)
+	}
+	if len(tool.AuthAlternatives[1].Requirements) != 1 || tool.AuthAlternatives[1].Requirements[0].Name != "api_key" {
+		t.Fatalf("expected api_key alternative second, got %#v", tool.AuthAlternatives)
+	}
+	if len(tool.Auth) != 2 {
+		t.Fatalf("expected legacy flattened auth compatibility field, got %#v", tool.Auth)
+	}
+}
+
 func TestBuildRejectsWorkflowReferencingIgnoredOperation(t *testing.T) {
 	dir := t.TempDir()
 
