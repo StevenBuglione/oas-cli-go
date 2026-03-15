@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/StevenBuglione/oas-cli-go/pkg/audit"
@@ -37,6 +38,9 @@ type Options struct {
 	SessionScope         string
 	ShareMode            string
 	ConfigFingerprint    string
+	// GracePeriod is the maximum time to wait for in-flight requests to drain
+	// before triggering shutdown when a session lease expires.  Defaults to 5s.
+	GracePeriod          time.Duration
 	HTTPClient           *http.Client
 	Observer             obs.Observer
 	KeychainResolver     func(string) (string, error)
@@ -57,11 +61,13 @@ type Server struct {
 	sessionScope         string
 	shareMode            string
 	configFingerprint    string
+	gracePeriod          time.Duration
 	observer             obs.Observer
 	keychainResolver     func(string) (string, error)
 	shutdown             func() error
 	leaseMu              sync.Mutex
 	leases               map[string]sessionLease
+	inflight             atomic.Int64
 }
 
 type sessionLease struct {
@@ -157,6 +163,9 @@ func NewServer(options Options) *Server {
 	if options.Observer == nil {
 		options.Observer = obs.NewNop()
 	}
+	if options.GracePeriod <= 0 {
+		options.GracePeriod = 5 * time.Second
+	}
 	return &Server{
 		auditStore:           audit.NewFileStore(options.AuditPath),
 		client:               options.HTTPClient,
@@ -171,11 +180,18 @@ func NewServer(options Options) *Server {
 		sessionScope:         options.SessionScope,
 		shareMode:            options.ShareMode,
 		configFingerprint:    options.ConfigFingerprint,
+		gracePeriod:          options.GracePeriod,
 		observer:             options.Observer,
 		keychainResolver:     options.KeychainResolver,
 		shutdown:             options.Shutdown,
 		leases:               map[string]sessionLease{},
 	}
+}
+
+// InflightCount returns the number of non-runtime requests currently in-flight.
+// Exposed for testing.
+func (server *Server) InflightCount() int64 {
+	return server.inflight.Load()
 }
 
 func (server *Server) Handler() http.Handler {
@@ -190,7 +206,22 @@ func (server *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/runtime/heartbeat", server.handleRuntimeHeartbeat)
 	mux.HandleFunc("/v1/runtime/stop", server.handleRuntimeStop)
 	mux.HandleFunc("/v1/runtime/session-close", server.handleRuntimeSessionClose)
-	return mux
+	return server.inflightMiddleware(mux)
+}
+
+// inflightMiddleware wraps every request to track the server-level in-flight
+// count.  Runtime management endpoints (/v1/runtime/*) are excluded so that
+// heartbeat and session-close calls are not counted as business requests.
+func (server *Server) inflightMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/v1/runtime/") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		server.inflight.Add(1)
+		defer server.inflight.Add(-1)
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (server *Server) handleEffectiveCatalog(w http.ResponseWriter, r *http.Request) {
@@ -1143,7 +1174,7 @@ func (server *Server) expireLease(sessionID string, expiresAt time.Time) {
 	server.leaseMu.Unlock()
 	server.recordRuntimeEvent("session_expiry", "", sessionID, "allowed", "session_expiry", 0)
 	if remaining == 0 && server.shutdownMode == "when-owner-exits" && server.shutdown != nil {
-		_ = server.shutdown()
+		server.drainInflightAndShutdown("expiry")
 	}
 }
 
@@ -1157,8 +1188,20 @@ func (server *Server) removeLease(sessionID string) {
 	remaining := len(server.leases)
 	server.leaseMu.Unlock()
 	if ok && remaining == 0 && server.shutdownMode == "when-owner-exits" && server.shutdown != nil {
-		_ = server.shutdown()
+		server.drainInflightAndShutdown("close")
 	}
+}
+
+// drainInflightAndShutdown waits up to gracePeriod for in-flight requests to
+// complete, then records a lease_expiry_shutdown audit event and calls the
+// shutdown hook.  reason is "expiry" or "close".
+func (server *Server) drainInflightAndShutdown(reason string) {
+	deadline := time.Now().Add(server.gracePeriod)
+	for server.inflight.Load() > 0 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	server.recordRuntimeEvent("lease_expiry_shutdown", "", "", "allowed", "lease_expiry_shutdown:"+reason, 0)
+	_ = server.shutdown()
 }
 
 func (server *Server) requireConfiguredAuth(w http.ResponseWriter, r *http.Request, requireDefaultConfig bool) bool {

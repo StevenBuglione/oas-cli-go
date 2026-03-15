@@ -2740,3 +2740,136 @@ func TestServerRefreshEndpointReportsStaleFallback(t *testing.T) {
 		t.Fatalf("expected stale fallback source outcome, got %#v", first)
 	}
 }
+
+// TestServerLeaseExpiryShutdownEmitsAuditOutcome verifies that when a session
+// lease expires and triggers server shutdown, a "lease_expiry_shutdown" audit
+// event is written.  This covers review finding #1: missing audit outcome for
+// the lease-expiry shutdown decision.
+func TestServerLeaseExpiryShutdownEmitsAuditOutcome(t *testing.T) {
+	dir := t.TempDir()
+	auditPath := filepath.Join(dir, "audit.log")
+	shutdownCalled := make(chan struct{}, 1)
+	server := runtime.NewServer(runtime.Options{
+		AuditPath:            auditPath,
+		StateDir:             filepath.Join(dir, "state"),
+		HeartbeatSeconds:     1,
+		MissedHeartbeatLimit: 1,
+		ShutdownMode:         "when-owner-exits",
+		Shutdown: func() error {
+			select {
+			case shutdownCalled <- struct{}{}:
+			default:
+			}
+			return nil
+		},
+	})
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	postRuntimeJSON(t, httpServer.URL+"/v1/runtime/heartbeat", map[string]any{"sessionId": "audit-sess"})
+	expectSignal(t, shutdownCalled, 2*time.Second, "expected expired lease to trigger shutdown")
+
+	events, err := audit.NewFileStore(auditPath).List()
+	if err != nil {
+		t.Fatalf("list audit events: %v", err)
+	}
+
+	var sawShutdownAudit bool
+	for _, event := range events {
+		if event.EventType == "lease_expiry_shutdown" {
+			sawShutdownAudit = true
+		}
+	}
+	if !sawShutdownAudit {
+		t.Fatalf("expected lease_expiry_shutdown audit event, events were: %#v", events)
+	}
+}
+
+// TestServerInflightTrackedForNonLeaseRequests verifies that the server-level
+// in-flight counter increments while a non-lease request is being served and
+// returns to zero after the response is sent.  This covers review finding #2:
+// the previous test used a lease endpoint (excluded from tracking) so the
+// counter was always zero.
+func TestServerInflightTrackedForNonLeaseRequests(t *testing.T) {
+	dir := t.TempDir()
+
+	// Slow backend: blocks until signalled so we can observe inflight > 0.
+	proceed := make(chan struct{})
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		<-proceed
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	}))
+	defer backend.Close()
+
+	writeRuntimeFile(t, dir, "slow.openapi.yaml", `
+openapi: 3.1.0
+info:
+  title: Slow API
+  version: "1.0.0"
+servers:
+  - url: `+backend.URL+`
+paths:
+  /ping:
+    get:
+      operationId: ping
+      responses:
+        "200":
+          description: OK
+`)
+	configPath := writeRuntimeFile(t, dir, ".cli.json", `{
+  "cli": "1.0.0",
+  "mode": { "default": "discover" },
+  "sources": {
+    "slowSource": {
+      "type": "openapi",
+      "uri": "./slow.openapi.yaml",
+      "enabled": true
+    }
+  },
+  "services": {
+    "slow": { "source": "slowSource", "alias": "slow" }
+  }
+}`)
+
+	server := runtime.NewServer(runtime.Options{
+		AuditPath:   filepath.Join(dir, "audit.log"),
+		GracePeriod: 50 * time.Millisecond,
+	})
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	// Fire a tool execute request that blocks inside the slow backend.
+	reqDone := make(chan struct{})
+	go func() {
+		defer close(reqDone)
+		body := bytes.NewBufferString(`{"configPath":"` + configPath + `","toolId":"slow:ping"}`)
+		resp, err := http.Post(httpServer.URL+"/v1/tools/execute", "application/json", body)
+		if err == nil {
+			_ = resp.Body.Close()
+		}
+	}()
+
+	// Poll until inflight > 0 (allow up to 500 ms).
+	var countDuring int64
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		countDuring = server.InflightCount()
+		if countDuring > 0 {
+			break
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	close(proceed)
+	<-reqDone
+
+	// Allow brief settling time for the defer in inflightMiddleware to run.
+	time.Sleep(10 * time.Millisecond)
+	countAfter := server.InflightCount()
+
+	if countDuring == 0 {
+		t.Fatal("expected inflight > 0 while tool execute request was in-flight")
+	}
+	if countAfter != 0 {
+		t.Fatalf("expected inflight=0 after request completed, got %d", countAfter)
+	}
+}
