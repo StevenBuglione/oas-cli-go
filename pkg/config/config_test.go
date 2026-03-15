@@ -245,3 +245,355 @@ func TestLoadEffectiveRejectsNegativeRefreshMaxAge(t *testing.T) {
 		t.Fatalf("expected refresh schema diagnostic, got %#v", validationErr.Diagnostics)
 	}
 }
+
+func TestLoadEffectiveLoadsRuntimeLocalConfiguration(t *testing.T) {
+	dir := t.TempDir()
+	projectPath := writeJSON(t, dir, ".cli.json", `{
+	  "cli": "1.0.0",
+	  "mode": { "default": "discover" },
+	  "runtime": {
+	    "mode": "auto",
+	    "local": {
+	      "sessionScope": "shared-group",
+	      "heartbeatSeconds": 15,
+	      "missedHeartbeatLimit": 3,
+	      "shutdown": "manual",
+	      "share": "group",
+	      "shareKey": "team-a"
+	    }
+	  },
+	  "mcpServers": {
+	    "filesystem": {
+	      "type": "stdio",
+	      "command": "npx"
+	    }
+	  }
+	}`)
+
+	effective, err := config.LoadEffective(config.LoadOptions{ProjectPath: projectPath, WorkingDir: dir})
+	if err != nil {
+		t.Fatalf("LoadEffective returned error: %v", err)
+	}
+
+	if effective.Config.Runtime == nil {
+		t.Fatalf("expected runtime configuration to be loaded")
+	}
+	if effective.Config.Runtime.Mode != "auto" {
+		t.Fatalf("expected runtime mode auto, got %q", effective.Config.Runtime.Mode)
+	}
+	if effective.Config.Runtime.Local == nil {
+		t.Fatalf("expected local runtime configuration")
+	}
+	if effective.Config.Runtime.Local.SessionScope != "shared-group" {
+		t.Fatalf("expected sessionScope shared-group, got %q", effective.Config.Runtime.Local.SessionScope)
+	}
+	if effective.Config.Runtime.Local.Share != "group" {
+		t.Fatalf("expected share group, got %q", effective.Config.Runtime.Local.Share)
+	}
+	if effective.Config.Runtime.Local.ShareKey != "team-a" {
+		t.Fatalf("expected shareKey team-a, got %q", effective.Config.Runtime.Local.ShareKey)
+	}
+}
+
+func TestLoadEffectiveRejectsLocalRuntimeWithZeroHeartbeatSeconds(t *testing.T) {
+	dir := t.TempDir()
+	projectPath := writeJSON(t, dir, ".cli.json", `{
+	  "cli": "1.0.0",
+	  "mode": { "default": "discover" },
+	  "runtime": {
+	    "mode": "local",
+	    "local": {
+	      "sessionScope": "terminal",
+	      "heartbeatSeconds": 0,
+	      "missedHeartbeatLimit": 3,
+	      "shutdown": "when-owner-exits",
+	      "share": "exclusive"
+	    }
+	  },
+	  "mcpServers": {
+	    "filesystem": {
+	      "type": "stdio",
+	      "command": "npx"
+	    }
+	  }
+	}`)
+
+	_, err := config.LoadEffective(config.LoadOptions{ProjectPath: projectPath, WorkingDir: dir})
+	requireValidationDiagnostic(t, err, "runtime.local.heartbeatSeconds", "positive integer")
+}
+
+func TestLoadEffectiveRejectsLocalRuntimeWithZeroMissedHeartbeatLimit(t *testing.T) {
+	dir := t.TempDir()
+	projectPath := writeJSON(t, dir, ".cli.json", `{
+	  "cli": "1.0.0",
+	  "mode": { "default": "discover" },
+	  "runtime": {
+	    "mode": "local",
+	    "local": {
+	      "sessionScope": "terminal",
+	      "heartbeatSeconds": 15,
+	      "missedHeartbeatLimit": 0,
+	      "shutdown": "when-owner-exits",
+	      "share": "exclusive"
+	    }
+	  },
+	  "mcpServers": {
+	    "filesystem": {
+	      "type": "stdio",
+	      "command": "npx"
+	    }
+	  }
+	}`)
+
+	_, err := config.LoadEffective(config.LoadOptions{ProjectPath: projectPath, WorkingDir: dir})
+	requireValidationDiagnostic(t, err, "runtime.local.missedHeartbeatLimit", "positive integer")
+}
+
+func TestLoadEffectiveMergesHeartbeatFieldsAcrossScopes(t *testing.T) {
+	dir := t.TempDir()
+	projectPath := writeJSON(t, dir, ".cli.json", `{
+	  "cli": "1.0.0",
+	  "mode": { "default": "discover" },
+	  "runtime": {
+	    "mode": "local",
+	    "local": {
+	      "sessionScope": "shared-group",
+	      "heartbeatSeconds": 15,
+	      "missedHeartbeatLimit": 3,
+	      "shutdown": "manual",
+	      "share": "group",
+	      "shareKey": "team-a"
+	    }
+	  },
+	  "mcpServers": {
+	    "filesystem": {
+	      "type": "stdio",
+	      "command": "npx"
+	    }
+	  }
+	}`)
+	localPath := writeJSON(t, dir, ".cli.local.json", `{
+	  "runtime": {
+	    "local": {
+	      "shareKey": "team-b"
+	    }
+	  }
+	}`)
+
+	effective, err := config.LoadEffective(config.LoadOptions{
+		ProjectPath: projectPath,
+		LocalPath:   localPath,
+		WorkingDir:  dir,
+	})
+	if err != nil {
+		t.Fatalf("LoadEffective returned error: %v", err)
+	}
+	if effective.Config.Runtime == nil || effective.Config.Runtime.Local == nil {
+		t.Fatalf("expected local runtime configuration")
+	}
+	if effective.Config.Runtime.Local.HeartbeatSeconds != 15 {
+		t.Fatalf("expected heartbeatSeconds 15 after merge, got %d", effective.Config.Runtime.Local.HeartbeatSeconds)
+	}
+	if effective.Config.Runtime.Local.MissedHeartbeatLimit != 3 {
+		t.Fatalf("expected missedHeartbeatLimit 3 after merge, got %d", effective.Config.Runtime.Local.MissedHeartbeatLimit)
+	}
+	if effective.Config.Runtime.Local.ShareKey != "team-b" {
+		t.Fatalf("expected local shareKey override team-b, got %q", effective.Config.Runtime.Local.ShareKey)
+	}
+}
+
+func TestLoadEffectiveRejectsManualShutdownForExclusiveSessionScopes(t *testing.T) {
+	dir := t.TempDir()
+	projectPath := writeJSON(t, dir, ".cli.json", `{
+	  "cli": "1.0.0",
+	  "mode": { "default": "discover" },
+	  "runtime": {
+	    "mode": "local",
+	    "local": {
+	      "sessionScope": "terminal",
+	      "shutdown": "manual",
+	      "share": "exclusive"
+	    }
+	  },
+	  "mcpServers": {
+	    "filesystem": {
+	      "type": "stdio",
+	      "command": "npx"
+	    }
+	  }
+	}`)
+
+	_, err := config.LoadEffective(config.LoadOptions{ProjectPath: projectPath, WorkingDir: dir})
+	requireValidationDiagnostic(t, err, "runtime.local.shutdown", "shared-group")
+}
+
+func TestLoadEffectiveRejectsRemoteRuntimeWithoutURL(t *testing.T) {
+	dir := t.TempDir()
+	projectPath := writeJSON(t, dir, ".cli.json", `{
+	  "cli": "1.0.0",
+	  "mode": { "default": "discover" },
+	  "runtime": {
+	    "mode": "remote",
+	    "remote": {
+	      "oauth": {
+	        "mode": "providedToken",
+	        "tokenRef": "env:OAS_REMOTE_TOKEN"
+	      }
+	    }
+	  },
+	  "sources": {
+	    "tickets": {
+	      "type": "openapi",
+	      "uri": "https://example.com/openapi.json"
+	    }
+	  },
+	  "services": {
+	    "tickets": {
+	      "source": "tickets"
+	    }
+	  }
+	}`)
+
+	_, err := config.LoadEffective(config.LoadOptions{ProjectPath: projectPath, WorkingDir: dir})
+	requireValidationDiagnostic(t, err, "runtime.remote.url", "required")
+}
+
+func TestLoadEffectiveRejectsOAuthClientRemoteRuntimeWithoutClientSecret(t *testing.T) {
+	dir := t.TempDir()
+	projectPath := writeJSON(t, dir, ".cli.json", `{
+	  "cli": "1.0.0",
+	  "mode": { "default": "discover" },
+	  "runtime": {
+	    "mode": "remote",
+	    "remote": {
+	      "url": "https://runtime.example.com",
+	      "oauth": {
+	        "mode": "oauthClient",
+	        "client": {
+	          "tokenURL": "https://auth.example.com/token",
+	          "clientId": { "type": "env", "value": "OAS_REMOTE_CLIENT_ID" }
+	        }
+	      }
+	    }
+	  },
+	  "sources": {
+	    "tickets": {
+	      "type": "openapi",
+	      "uri": "https://example.com/openapi.json"
+	    }
+	  },
+	  "services": {
+	    "tickets": {
+	      "source": "tickets"
+	    }
+	  }
+	}`)
+
+	_, err := config.LoadEffective(config.LoadOptions{ProjectPath: projectPath, WorkingDir: dir})
+	requireValidationDiagnostic(t, err, "runtime.remote.oauth.client.clientSecret", "required")
+}
+
+func TestLoadEffectiveRejectsSharedGroupLocalRuntimeWithoutShareKey(t *testing.T) {
+	dir := t.TempDir()
+	projectPath := writeJSON(t, dir, ".cli.json", `{
+	  "cli": "1.0.0",
+	  "mode": { "default": "discover" },
+	  "runtime": {
+	    "mode": "local",
+	    "local": {
+	      "sessionScope": "shared-group",
+	      "share": "group",
+	      "shutdown": "manual"
+	    }
+	  },
+	  "mcpServers": {
+	    "filesystem": {
+	      "type": "stdio",
+	      "command": "npx"
+	    }
+	  }
+	}`)
+
+	_, err := config.LoadEffective(config.LoadOptions{ProjectPath: projectPath, WorkingDir: dir})
+	requireValidationDiagnostic(t, err, "runtime.local.shareKey", "required")
+}
+
+func TestLoadEffectiveRejectsTerminalLocalRuntimeWithGroupSharing(t *testing.T) {
+	dir := t.TempDir()
+	projectPath := writeJSON(t, dir, ".cli.json", `{
+	  "cli": "1.0.0",
+	  "mode": { "default": "discover" },
+	  "runtime": {
+	    "mode": "local",
+	    "local": {
+	      "sessionScope": "terminal",
+	      "share": "group",
+	      "shareKey": "team-a",
+	      "shutdown": "when-owner-exits"
+	    }
+	  },
+	  "mcpServers": {
+	    "filesystem": {
+	      "type": "stdio",
+	      "command": "npx"
+	    }
+	  }
+	}`)
+
+	_, err := config.LoadEffective(config.LoadOptions{ProjectPath: projectPath, WorkingDir: dir})
+	requireValidationDiagnostic(t, err, "runtime.local.share", "exclusive")
+}
+
+func TestLoadEffectiveLoadsRemoteRuntimeOAuthConfiguration(t *testing.T) {
+	dir := t.TempDir()
+	projectPath := writeJSON(t, dir, ".cli.json", `{
+	  "cli": "1.0.0",
+	  "mode": { "default": "discover" },
+	  "runtime": {
+	    "mode": "remote",
+	    "remote": {
+	      "url": "https://runtime.example.com",
+	      "oauth": {
+	        "mode": "browserLogin",
+	        "audience": "oasclird",
+	        "scopes": ["bundle:payments", "tool:users.get"],
+	        "browserLogin": {
+	          "callbackPort": 8123
+	        }
+	      }
+	    }
+	  },
+	  "sources": {
+	    "tickets": {
+	      "type": "openapi",
+	      "uri": "https://example.com/openapi.json"
+	    }
+	  },
+	  "services": {
+	    "tickets": {
+	      "source": "tickets"
+	    }
+	  }
+	}`)
+
+	effective, err := config.LoadEffective(config.LoadOptions{ProjectPath: projectPath, WorkingDir: dir})
+	if err != nil {
+		t.Fatalf("LoadEffective returned error: %v", err)
+	}
+
+	if effective.Config.Runtime == nil || effective.Config.Runtime.Remote == nil {
+		t.Fatalf("expected remote runtime configuration to be loaded")
+	}
+	if effective.Config.Runtime.Remote.URL != "https://runtime.example.com" {
+		t.Fatalf("expected remote url to load, got %q", effective.Config.Runtime.Remote.URL)
+	}
+	if effective.Config.Runtime.Remote.OAuth == nil {
+		t.Fatalf("expected remote oauth config to load")
+	}
+	if effective.Config.Runtime.Remote.OAuth.Mode != "browserLogin" {
+		t.Fatalf("expected remote oauth mode browserLogin, got %q", effective.Config.Runtime.Remote.OAuth.Mode)
+	}
+	if effective.Config.Runtime.Remote.OAuth.BrowserLogin == nil || effective.Config.Runtime.Remote.OAuth.BrowserLogin.CallbackPort != 8123 {
+		t.Fatalf("expected browser login callback port 8123, got %#v", effective.Config.Runtime.Remote.OAuth.BrowserLogin)
+	}
+}

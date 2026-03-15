@@ -33,9 +33,6 @@ func validateDocument(data []byte, partial bool) error {
 
 	diagnostics := make([]Diagnostic, 0, len(result.Errors()))
 	for _, item := range result.Errors() {
-		if shouldSkipSchemaDiagnostic(item.Description()) {
-			continue
-		}
 		path := normalizePath(item.Context().String(), item.Description())
 		if path == "(root)" {
 			path = ""
@@ -43,16 +40,31 @@ func validateDocument(data []byte, partial bool) error {
 		if path == "" {
 			path = rootPathForDescription(item.Description())
 		}
+		if shouldSkipSchemaDiagnostic(path, item.Description()) {
+			continue
+		}
 		diagnostics = append(diagnostics, Diagnostic{
 			Path:    path,
 			Message: item.Description(),
 		})
 	}
+	if len(diagnostics) == 0 {
+		return nil
+	}
 	return &ValidationError{Diagnostics: diagnostics}
 }
 
-func shouldSkipSchemaDiagnostic(message string) bool {
-	return strings.HasPrefix(message, "Must validate")
+func shouldSkipSchemaDiagnostic(path, message string) bool {
+	if strings.HasPrefix(message, "Must validate") {
+		return true
+	}
+	if message == "Must be greater than or equal to 1" {
+		switch path {
+		case "runtime.local.heartbeatSeconds", "runtime.local.missedHeartbeatLimit":
+			return true
+		}
+	}
+	return false
 }
 
 func normalizePath(context, message string) string {
@@ -94,14 +106,157 @@ func rootPathForDescription(message string) string {
 }
 
 func validateConfig(cfg Config) error {
+	diagnostics := []Diagnostic{}
 	data, err := json.Marshal(cfg)
 	if err != nil {
 		return err
 	}
 	if err := validateDocument(data, false); err != nil {
-		return err
+		validationErr, ok := err.(*ValidationError)
+		if !ok {
+			return err
+		}
+		diagnostics = append(diagnostics, validationErr.Diagnostics...)
 	}
-	return validateMCPConfig(cfg)
+	if err := validateRuntimeConfig(cfg); err != nil {
+		validationErr, ok := err.(*ValidationError)
+		if !ok {
+			return err
+		}
+		diagnostics = append(diagnostics, validationErr.Diagnostics...)
+	}
+	if err := validateMCPConfig(cfg); err != nil {
+		validationErr, ok := err.(*ValidationError)
+		if !ok {
+			return err
+		}
+		diagnostics = append(diagnostics, validationErr.Diagnostics...)
+	}
+	if len(diagnostics) > 0 {
+		return &ValidationError{Diagnostics: diagnostics}
+	}
+	return nil
+}
+
+func validateRuntimeConfig(cfg Config) error {
+	if cfg.Runtime == nil {
+		return nil
+	}
+	diagnostics := []Diagnostic{}
+	if cfg.Runtime.Local != nil {
+		local := cfg.Runtime.Local
+		if local.HeartbeatSeconds <= 0 {
+			diagnostics = append(diagnostics, Diagnostic{
+				Path:    "runtime.local.heartbeatSeconds",
+				Message: "must be a positive integer when runtime.local is configured",
+			})
+		}
+		if local.MissedHeartbeatLimit <= 0 {
+			diagnostics = append(diagnostics, Diagnostic{
+				Path:    "runtime.local.missedHeartbeatLimit",
+				Message: "must be a positive integer when runtime.local is configured",
+			})
+		}
+		if local.Shutdown == "manual" && local.SessionScope != "shared-group" {
+			diagnostics = append(diagnostics, Diagnostic{
+				Path:    "runtime.local.shutdown",
+				Message: `manual shutdown requires sessionScope "shared-group"`,
+			})
+		}
+		switch local.SessionScope {
+		case "shared-group":
+			if local.Share != "group" {
+				diagnostics = append(diagnostics, Diagnostic{
+					Path:    "runtime.local.share",
+					Message: `shared-group requires share "group"`,
+				})
+			}
+			if local.ShareKey == "" {
+				diagnostics = append(diagnostics, Diagnostic{
+					Path:    "runtime.local.shareKey",
+					Message: `required when sessionScope is "shared-group"`,
+				})
+			}
+		case "terminal", "agent":
+			if local.Share != "" && local.Share != "exclusive" {
+				diagnostics = append(diagnostics, Diagnostic{
+					Path:    "runtime.local.share",
+					Message: `exclusive sharing is required for terminal and agent scopes`,
+				})
+			}
+			if local.ShareKey != "" {
+				diagnostics = append(diagnostics, Diagnostic{
+					Path:    "runtime.local.shareKey",
+					Message: `shareKey is only allowed when sessionScope is "shared-group"`,
+				})
+			}
+		}
+	}
+	if cfg.Runtime.Mode == "remote" && (cfg.Runtime.Remote == nil || cfg.Runtime.Remote.URL == "") {
+		diagnostics = append(diagnostics, Diagnostic{
+			Path:    "runtime.remote.url",
+			Message: "required when runtime.mode is remote",
+		})
+	}
+	if cfg.Runtime.Mode == "remote" && cfg.Runtime.Remote != nil && cfg.Runtime.Remote.OAuth != nil {
+		oauth := cfg.Runtime.Remote.OAuth
+		switch oauth.Mode {
+		case "providedToken":
+			if oauth.TokenRef == "" {
+				diagnostics = append(diagnostics, Diagnostic{
+					Path:    "runtime.remote.oauth.tokenRef",
+					Message: "required when runtime.remote.oauth.mode is providedToken",
+				})
+			}
+		case "oauthClient":
+			if oauth.Client == nil {
+				diagnostics = append(diagnostics, Diagnostic{
+					Path:    "runtime.remote.oauth.client",
+					Message: "required when runtime.remote.oauth.mode is oauthClient",
+				})
+				break
+			}
+			if oauth.Client.TokenURL == "" {
+				diagnostics = append(diagnostics, Diagnostic{
+					Path:    "runtime.remote.oauth.client.tokenURL",
+					Message: "required when runtime.remote.oauth.mode is oauthClient",
+				})
+			}
+			if oauth.Client.ClientID == nil {
+				diagnostics = append(diagnostics, Diagnostic{
+					Path:    "runtime.remote.oauth.client.clientId",
+					Message: "required when runtime.remote.oauth.mode is oauthClient",
+				})
+			}
+			if oauth.Client.ClientSecret == nil {
+				diagnostics = append(diagnostics, Diagnostic{
+					Path:    "runtime.remote.oauth.client.clientSecret",
+					Message: "required when runtime.remote.oauth.mode is oauthClient",
+				})
+			}
+		}
+	}
+	if cfg.Runtime.Server != nil && cfg.Runtime.Server.Auth != nil {
+		auth := cfg.Runtime.Server.Auth
+		if auth.Mode == "oauth2Introspection" {
+			if auth.Audience == "" {
+				diagnostics = append(diagnostics, Diagnostic{
+					Path:    "runtime.server.auth.audience",
+					Message: "required when runtime.server.auth.mode is oauth2Introspection",
+				})
+			}
+			if auth.IntrospectionURL == "" {
+				diagnostics = append(diagnostics, Diagnostic{
+					Path:    "runtime.server.auth.introspectionURL",
+					Message: "required when runtime.server.auth.mode is oauth2Introspection",
+				})
+			}
+		}
+	}
+	if len(diagnostics) > 0 {
+		return &ValidationError{Diagnostics: diagnostics}
+	}
+	return nil
 }
 
 func decodeRawConfig(data []byte) (rawConfig, error) {

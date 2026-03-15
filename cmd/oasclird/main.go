@@ -17,6 +17,12 @@ func main() {
 	stateDir := flag.String("state-dir", "", "state directory root for runtime metadata and audit logs")
 	auditPath := flag.String("audit-path", "", "audit log path")
 	cacheDir := flag.String("cache-dir", "", "cache directory for remote discovery and OpenAPI documents")
+	heartbeatSeconds := flag.Int("heartbeat-seconds", 0, "heartbeat interval in seconds for lease management")
+	missedHeartbeatLimit := flag.Int("missed-heartbeat-limit", 0, "number of missed heartbeats before session expiry")
+	shutdownMode := flag.String("shutdown", "", "shutdown mode: when-owner-exits or manual")
+	sessionScope := flag.String("session-scope", "", "local runtime session scope")
+	shareMode := flag.String("share", "", "local runtime share mode")
+	configFingerprint := flag.String("config-fingerprint", "", "local runtime config fingerprint")
 	flag.Parse()
 
 	paths, err := instance.Resolve(instance.Options{
@@ -33,12 +39,6 @@ func main() {
 	if *cacheDir == "" {
 		*cacheDir = paths.CacheDir
 	}
-	server := runtime.NewServer(runtime.Options{
-		AuditPath:         *auditPath,
-		CacheDir:          *cacheDir,
-		StateDir:          paths.StateDir,
-		DefaultConfigPath: *configPath,
-	})
 	listenAddr := *addr
 	if listenAddr == "" {
 		listenAddr = "127.0.0.1:0"
@@ -47,9 +47,25 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	runtimeURL := "http://" + listener.Addr().String()
+	server := runtime.NewServer(runtime.Options{
+		AuditPath:            *auditPath,
+		CacheDir:             *cacheDir,
+		StateDir:             paths.StateDir,
+		DefaultConfigPath:    *configPath,
+		InstanceID:           paths.InstanceID,
+		RuntimeURL:           runtimeURL,
+		HeartbeatSeconds:     *heartbeatSeconds,
+		MissedHeartbeatLimit: *missedHeartbeatLimit,
+		ShutdownMode:         *shutdownMode,
+		SessionScope:         *sessionScope,
+		ShareMode:            *shareMode,
+		ConfigFingerprint:    *configFingerprint,
+		Shutdown:             listener.Close,
+	})
 	info := instance.RuntimeInfo{
 		InstanceID: paths.InstanceID,
-		URL:        "http://" + listener.Addr().String(),
+		URL:        runtimeURL,
 		AuditPath:  *auditPath,
 		CacheDir:   *cacheDir,
 	}

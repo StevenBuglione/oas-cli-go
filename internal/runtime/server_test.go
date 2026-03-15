@@ -3,15 +3,19 @@ package runtime_test
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/StevenBuglione/oas-cli-go/internal/runtime"
+	"github.com/StevenBuglione/oas-cli-go/pkg/audit"
 	"github.com/StevenBuglione/oas-cli-go/pkg/obs"
 )
 
@@ -25,6 +29,497 @@ func writeRuntimeFile(t *testing.T, dir, name, content string) string {
 		t.Fatalf("write %s: %v", name, err)
 	}
 	return path
+}
+
+func postRuntimeJSON(t *testing.T, endpoint string, payload any) (*http.Response, map[string]any) {
+	t.Helper()
+	body, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal payload: %v", err)
+	}
+	resp, err := http.Post(endpoint, "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("post %s: %v", endpoint, err)
+	}
+	t.Cleanup(func() { _ = resp.Body.Close() })
+	var decoded map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&decoded); err != nil {
+		t.Fatalf("decode %s response: %v", endpoint, err)
+	}
+	return resp, decoded
+}
+
+func expectSignal(t *testing.T, signal <-chan struct{}, timeout time.Duration, message string) {
+	t.Helper()
+	select {
+	case <-signal:
+	case <-time.After(timeout):
+		t.Fatal(message)
+	}
+}
+
+func expectNoSignal(t *testing.T, signal <-chan struct{}, duration time.Duration, message string) {
+	t.Helper()
+	select {
+	case <-signal:
+		t.Fatal(message)
+	case <-time.After(duration):
+	}
+}
+
+func TestServerRuntimeInfoIncludesLeaseMetadata(t *testing.T) {
+	dir := t.TempDir()
+	server := runtime.NewServer(runtime.Options{
+		AuditPath:            filepath.Join(dir, "audit.log"),
+		StateDir:             filepath.Join(dir, "state"),
+		CacheDir:             filepath.Join(dir, "cache"),
+		InstanceID:           "runtime-1",
+		RuntimeURL:           "http://127.0.0.1:18765",
+		HeartbeatSeconds:     15,
+		MissedHeartbeatLimit: 3,
+		ShutdownMode:         "when-owner-exits",
+	})
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	resp, err := http.Get(httpServer.URL + "/v1/runtime/info")
+	if err != nil {
+		t.Fatalf("get runtime info: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 runtime info, got %d", resp.StatusCode)
+	}
+	var info map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+		t.Fatalf("decode runtime info: %v", err)
+	}
+	lifecycle, ok := info["lifecycle"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected lifecycle metadata, got %#v", info["lifecycle"])
+	}
+	capabilities, ok := lifecycle["capabilities"].([]any)
+	if !ok {
+		t.Fatalf("expected capabilities array, got %#v", lifecycle["capabilities"])
+	}
+	if len(capabilities) != 2 || capabilities[0] != "heartbeat" || capabilities[1] != "session-close" {
+		t.Fatalf("expected heartbeat/session-close capabilities, got %#v", capabilities)
+	}
+	if got := lifecycle["heartbeatSeconds"]; got != float64(15) {
+		t.Fatalf("expected heartbeatSeconds 15, got %#v", got)
+	}
+	if got := lifecycle["missedHeartbeatLimit"]; got != float64(3) {
+		t.Fatalf("expected missedHeartbeatLimit 3, got %#v", got)
+	}
+	if got := lifecycle["shutdown"]; got != "when-owner-exits" {
+		t.Fatalf("expected shutdown mode when-owner-exits, got %#v", got)
+	}
+}
+
+func TestServerHeartbeatRenewsLease(t *testing.T) {
+	dir := t.TempDir()
+	shutdownCalled := make(chan struct{}, 1)
+	server := runtime.NewServer(runtime.Options{
+		AuditPath:            filepath.Join(dir, "audit.log"),
+		StateDir:             filepath.Join(dir, "state"),
+		HeartbeatSeconds:     1,
+		MissedHeartbeatLimit: 1,
+		ShutdownMode:         "when-owner-exits",
+		Shutdown: func() error {
+			select {
+			case shutdownCalled <- struct{}{}:
+			default:
+			}
+			return nil
+		},
+	})
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	resp, payload := postRuntimeJSON(t, httpServer.URL+"/v1/runtime/heartbeat", map[string]any{"sessionId": "sess-1"})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected first heartbeat 200, got %d", resp.StatusCode)
+	}
+	if renewed, ok := payload["renewed"].(bool); !ok || !renewed {
+		t.Fatalf("expected renewed=true, got %#v", payload)
+	}
+	if got := payload["sessionId"]; got != "sess-1" {
+		t.Fatalf("expected sessionId sess-1, got %#v", got)
+	}
+
+	time.Sleep(700 * time.Millisecond)
+	resp, payload = postRuntimeJSON(t, httpServer.URL+"/v1/runtime/heartbeat", map[string]any{"sessionId": "sess-1"})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected second heartbeat 200, got %d", resp.StatusCode)
+	}
+	if got := payload["sessionId"]; got != "sess-1" {
+		t.Fatalf("expected renewed sessionId sess-1, got %#v", got)
+	}
+	expectNoSignal(t, shutdownCalled, 650*time.Millisecond, "expected renewed lease to remain active past original ttl")
+	expectSignal(t, shutdownCalled, 1200*time.Millisecond, "expected lease to expire after renewed ttl elapsed")
+}
+
+func TestServerSessionCloseRemovesLease(t *testing.T) {
+	dir := t.TempDir()
+	shutdownCalled := make(chan struct{}, 1)
+	server := runtime.NewServer(runtime.Options{
+		AuditPath:            filepath.Join(dir, "audit.log"),
+		StateDir:             filepath.Join(dir, "state"),
+		HeartbeatSeconds:     5,
+		MissedHeartbeatLimit: 1,
+		ShutdownMode:         "when-owner-exits",
+		SessionScope:         "shared-group",
+		ShareMode:            "group",
+		Shutdown: func() error {
+			select {
+			case shutdownCalled <- struct{}{}:
+			default:
+			}
+			return nil
+		},
+	})
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	postRuntimeJSON(t, httpServer.URL+"/v1/runtime/heartbeat", map[string]any{"sessionId": "sess-1"})
+	postRuntimeJSON(t, httpServer.URL+"/v1/runtime/heartbeat", map[string]any{"sessionId": "sess-2"})
+
+	resp, payload := postRuntimeJSON(t, httpServer.URL+"/v1/runtime/session-close", map[string]any{"sessionId": "sess-1"})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected session-close 200, got %d", resp.StatusCode)
+	}
+	if closed, ok := payload["closed"].(bool); !ok || !closed {
+		t.Fatalf("expected closed=true, got %#v", payload)
+	}
+	expectNoSignal(t, shutdownCalled, 300*time.Millisecond, "expected surviving session lease to keep runtime alive")
+
+	postRuntimeJSON(t, httpServer.URL+"/v1/runtime/session-close", map[string]any{"sessionId": "sess-2"})
+	expectSignal(t, shutdownCalled, time.Second, "expected shutdown after last session lease removed")
+}
+
+func TestServerLeaseExpiryTriggersShutdown(t *testing.T) {
+	dir := t.TempDir()
+	shutdownCalled := make(chan struct{}, 1)
+	server := runtime.NewServer(runtime.Options{
+		AuditPath:            filepath.Join(dir, "audit.log"),
+		StateDir:             filepath.Join(dir, "state"),
+		HeartbeatSeconds:     1,
+		MissedHeartbeatLimit: 1,
+		ShutdownMode:         "when-owner-exits",
+		Shutdown: func() error {
+			select {
+			case shutdownCalled <- struct{}{}:
+			default:
+			}
+			return nil
+		},
+	})
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	postRuntimeJSON(t, httpServer.URL+"/v1/runtime/heartbeat", map[string]any{"sessionId": "sess-1"})
+	expectSignal(t, shutdownCalled, 2*time.Second, "expected expired sole lease to trigger shutdown")
+}
+
+func TestServerLeaseExpiryRetainsManualRuntime(t *testing.T) {
+	dir := t.TempDir()
+	shutdownCalled := make(chan struct{}, 1)
+	server := runtime.NewServer(runtime.Options{
+		AuditPath:            filepath.Join(dir, "audit.log"),
+		StateDir:             filepath.Join(dir, "state"),
+		HeartbeatSeconds:     1,
+		MissedHeartbeatLimit: 1,
+		ShutdownMode:         "manual",
+		Shutdown: func() error {
+			select {
+			case shutdownCalled <- struct{}{}:
+			default:
+			}
+			return nil
+		},
+	})
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	postRuntimeJSON(t, httpServer.URL+"/v1/runtime/heartbeat", map[string]any{"sessionId": "sess-1"})
+	expectNoSignal(t, shutdownCalled, 1500*time.Millisecond, "expected manual runtime to ignore lease expiry")
+}
+
+func TestServerRejectsExclusiveLeaseConflict(t *testing.T) {
+	dir := t.TempDir()
+	server := runtime.NewServer(runtime.Options{
+		AuditPath:            filepath.Join(dir, "audit.log"),
+		StateDir:             filepath.Join(dir, "state"),
+		HeartbeatSeconds:     15,
+		MissedHeartbeatLimit: 3,
+		ShutdownMode:         "when-owner-exits",
+		SessionScope:         "terminal",
+		ShareMode:            "exclusive",
+		ConfigFingerprint:    "fp-1",
+	})
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	resp, _ := postRuntimeJSON(t, httpServer.URL+"/v1/runtime/heartbeat", map[string]any{
+		"sessionId":         "sess-1",
+		"configFingerprint": "fp-1",
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected first heartbeat 200, got %d", resp.StatusCode)
+	}
+
+	body, err := json.Marshal(map[string]any{
+		"sessionId":         "sess-2",
+		"configFingerprint": "fp-1",
+	})
+	if err != nil {
+		t.Fatalf("marshal heartbeat: %v", err)
+	}
+	conflictResp, err := http.Post(httpServer.URL+"/v1/runtime/heartbeat", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("post conflicting heartbeat: %v", err)
+	}
+	defer conflictResp.Body.Close()
+	if conflictResp.StatusCode != http.StatusConflict {
+		t.Fatalf("expected 409 conflicting heartbeat, got %d", conflictResp.StatusCode)
+	}
+	data, _ := io.ReadAll(conflictResp.Body)
+	if strings.TrimSpace(string(data)) != "runtime_attach_conflict" {
+		t.Fatalf("expected runtime_attach_conflict response, got %q", strings.TrimSpace(string(data)))
+	}
+}
+
+func TestServerRejectsLeaseFingerprintMismatch(t *testing.T) {
+	dir := t.TempDir()
+	server := runtime.NewServer(runtime.Options{
+		AuditPath:            filepath.Join(dir, "audit.log"),
+		StateDir:             filepath.Join(dir, "state"),
+		HeartbeatSeconds:     15,
+		MissedHeartbeatLimit: 3,
+		ShutdownMode:         "when-owner-exits",
+		SessionScope:         "terminal",
+		ShareMode:            "exclusive",
+		ConfigFingerprint:    "fp-1",
+	})
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	body, err := json.Marshal(map[string]any{
+		"sessionId":         "sess-1",
+		"configFingerprint": "fp-2",
+	})
+	if err != nil {
+		t.Fatalf("marshal heartbeat: %v", err)
+	}
+	resp, err := http.Post(httpServer.URL+"/v1/runtime/heartbeat", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("post mismatched heartbeat: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("expected 409 mismatched heartbeat, got %d", resp.StatusCode)
+	}
+	data, _ := io.ReadAll(resp.Body)
+	if strings.TrimSpace(string(data)) != "runtime_attach_mismatch" {
+		t.Fatalf("expected runtime_attach_mismatch response, got %q", strings.TrimSpace(string(data)))
+	}
+}
+
+func TestServerRecordsSessionLifecycleAuditEvents(t *testing.T) {
+	dir := t.TempDir()
+	auditPath := filepath.Join(dir, "audit.log")
+	server := runtime.NewServer(runtime.Options{
+		AuditPath:            auditPath,
+		StateDir:             filepath.Join(dir, "state"),
+		HeartbeatSeconds:     1,
+		MissedHeartbeatLimit: 1,
+		ShutdownMode:         "manual",
+		SessionScope:         "shared-group",
+		ShareMode:            "group",
+		ConfigFingerprint:    "fp-1",
+	})
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	postRuntimeJSON(t, httpServer.URL+"/v1/runtime/heartbeat", map[string]any{
+		"sessionId":         "close-me",
+		"configFingerprint": "fp-1",
+	})
+	postRuntimeJSON(t, httpServer.URL+"/v1/runtime/session-close", map[string]any{"sessionId": "close-me"})
+	postRuntimeJSON(t, httpServer.URL+"/v1/runtime/heartbeat", map[string]any{
+		"sessionId":         "expire-me",
+		"configFingerprint": "fp-1",
+	})
+	time.Sleep(1500 * time.Millisecond)
+
+	events, err := audit.NewFileStore(auditPath).List()
+	if err != nil {
+		t.Fatalf("list audit events: %v", err)
+	}
+
+	var sawClose, sawExpiry bool
+	for _, event := range events {
+		if event.EventType == "session_close" && event.SessionID == "close-me" {
+			sawClose = true
+		}
+		if event.EventType == "session_expiry" && event.SessionID == "expire-me" {
+			sawExpiry = true
+		}
+	}
+	if !sawClose {
+		t.Fatalf("expected session_close audit event, got %#v", events)
+	}
+	if !sawExpiry {
+		t.Fatalf("expected session_expiry audit event, got %#v", events)
+	}
+}
+
+func TestServerRecordsAuthLifecycleAuditEvents(t *testing.T) {
+	dir := t.TempDir()
+	writeRuntimeFile(t, dir, "tickets.openapi.yaml", `
+openapi: 3.1.0
+info:
+  title: Tickets API
+  version: "1.0.0"
+servers:
+  - url: https://example.com
+paths:
+  /tickets:
+    get:
+      operationId: listTickets
+      tags: [tickets]
+      responses:
+        "200":
+          description: OK
+`)
+
+	introspectionServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			t.Fatalf("parse introspection form: %v", err)
+		}
+		if got := r.Form.Get("token"); got != "scoped-token" {
+			t.Fatalf("expected scoped-token, got %q", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"active": true,
+			"scope":  "bundle:tickets",
+			"aud":    "oasclird",
+			"sub":    "agent-1",
+		})
+	}))
+	defer introspectionServer.Close()
+
+	configPath := writeRuntimeFile(t, dir, ".cli.json", `{
+	  "cli": "1.0.0",
+	  "mode": { "default": "discover" },
+	  "runtime": {
+	    "server": {
+	      "auth": {
+	        "mode": "oauth2Introspection",
+	        "audience": "oasclird",
+	        "introspectionURL": "`+introspectionServer.URL+`"
+	      }
+	    }
+	  },
+	  "sources": {
+	    "ticketsSource": {
+	      "type": "openapi",
+	      "uri": "./tickets.openapi.yaml",
+	      "enabled": true
+	    }
+	  },
+	  "services": {
+	    "tickets": {
+	      "source": "ticketsSource",
+	      "alias": "tickets"
+	    }
+	  }
+	}`)
+
+	auditPath := filepath.Join(dir, "audit.log")
+	server := runtime.NewServer(runtime.Options{
+		AuditPath:         auditPath,
+		DefaultConfigPath: configPath,
+	})
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	req, err := http.NewRequest(http.MethodGet, httpServer.URL+"/v1/catalog/effective?config="+configPath, nil)
+	if err != nil {
+		t.Fatalf("new catalog request: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer scoped-token")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("authorized catalog request: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 authorized catalog, got %d", resp.StatusCode)
+	}
+
+	unauthorizedResp, err := http.Get(httpServer.URL + "/v1/catalog/effective?config=" + configPath)
+	if err != nil {
+		t.Fatalf("unauthorized catalog request: %v", err)
+	}
+	unauthorizedResp.Body.Close()
+	if unauthorizedResp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected 401 unauthorized catalog, got %d", unauthorizedResp.StatusCode)
+	}
+
+	refreshBody := bytes.NewBufferString(`{"configPath":"` + configPath + `"}`)
+	refreshReq, err := http.NewRequest(http.MethodPost, httpServer.URL+"/v1/refresh", refreshBody)
+	if err != nil {
+		t.Fatalf("new refresh request: %v", err)
+	}
+	refreshReq.Header.Set("Content-Type", "application/json")
+	refreshReq.Header.Set("Authorization", "Bearer scoped-token")
+	refreshResp, err := http.DefaultClient.Do(refreshReq)
+	if err != nil {
+		t.Fatalf("authorized refresh request: %v", err)
+	}
+	refreshResp.Body.Close()
+	if refreshResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 authorized refresh, got %d", refreshResp.StatusCode)
+	}
+
+	events, err := audit.NewFileStore(auditPath).List()
+	if err != nil {
+		t.Fatalf("list audit events: %v", err)
+	}
+
+	var sawConnect, sawCatalog, sawAuthnFailure, sawRefresh bool
+	for _, event := range events {
+		switch event.EventType {
+		case "authenticated_connect":
+			if event.Principal == "agent-1" {
+				sawConnect = true
+			}
+		case "catalog_filtered":
+			if event.Principal == "agent-1" {
+				sawCatalog = true
+			}
+		case "authn_failure":
+			sawAuthnFailure = true
+		case "token_refresh":
+			if event.Principal == "agent-1" {
+				sawRefresh = true
+			}
+		}
+	}
+	if !sawConnect {
+		t.Fatalf("expected authenticated_connect audit event, got %#v", events)
+	}
+	if !sawCatalog {
+		t.Fatalf("expected catalog_filtered audit event, got %#v", events)
+	}
+	if !sawAuthnFailure {
+		t.Fatalf("expected authn_failure audit event, got %#v", events)
+	}
+	if !sawRefresh {
+		t.Fatalf("expected token_refresh audit event, got %#v", events)
+	}
 }
 
 func TestServerEnforcesCuratedViewExecutesAllowedToolsAndAuditsAttempts(t *testing.T) {
@@ -253,6 +748,739 @@ paths:
 	defer allowResp.Body.Close()
 	if allowResp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200 for allowed tool, got %d", allowResp.StatusCode)
+	}
+}
+
+func TestServerFiltersCatalogAndExecutionByRemoteBundleScope(t *testing.T) {
+	dir := t.TempDir()
+
+	introspectionServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/introspect" {
+			http.NotFound(w, r)
+			return
+		}
+		if err := r.ParseForm(); err != nil {
+			t.Fatalf("ParseForm: %v", err)
+		}
+		if got := r.PostForm.Get("token"); got != "scoped-token" {
+			t.Fatalf("expected token scoped-token, got %q", got)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"active": true,
+			"scope":  "bundle:tickets",
+			"aud":    "oasclird",
+			"sub":    "agent-123",
+		})
+	}))
+	defer introspectionServer.Close()
+
+	ticketsAPI := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{{"id": "T-1"}}})
+	}))
+	defer ticketsAPI.Close()
+
+	usersAPI := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{{"id": "U-1"}}})
+	}))
+	defer usersAPI.Close()
+
+	writeRuntimeFile(t, dir, "tickets.openapi.yaml", `
+openapi: 3.1.0
+info:
+  title: Tickets API
+  version: "1.0.0"
+servers:
+  - url: `+ticketsAPI.URL+`
+paths:
+  /tickets:
+    get:
+      operationId: listTickets
+      tags: [tickets]
+      responses:
+        "200":
+          description: OK
+`)
+	writeRuntimeFile(t, dir, "users.openapi.yaml", `
+openapi: 3.1.0
+info:
+  title: Users API
+  version: "1.0.0"
+servers:
+  - url: `+usersAPI.URL+`
+paths:
+  /users:
+    get:
+      operationId: listUsers
+      tags: [users]
+      responses:
+        "200":
+          description: OK
+`)
+	configPath := writeRuntimeFile(t, dir, ".cli.json", `{
+	  "cli": "1.0.0",
+	  "mode": { "default": "discover" },
+	  "runtime": {
+	    "server": {
+	      "auth": {
+	        "mode": "oauth2Introspection",
+	        "audience": "oasclird",
+	        "introspectionURL": "`+introspectionServer.URL+`/introspect"
+	      }
+	    }
+	  },
+	  "sources": {
+	    "ticketsSource": {
+	      "type": "openapi",
+	      "uri": "./tickets.openapi.yaml",
+	      "enabled": true
+	    },
+	    "usersSource": {
+	      "type": "openapi",
+	      "uri": "./users.openapi.yaml",
+	      "enabled": true
+	    }
+	  },
+	  "services": {
+	    "tickets": {
+	      "source": "ticketsSource",
+	      "alias": "tickets"
+	    },
+	    "users": {
+	      "source": "usersSource",
+	      "alias": "users"
+	    }
+	  }
+	}`)
+
+	server := runtime.NewServer(runtime.Options{AuditPath: filepath.Join(dir, "audit.log")})
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	req, err := http.NewRequest(http.MethodGet, httpServer.URL+"/v1/catalog/effective?config="+configPath, nil)
+	if err != nil {
+		t.Fatalf("NewRequest catalog: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer scoped-token")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("get effective catalog: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 effective catalog, got %d", resp.StatusCode)
+	}
+	var effective map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&effective); err != nil {
+		t.Fatalf("decode effective catalog: %v", err)
+	}
+	catalogData := effective["catalog"].(map[string]any)
+	tools := catalogData["tools"].([]any)
+	if len(tools) != 1 {
+		t.Fatalf("expected one scoped tool, got %#v", tools)
+	}
+	tool := tools[0].(map[string]any)
+	if got := tool["id"]; got != "tickets:listTickets" {
+		t.Fatalf("expected tickets tool in scoped catalog, got %#v", got)
+	}
+
+	denyBody := bytes.NewBufferString(`{
+	  "configPath": "` + configPath + `",
+	  "toolId": "users:listUsers"
+	}`)
+	denyReq, err := http.NewRequest(http.MethodPost, httpServer.URL+"/v1/tools/execute", denyBody)
+	if err != nil {
+		t.Fatalf("NewRequest execute deny: %v", err)
+	}
+	denyReq.Header.Set("Content-Type", "application/json")
+	denyReq.Header.Set("Authorization", "Bearer scoped-token")
+	denyResp, err := http.DefaultClient.Do(denyReq)
+	if err != nil {
+		t.Fatalf("deny execute request: %v", err)
+	}
+	defer denyResp.Body.Close()
+	if denyResp.StatusCode != http.StatusForbidden {
+		t.Fatalf("expected 403 for out-of-scope tool, got %d", denyResp.StatusCode)
+	}
+}
+
+func TestServerRejectsCatalogWithoutBearerTokenWhenRemoteAuthEnabled(t *testing.T) {
+	dir := t.TempDir()
+	writeRuntimeFile(t, dir, "tickets.openapi.yaml", `
+openapi: 3.1.0
+info:
+  title: Tickets API
+  version: "1.0.0"
+servers:
+  - url: https://example.com
+paths:
+  /tickets:
+    get:
+      operationId: listTickets
+      tags: [tickets]
+      responses:
+        "200":
+          description: OK
+`)
+	configPath := writeRuntimeFile(t, dir, ".cli.json", `{
+	  "cli": "1.0.0",
+	  "mode": { "default": "discover" },
+	  "runtime": {
+	    "server": {
+	      "auth": {
+	        "mode": "oauth2Introspection",
+	        "audience": "oasclird",
+	        "introspectionURL": "https://auth.example.com/introspect"
+	      }
+	    }
+	  },
+	  "sources": {
+	    "ticketsSource": {
+	      "type": "openapi",
+	      "uri": "./tickets.openapi.yaml",
+	      "enabled": true
+	    }
+	  },
+	  "services": {
+	    "tickets": {
+	      "source": "ticketsSource",
+	      "alias": "tickets"
+	    }
+	  }
+	}`)
+
+	server := runtime.NewServer(runtime.Options{AuditPath: filepath.Join(dir, "audit.log")})
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	resp, err := http.Get(httpServer.URL + "/v1/catalog/effective?config=" + configPath)
+	if err != nil {
+		t.Fatalf("get effective catalog: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected 401 without bearer token, got %d", resp.StatusCode)
+	}
+}
+
+func TestServerReturnsBrowserLoginMetadata(t *testing.T) {
+	dir := t.TempDir()
+	configPath := writeRuntimeFile(t, dir, ".cli.json", `{
+	  "cli": "1.0.0",
+	  "mode": { "default": "discover" },
+	  "runtime": {
+	    "server": {
+	      "auth": {
+	        "mode": "oauth2Introspection",
+	        "audience": "oasclird",
+	        "introspectionURL": "https://auth.example.com/introspect",
+	        "authorizationURL": "https://auth.example.com/authorize",
+	        "tokenURL": "https://auth.example.com/token",
+	        "browserClientId": "browser-client"
+	      }
+	    }
+	  },
+	  "sources": {
+	    "ticketsSource": {
+	      "type": "openapi",
+	      "uri": "https://example.com/openapi.yaml",
+	      "enabled": true
+	    }
+	  },
+	  "services": {
+	    "tickets": {
+	      "source": "ticketsSource",
+	      "alias": "tickets"
+	    }
+	  }
+	}`)
+
+	server := runtime.NewServer(runtime.Options{AuditPath: filepath.Join(dir, "audit.log"), DefaultConfigPath: configPath})
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	resp, err := http.Get(httpServer.URL + "/v1/auth/browser-config")
+	if err != nil {
+		t.Fatalf("get browser config: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 browser config response, got %d", resp.StatusCode)
+	}
+	var metadata map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&metadata); err != nil {
+		t.Fatalf("decode browser config: %v", err)
+	}
+	if got := metadata["authorizationURL"]; got != "https://auth.example.com/authorize" {
+		t.Fatalf("expected authorization URL in metadata, got %#v", got)
+	}
+	if got := metadata["tokenURL"]; got != "https://auth.example.com/token" {
+		t.Fatalf("expected token URL in metadata, got %#v", got)
+	}
+	if got := metadata["clientId"]; got != "browser-client" {
+		t.Fatalf("expected browser client id in metadata, got %#v", got)
+	}
+	if got := metadata["audience"]; got != "oasclird" {
+		t.Fatalf("expected audience in metadata, got %#v", got)
+	}
+}
+
+func TestServerFiltersCatalogByProfileAndExplicitToolScopes(t *testing.T) {
+	dir := t.TempDir()
+
+	introspectionServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			t.Fatalf("ParseForm: %v", err)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"active": true,
+			"scope":  "profile:reader tool:tickets:getTicket",
+			"aud":    "oasclird",
+			"sub":    "agent-456",
+		})
+	}))
+	defer introspectionServer.Close()
+
+	writeRuntimeFile(t, dir, "tickets.openapi.yaml", `
+openapi: 3.1.0
+info:
+  title: Tickets API
+  version: "1.0.0"
+servers:
+  - url: https://example.com
+paths:
+  /tickets:
+    get:
+      operationId: listTickets
+      tags: [tickets]
+      responses:
+        "200":
+          description: OK
+  /tickets/{id}:
+    get:
+      operationId: getTicket
+      tags: [tickets]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+`)
+	configPath := writeRuntimeFile(t, dir, ".cli.json", `{
+	  "cli": "1.0.0",
+	  "mode": { "default": "discover" },
+	  "runtime": {
+	    "server": {
+	      "auth": {
+	        "mode": "oauth2Introspection",
+	        "audience": "oasclird",
+	        "introspectionURL": "`+introspectionServer.URL+`"
+	      }
+	    }
+	  },
+	  "sources": {
+	    "ticketsSource": {
+	      "type": "openapi",
+	      "uri": "./tickets.openapi.yaml",
+	      "enabled": true
+	    }
+	  },
+	  "services": {
+	    "tickets": {
+	      "source": "ticketsSource",
+	      "alias": "tickets"
+	    }
+	  },
+	  "curation": {
+	    "toolSets": {
+	      "reader": {
+	        "allow": ["tickets:listTickets", "tickets:getTicket"]
+	      }
+	    }
+	  },
+	  "agents": {
+	    "profiles": {
+	      "reader": {
+	        "mode": "curated",
+	        "toolSet": "reader"
+	      }
+	    }
+	  }
+	}`)
+
+	server := runtime.NewServer(runtime.Options{AuditPath: filepath.Join(dir, "audit.log")})
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	req, err := http.NewRequest(http.MethodGet, httpServer.URL+"/v1/catalog/effective?config="+configPath, nil)
+	if err != nil {
+		t.Fatalf("NewRequest catalog: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer scoped-token")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("get effective catalog: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 effective catalog, got %d", resp.StatusCode)
+	}
+	var effective map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&effective); err != nil {
+		t.Fatalf("decode effective catalog: %v", err)
+	}
+	catalogData := effective["catalog"].(map[string]any)
+	tools := catalogData["tools"].([]any)
+	if len(tools) != 1 {
+		t.Fatalf("expected one intersected tool, got %#v", tools)
+	}
+	tool := tools[0].(map[string]any)
+	if got := tool["id"]; got != "tickets:getTicket" {
+		t.Fatalf("expected tickets:getTicket in scoped catalog, got %#v", got)
+	}
+}
+
+func TestServerAppliesPolicyDenyAfterRemoteScopes(t *testing.T) {
+	dir := t.TempDir()
+
+	introspectionServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			t.Fatalf("ParseForm: %v", err)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"active": true,
+			"scope":  "bundle:tickets",
+			"aud":    "oasclird",
+		})
+	}))
+	defer introspectionServer.Close()
+
+	writeRuntimeFile(t, dir, "tickets.openapi.yaml", `
+openapi: 3.1.0
+info:
+  title: Tickets API
+  version: "1.0.0"
+servers:
+  - url: https://example.com
+paths:
+  /tickets:
+    get:
+      operationId: listTickets
+      tags: [tickets]
+      responses:
+        "200":
+          description: OK
+  /tickets/{id}:
+    delete:
+      operationId: deleteTicket
+      tags: [tickets]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204":
+          description: Deleted
+`)
+	configPath := writeRuntimeFile(t, dir, ".cli.json", `{
+	  "cli": "1.0.0",
+	  "mode": { "default": "discover" },
+	  "runtime": {
+	    "server": {
+	      "auth": {
+	        "mode": "oauth2Introspection",
+	        "audience": "oasclird",
+	        "introspectionURL": "`+introspectionServer.URL+`"
+	      }
+	    }
+	  },
+	  "sources": {
+	    "ticketsSource": {
+	      "type": "openapi",
+	      "uri": "./tickets.openapi.yaml",
+	      "enabled": true
+	    }
+	  },
+	  "services": {
+	    "tickets": {
+	      "source": "ticketsSource",
+	      "alias": "tickets"
+	    }
+	  },
+	  "policy": {
+	    "deny": ["tickets:deleteTicket"]
+	  }
+	}`)
+
+	server := runtime.NewServer(runtime.Options{AuditPath: filepath.Join(dir, "audit.log")})
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	req, err := http.NewRequest(http.MethodGet, httpServer.URL+"/v1/catalog/effective?config="+configPath, nil)
+	if err != nil {
+		t.Fatalf("NewRequest catalog: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer scoped-token")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("get effective catalog: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 effective catalog, got %d", resp.StatusCode)
+	}
+	var effective map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&effective); err != nil {
+		t.Fatalf("decode effective catalog: %v", err)
+	}
+	catalogData := effective["catalog"].(map[string]any)
+	tools := catalogData["tools"].([]any)
+	if len(tools) != 1 {
+		t.Fatalf("expected deny-filtered catalog to contain one tool, got %#v", tools)
+	}
+	tool := tools[0].(map[string]any)
+	if got := tool["id"]; got != "tickets:listTickets" {
+		t.Fatalf("expected deny-filtered tool tickets:listTickets, got %#v", got)
+	}
+}
+
+func TestServerRejectsRefreshWithoutBearerTokenWhenRemoteAuthEnabled(t *testing.T) {
+	dir := t.TempDir()
+	writeRuntimeFile(t, dir, "tickets.openapi.yaml", `
+openapi: 3.1.0
+info:
+  title: Tickets API
+  version: "1.0.0"
+servers:
+  - url: https://example.com
+paths:
+  /tickets:
+    get:
+      operationId: listTickets
+      tags: [tickets]
+      responses:
+        "200":
+          description: OK
+`)
+	configPath := writeRuntimeFile(t, dir, ".cli.json", `{
+	  "cli": "1.0.0",
+	  "mode": { "default": "discover" },
+	  "runtime": {
+	    "server": {
+	      "auth": {
+	        "mode": "oauth2Introspection",
+	        "audience": "oasclird",
+	        "introspectionURL": "https://auth.example.com/introspect"
+	      }
+	    }
+	  },
+	  "sources": {
+	    "ticketsSource": {
+	      "type": "openapi",
+	      "uri": "./tickets.openapi.yaml",
+	      "enabled": true
+	    }
+	  },
+	  "services": {
+	    "tickets": {
+	      "source": "ticketsSource",
+	      "alias": "tickets"
+	    }
+	  }
+	}`)
+
+	server := runtime.NewServer(runtime.Options{AuditPath: filepath.Join(dir, "audit.log")})
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	requestBody := bytes.NewBufferString(`{"configPath":"` + configPath + `"}`)
+	resp, err := http.Post(httpServer.URL+"/v1/refresh", "application/json", requestBody)
+	if err != nil {
+		t.Fatalf("refresh request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected 401 refresh response without bearer token, got %d", resp.StatusCode)
+	}
+}
+
+func TestServerRejectsAuditEventsWithoutBearerTokenWhenRemoteAuthEnabled(t *testing.T) {
+	dir := t.TempDir()
+	configPath := writeRuntimeFile(t, dir, ".cli.json", `{
+	  "cli": "1.0.0",
+	  "mode": { "default": "discover" },
+	  "runtime": {
+	    "server": {
+	      "auth": {
+	        "mode": "oauth2Introspection",
+	        "audience": "oasclird",
+	        "introspectionURL": "https://auth.example.com/introspect"
+	      }
+	    }
+	  },
+	  "sources": {
+	    "ticketsSource": {
+	      "type": "openapi",
+	      "uri": "https://example.com/openapi.yaml",
+	      "enabled": true
+	    }
+	  },
+	  "services": {
+	    "tickets": {
+	      "source": "ticketsSource",
+	      "alias": "tickets"
+	    }
+	  }
+	}`)
+
+	server := runtime.NewServer(runtime.Options{
+		AuditPath:         filepath.Join(dir, "audit.log"),
+		DefaultConfigPath: configPath,
+	})
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	resp, err := http.Get(httpServer.URL + "/v1/audit/events")
+	if err != nil {
+		t.Fatalf("audit events request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected 401 audit events response without bearer token, got %d", resp.StatusCode)
+	}
+}
+
+func TestServerReturnsRuntimeInfo(t *testing.T) {
+	server := runtime.NewServer(runtime.Options{
+		AuditPath:  filepath.Join(t.TempDir(), "audit.log"),
+		InstanceID: "team-a",
+		RuntimeURL: "http://127.0.0.1:18765",
+	})
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	resp, err := http.Get(httpServer.URL + "/v1/runtime/info")
+	if err != nil {
+		t.Fatalf("runtime info request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 runtime info response, got %d", resp.StatusCode)
+	}
+	var info map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+		t.Fatalf("decode runtime info: %v", err)
+	}
+	if got := info["instanceId"]; got != "team-a" {
+		t.Fatalf("expected instance id team-a, got %#v", got)
+	}
+	if got := info["url"]; got != "http://127.0.0.1:18765" {
+		t.Fatalf("expected runtime url in info response, got %#v", got)
+	}
+}
+
+func TestServerStopEndpointInvokesShutdownHook(t *testing.T) {
+	var stopped bool
+	server := runtime.NewServer(runtime.Options{
+		AuditPath: filepath.Join(t.TempDir(), "audit.log"),
+		Shutdown: func() error {
+			stopped = true
+			return nil
+		},
+	})
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	resp, err := http.Post(httpServer.URL+"/v1/runtime/stop", "application/json", nil)
+	if err != nil {
+		t.Fatalf("runtime stop request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 runtime stop response, got %d", resp.StatusCode)
+	}
+	if !stopped {
+		t.Fatalf("expected shutdown hook to be invoked")
+	}
+}
+
+func TestServerSessionCloseClearsOAuthCache(t *testing.T) {
+	dir := t.TempDir()
+	oauthDir := filepath.Join(dir, "oauth")
+	if err := os.MkdirAll(oauthDir, 0o755); err != nil {
+		t.Fatalf("mkdir oauth dir: %v", err)
+	}
+	tokenPath := filepath.Join(oauthDir, "cached.json")
+	if err := os.WriteFile(tokenPath, []byte(`{"accessToken":"cached"}`), 0o600); err != nil {
+		t.Fatalf("write cached token: %v", err)
+	}
+
+	server := runtime.NewServer(runtime.Options{
+		AuditPath: filepath.Join(dir, "audit.log"),
+		StateDir:  dir,
+	})
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	resp, err := http.Post(httpServer.URL+"/v1/runtime/session-close", "application/json", nil)
+	if err != nil {
+		t.Fatalf("session close request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 session close response, got %d", resp.StatusCode)
+	}
+	if _, err := os.Stat(tokenPath); !os.IsNotExist(err) {
+		t.Fatalf("expected oauth cache to be cleared, stat err=%v", err)
+	}
+}
+
+func TestServerRejectsRuntimeInfoWithoutBearerTokenWhenRemoteAuthEnabled(t *testing.T) {
+	dir := t.TempDir()
+	configPath := writeRuntimeFile(t, dir, ".cli.json", `{
+	  "cli": "1.0.0",
+	  "mode": { "default": "discover" },
+	  "runtime": {
+	    "server": {
+	      "auth": {
+	        "mode": "oauth2Introspection",
+	        "audience": "oasclird",
+	        "introspectionURL": "https://auth.example.com/introspect"
+	      }
+	    }
+	  },
+	  "sources": {
+	    "ticketsSource": {
+	      "type": "openapi",
+	      "uri": "https://example.com/openapi.yaml",
+	      "enabled": true
+	    }
+	  },
+	  "services": {
+	    "tickets": {
+	      "source": "ticketsSource",
+	      "alias": "tickets"
+	    }
+	  }
+	}`)
+
+	server := runtime.NewServer(runtime.Options{
+		AuditPath:         filepath.Join(dir, "audit.log"),
+		DefaultConfigPath: configPath,
+	})
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	resp, err := http.Get(httpServer.URL + "/v1/runtime/info")
+	if err != nil {
+		t.Fatalf("runtime info request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected 401 runtime info response without bearer token, got %d", resp.StatusCode)
 	}
 }
 
