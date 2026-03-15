@@ -54,14 +54,17 @@ type RuntimeServerConfig struct {
 }
 
 type RuntimeServerAuthConfig struct {
-	Mode             string     `json:"mode,omitempty"`
-	Audience         string     `json:"audience,omitempty"`
-	IntrospectionURL string     `json:"introspectionURL,omitempty"`
-	AuthorizationURL string     `json:"authorizationURL,omitempty"`
-	TokenURL         string     `json:"tokenURL,omitempty"`
-	BrowserClientID  string     `json:"browserClientId,omitempty"`
-	ClientID         *SecretRef `json:"clientId,omitempty"`
-	ClientSecret     *SecretRef `json:"clientSecret,omitempty"`
+	ValidationProfile string     `json:"validationProfile,omitempty"`
+	Mode              string     `json:"mode,omitempty"`
+	Issuer            string     `json:"issuer,omitempty"`
+	JWKSURL           string     `json:"jwksURL,omitempty"`
+	Audience          string     `json:"audience,omitempty"`
+	IntrospectionURL  string     `json:"introspectionURL,omitempty"`
+	AuthorizationURL  string     `json:"authorizationURL,omitempty"`
+	TokenURL          string     `json:"tokenURL,omitempty"`
+	BrowserClientID   string     `json:"browserClientId,omitempty"`
+	ClientID          *SecretRef `json:"clientId,omitempty"`
+	ClientSecret      *SecretRef `json:"clientSecret,omitempty"`
 }
 
 type Source struct {

@@ -73,14 +73,17 @@ type rawRuntimeServerConfig struct {
 }
 
 type rawRuntimeServerAuthConfig struct {
-	Mode             *string    `json:"mode,omitempty"`
-	Audience         *string    `json:"audience,omitempty"`
-	IntrospectionURL *string    `json:"introspectionURL,omitempty"`
-	AuthorizationURL *string    `json:"authorizationURL,omitempty"`
-	TokenURL         *string    `json:"tokenURL,omitempty"`
-	BrowserClientID  *string    `json:"browserClientId,omitempty"`
-	ClientID         *SecretRef `json:"clientId,omitempty"`
-	ClientSecret     *SecretRef `json:"clientSecret,omitempty"`
+	ValidationProfile *string    `json:"validationProfile,omitempty"`
+	Mode              *string    `json:"mode,omitempty"`
+	Issuer            *string    `json:"issuer,omitempty"`
+	JWKSURL           *string    `json:"jwksURL,omitempty"`
+	Audience          *string    `json:"audience,omitempty"`
+	IntrospectionURL  *string    `json:"introspectionURL,omitempty"`
+	AuthorizationURL  *string    `json:"authorizationURL,omitempty"`
+	TokenURL          *string    `json:"tokenURL,omitempty"`
+	BrowserClientID   *string    `json:"browserClientId,omitempty"`
+	ClientID          *SecretRef `json:"clientId,omitempty"`
+	ClientSecret      *SecretRef `json:"clientSecret,omitempty"`
 }
 
 type rawService struct {
@@ -301,6 +304,15 @@ func (cfg *Config) merge(scope Scope, raw rawConfig) {
 				if raw.Runtime.Server.Auth.Mode != nil {
 					auth.Mode = *raw.Runtime.Server.Auth.Mode
 				}
+				if raw.Runtime.Server.Auth.ValidationProfile != nil {
+					auth.ValidationProfile = *raw.Runtime.Server.Auth.ValidationProfile
+				}
+				if raw.Runtime.Server.Auth.Issuer != nil {
+					auth.Issuer = *raw.Runtime.Server.Auth.Issuer
+				}
+				if raw.Runtime.Server.Auth.JWKSURL != nil {
+					auth.JWKSURL = *raw.Runtime.Server.Auth.JWKSURL
+				}
 				if raw.Runtime.Server.Auth.Audience != nil {
 					auth.Audience = *raw.Runtime.Server.Auth.Audience
 				}
@@ -324,6 +336,7 @@ func (cfg *Config) merge(scope Scope, raw rawConfig) {
 					ref := *raw.Runtime.Server.Auth.ClientSecret
 					auth.ClientSecret = &ref
 				}
+				normalizeRuntimeServerAuth(auth)
 				serverCfg.Auth = auth
 			}
 			current.Server = serverCfg
@@ -430,6 +443,24 @@ func (cfg *Config) merge(scope Scope, raw rawConfig) {
 
 	for key, secret := range raw.Secrets {
 		cfg.Secrets[key] = secret
+	}
+}
+
+func normalizeRuntimeServerAuth(auth *RuntimeServerAuthConfig) {
+	if auth == nil {
+		return
+	}
+	if auth.ValidationProfile == "" {
+		switch auth.Mode {
+		case "oauth2Introspection":
+			auth.ValidationProfile = "oauth2_introspection"
+		}
+	}
+	if auth.Mode == "" {
+		switch auth.ValidationProfile {
+		case "oauth2_introspection":
+			auth.Mode = "oauth2Introspection"
+		}
 	}
 }
 

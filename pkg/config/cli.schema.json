@@ -222,10 +222,24 @@
     "runtimeServerAuth": {
       "type": "object",
       "properties": {
+        "validationProfile": {
+          "enum": [
+            "oidc_jwks",
+            "oauth2_introspection"
+          ]
+        },
         "mode": {
           "enum": [
             "oauth2Introspection"
           ]
+        },
+        "issuer": {
+          "type": "string",
+          "minLength": 1
+        },
+        "jwksURL": {
+          "type": "string",
+          "minLength": 1
         },
         "audience": {
           "type": "string",
@@ -254,7 +268,63 @@
           "$ref": "#/$defs/secretRef"
         }
       },
-      "additionalProperties": false
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "validationProfile": {
+                "const": "oidc_jwks"
+              }
+            },
+            "required": [
+              "validationProfile"
+            ]
+          },
+          "then": {
+            "required": [
+              "issuer",
+              "jwksURL"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "validationProfile": {
+                "const": "oauth2_introspection"
+              }
+            },
+            "required": [
+              "validationProfile"
+            ]
+          },
+          "then": {
+            "required": [
+              "audience",
+              "introspectionURL"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "oauth2Introspection"
+              }
+            },
+            "required": [
+              "mode"
+            ]
+          },
+          "then": {
+            "required": [
+              "audience",
+              "introspectionURL"
+            ]
+          }
+        }
+      ]
     },
     "runtimeServer": {
       "type": "object",

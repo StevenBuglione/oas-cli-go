@@ -3,6 +3,7 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/StevenBuglione/oas-cli-go/pkg/config"
@@ -15,6 +16,18 @@ func writeJSON(t *testing.T, dir, name, content string) string {
 		t.Fatalf("write %s: %v", name, err)
 	}
 	return path
+}
+
+func requireStringField(t *testing.T, value any, fieldName, want string) {
+	t.Helper()
+
+	field := reflect.ValueOf(value).FieldByName(fieldName)
+	if !field.IsValid() {
+		t.Fatalf("expected %s field to be present", fieldName)
+	}
+	if got := field.String(); got != want {
+		t.Fatalf("expected %s %q, got %q", fieldName, want, got)
+	}
 }
 
 func TestLoadEffectiveMergesScopesAndPreservesManagedDenies(t *testing.T) {
@@ -595,5 +608,116 @@ func TestLoadEffectiveLoadsRemoteRuntimeOAuthConfiguration(t *testing.T) {
 	}
 	if effective.Config.Runtime.Remote.OAuth.BrowserLogin == nil || effective.Config.Runtime.Remote.OAuth.BrowserLogin.CallbackPort != 8123 {
 		t.Fatalf("expected browser login callback port 8123, got %#v", effective.Config.Runtime.Remote.OAuth.BrowserLogin)
+	}
+}
+
+func TestLoadEffectiveLoadsRemoteRuntimeOIDCJWKSConfiguration(t *testing.T) {
+	dir := t.TempDir()
+	projectPath := writeJSON(t, dir, ".cli.json", `{
+	  "cli": "1.0.0",
+	  "mode": { "default": "discover" },
+	  "runtime": {
+	    "server": {
+	      "auth": {
+	        "validationProfile": "oidc_jwks",
+	        "issuer": "https://broker.example.com",
+	        "jwksURL": "https://broker.example.com/.well-known/jwks.json"
+	      }
+	    }
+	  },
+	  "sources": {
+	    "tickets": {
+	      "type": "openapi",
+	      "uri": "https://example.com/openapi.json"
+	    }
+	  },
+	  "services": {
+	    "tickets": {
+	      "source": "tickets"
+	    }
+	  }
+	}`)
+
+	effective, err := config.LoadEffective(config.LoadOptions{ProjectPath: projectPath, WorkingDir: dir})
+	if err != nil {
+		t.Fatalf("LoadEffective returned error: %v", err)
+	}
+
+	if effective.Config.Runtime == nil || effective.Config.Runtime.Server == nil || effective.Config.Runtime.Server.Auth == nil {
+		t.Fatalf("expected runtime server auth configuration to load")
+	}
+
+	auth := *effective.Config.Runtime.Server.Auth
+	requireStringField(t, auth, "ValidationProfile", "oidc_jwks")
+	requireStringField(t, auth, "Issuer", "https://broker.example.com")
+	requireStringField(t, auth, "JWKSURL", "https://broker.example.com/.well-known/jwks.json")
+}
+
+func TestLoadEffectivePreservesRemoteRuntimeOAuth2IntrospectionConfiguration(t *testing.T) {
+	dir := t.TempDir()
+	projectPath := writeJSON(t, dir, ".cli.json", `{
+	  "cli": "1.0.0",
+	  "mode": { "default": "discover" },
+	  "runtime": {
+	    "server": {
+	      "auth": {
+	        "mode": "oauth2Introspection",
+	        "audience": "oasclird",
+	        "introspectionURL": "https://auth.example.com/oauth/introspect",
+	        "authorizationURL": "https://auth.example.com/oauth/authorize",
+	        "tokenURL": "https://auth.example.com/oauth/token",
+	        "browserClientId": "runtime-browser-client",
+	        "clientId": { "type": "env", "value": "OAS_RUNTIME_CLIENT_ID" },
+	        "clientSecret": { "type": "env", "value": "OAS_RUNTIME_CLIENT_SECRET" }
+	      }
+	    }
+	  },
+	  "sources": {
+	    "tickets": {
+	      "type": "openapi",
+	      "uri": "https://example.com/openapi.json"
+	    }
+	  },
+	  "services": {
+	    "tickets": {
+	      "source": "tickets"
+	    }
+	  }
+	}`)
+
+	effective, err := config.LoadEffective(config.LoadOptions{ProjectPath: projectPath, WorkingDir: dir})
+	if err != nil {
+		t.Fatalf("LoadEffective returned error: %v", err)
+	}
+
+	if effective.Config.Runtime == nil || effective.Config.Runtime.Server == nil || effective.Config.Runtime.Server.Auth == nil {
+		t.Fatalf("expected runtime server auth configuration to load")
+	}
+
+	auth := *effective.Config.Runtime.Server.Auth
+	if auth.Mode != "oauth2Introspection" {
+		t.Fatalf("expected legacy auth mode oauth2Introspection, got %q", auth.Mode)
+	}
+	requireStringField(t, auth, "ValidationProfile", "oauth2_introspection")
+	if auth.Audience != "oasclird" {
+		t.Fatalf("expected audience oasclird, got %q", auth.Audience)
+	}
+	if auth.IntrospectionURL != "https://auth.example.com/oauth/introspect" {
+		t.Fatalf("expected introspection URL to be preserved, got %q", auth.IntrospectionURL)
+	}
+	if auth.AuthorizationURL != "https://auth.example.com/oauth/authorize" {
+		t.Fatalf("expected authorization URL to be preserved, got %q", auth.AuthorizationURL)
+	}
+	if auth.TokenURL != "https://auth.example.com/oauth/token" {
+		t.Fatalf("expected token URL to be preserved, got %q", auth.TokenURL)
+	}
+	if auth.BrowserClientID != "runtime-browser-client" {
+		t.Fatalf("expected browser client ID to be preserved, got %q", auth.BrowserClientID)
+	}
+	if auth.ClientID == nil || auth.ClientID.Type != "env" || auth.ClientID.Value != "OAS_RUNTIME_CLIENT_ID" {
+		t.Fatalf("expected clientId to be preserved, got %#v", auth.ClientID)
+	}
+	if auth.ClientSecret == nil || auth.ClientSecret.Type != "env" || auth.ClientSecret.Value != "OAS_RUNTIME_CLIENT_SECRET" {
+		t.Fatalf("expected clientSecret to be preserved, got %#v", auth.ClientSecret)
 	}
 }

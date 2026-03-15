@@ -85,13 +85,20 @@ For `openapi`, `serviceRoot`, and `apiCatalog` sources, `uri` is the only discov
 
 | Field | Type | Meaning |
 | --- | --- | --- |
-| `mode` | string | `oauth2Introspection` |
-| `audience` | string | Required audience for runtime bearer tokens |
-| `introspectionURL` | string | RFC 7662-style token introspection endpoint |
+| `validationProfile` | string | `oidc_jwks` or `oauth2_introspection` |
+| `mode` | string | Legacy alias for `oauth2Introspection`; accepted on input and normalized to `validationProfile: "oauth2_introspection"` |
+| `issuer` | string | Required issuer for `oidc_jwks` validation |
+| `jwksURL` | string | Required JWKS endpoint for `oidc_jwks` validation |
+| `audience` | string | Required audience for `oauth2_introspection` validation |
+| `introspectionURL` | string | RFC 7662-style token introspection endpoint for `oauth2_introspection` |
 | `clientId` / `clientSecret` | object | Optional secret refs used when the introspection endpoint itself requires client auth |
 | `authorizationURL` | string | Optional browser-login authorization endpoint exposed via runtime metadata |
 | `tokenURL` | string | Optional browser-login token endpoint exposed via runtime metadata |
 | `browserClientId` | string | Optional public OAuth client ID exposed via runtime metadata |
+
+`runtime.server.auth.validationProfile: "oidc_jwks"` requires both `issuer` and `jwksURL`.
+
+`runtime.server.auth.validationProfile: "oauth2_introspection"` requires both `audience` and `introspectionURL`.
 
 ## `sources.*.transport`
 
@@ -181,7 +188,9 @@ It also validates runtime-specific rules such as:
 - `runtime.mode: "remote"` requires `runtime.remote.url`
 - `runtime.remote.oauth.mode: "providedToken"` requires `runtime.remote.oauth.tokenRef`
 - `runtime.remote.oauth.mode: "oauthClient"` requires `client.tokenURL`, `client.clientId`, and `client.clientSecret`
-- `runtime.server.auth.mode: "oauth2Introspection"` requires `audience` and `introspectionURL`
+- `runtime.server.auth.validationProfile: "oidc_jwks"` requires `issuer` and `jwksURL`
+- `runtime.server.auth.validationProfile: "oauth2_introspection"` requires `audience` and `introspectionURL`
+- legacy `runtime.server.auth.mode: "oauth2Introspection"` is still accepted and normalizes to `validationProfile: "oauth2_introspection"`
 
 ### Final validation is stricter than per-scope validation
 

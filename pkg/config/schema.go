@@ -256,17 +256,31 @@ func validateRuntimeConfig(cfg Config) error {
 	}
 	if cfg.Runtime.Server != nil && cfg.Runtime.Server.Auth != nil {
 		auth := cfg.Runtime.Server.Auth
-		if auth.Mode == "oauth2Introspection" {
+		switch runtimeServerAuthValidationProfile(auth) {
+		case "oauth2_introspection":
 			if auth.Audience == "" {
 				diagnostics = append(diagnostics, Diagnostic{
 					Path:    "runtime.server.auth.audience",
-					Message: "required when runtime.server.auth.mode is oauth2Introspection",
+					Message: "required when runtime.server.auth.validationProfile is oauth2_introspection",
 				})
 			}
 			if auth.IntrospectionURL == "" {
 				diagnostics = append(diagnostics, Diagnostic{
 					Path:    "runtime.server.auth.introspectionURL",
-					Message: "required when runtime.server.auth.mode is oauth2Introspection",
+					Message: "required when runtime.server.auth.validationProfile is oauth2_introspection",
+				})
+			}
+		case "oidc_jwks":
+			if auth.Issuer == "" {
+				diagnostics = append(diagnostics, Diagnostic{
+					Path:    "runtime.server.auth.issuer",
+					Message: "required when runtime.server.auth.validationProfile is oidc_jwks",
+				})
+			}
+			if auth.JWKSURL == "" {
+				diagnostics = append(diagnostics, Diagnostic{
+					Path:    "runtime.server.auth.jwksURL",
+					Message: "required when runtime.server.auth.validationProfile is oidc_jwks",
 				})
 			}
 		}
@@ -275,6 +289,21 @@ func validateRuntimeConfig(cfg Config) error {
 		return &ValidationError{Diagnostics: diagnostics}
 	}
 	return nil
+}
+
+func runtimeServerAuthValidationProfile(auth *RuntimeServerAuthConfig) string {
+	if auth == nil {
+		return ""
+	}
+	if auth.ValidationProfile != "" {
+		return auth.ValidationProfile
+	}
+	switch auth.Mode {
+	case "oauth2Introspection":
+		return "oauth2_introspection"
+	default:
+		return ""
+	}
 }
 
 func decodeRawConfig(data []byte) (rawConfig, error) {
