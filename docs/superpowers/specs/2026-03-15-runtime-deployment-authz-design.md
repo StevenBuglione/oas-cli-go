@@ -145,9 +145,18 @@ Supported local session scopes for phase 1:
 - `agent`: a runtime owned by one agent process or agent VM session
 - `shared-group`: a runtime attachable by clients that present the same `shareKey`
 
+Valid local scope combinations:
+
+- `sessionScope=terminal` -> `share=exclusive`, `shareKey` forbidden
+- `sessionScope=agent` -> `share=exclusive`, `shareKey` forbidden
+- `sessionScope=shared-group` -> `share=group`, `shareKey` required
+
+For `shared-group`, the `shareKey` defines the shared runtime identity and member sessions attach to that shared runtime.
+
 Manual shutdown semantics:
 
 - `shutdown=when-owner-exits` means the daemon terminates on lease expiry for the owning session or group owner
+- for `sessionScope=shared-group`, `shutdown=when-owner-exits` means shutdown begins when the last attached group member lease expires
 - `shutdown=manual` means the daemon remains running until an explicit stop command or administrator cleanup occurs
 - `shutdown=manual` does not disable heartbeats; it changes cleanup policy after lease expiry from automatic terminate to detached/manual retention
 
@@ -206,6 +215,7 @@ Resolution rules:
 - deny rules always win
 - scopes can only expose tools that already exist in effective config
 - catalog filtering and execution authorization must use the same resolved authorization envelope
+- bundle and profile expansions union together before explicit `tool:` filtering is applied
 - if only explicit `tool:` scopes are present, the authorization envelope is the matching configured tool set after deny rules are applied
 
 #### Remote token lifecycle
@@ -294,7 +304,7 @@ Merge rules:
 - runtime objects deep-merge across managed, user, project, and local scopes
 - scalar fields are overridden by the narrowest scope that defines them
 - arrays are replaced by the narrowest scope that defines them unless a future field explicitly declares additive behavior
-- `runtime.mode` from a narrower scope overrides wider-scope defaults without discarding sibling `local` or `remote` objects that still apply
+- `runtime.mode` from a narrower scope overrides wider-scope defaults without discarding deep-merged sibling `local` or `remote` objects unless the narrower scope overrides those fields too
 - validation runs on the final merged runtime block
 
 ### 6. Catalog and execution semantics
@@ -339,6 +349,7 @@ The `oascli` and `oasclird` boundary needs a minimal, explicit contract so runti
 The contract must include:
 
 - a runtime-info handshake that exposes contract version, instance identity, runtime mode, config fingerprint, share mode, share key presence, and owner/session metadata
+- attach and connect requests that carry session identity, requested runtime mode, config fingerprint, and share-key claims when applicable
 - catalog responses that carry the effective authorization envelope version used to filter results
 - execute responses and failures that use structured error categories such as `runtime_start_failed`, `runtime_attach_mismatch`, `runtime_unreachable`, `authn_failed`, `authz_denied`, and `contract_mismatch`
 - version negotiation rules where unsupported required capabilities fail closed instead of silently degrading behavior
