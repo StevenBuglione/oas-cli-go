@@ -123,6 +123,8 @@ Discovery starting points. Supported source types are:
 - legacy `sse` for older HTTP+SSE MCP servers
 - `streamable-http` for current MCP HTTP transports
 
+Non-MCP sources (`openapi`, `serviceRoot`, and `apiCatalog`) use `uri` and do not accept MCP-only fields such as `transport`, `disabledTools`, or source-local `oauth`.
+
 Each source can also define refresh behavior. For MCP sources, `disabledTools` can hide specific discovered MCP tools before normalization.
 
 ### `services`
