@@ -620,6 +620,7 @@ func TestLoadEffectiveLoadsRemoteRuntimeOIDCJWKSConfiguration(t *testing.T) {
 	    "server": {
 	      "auth": {
 	        "validationProfile": "oidc_jwks",
+	        "audience": "oasclird",
 	        "issuer": "https://broker.example.com",
 	        "jwksURL": "https://broker.example.com/.well-known/jwks.json"
 	      }
@@ -649,8 +650,40 @@ func TestLoadEffectiveLoadsRemoteRuntimeOIDCJWKSConfiguration(t *testing.T) {
 
 	auth := *effective.Config.Runtime.Server.Auth
 	requireStringField(t, auth, "ValidationProfile", "oidc_jwks")
+	requireStringField(t, auth, "Audience", "oasclird")
 	requireStringField(t, auth, "Issuer", "https://broker.example.com")
 	requireStringField(t, auth, "JWKSURL", "https://broker.example.com/.well-known/jwks.json")
+}
+
+func TestLoadEffectiveRejectsRemoteRuntimeOIDCJWKSConfigurationWithoutAudience(t *testing.T) {
+	dir := t.TempDir()
+	projectPath := writeJSON(t, dir, ".cli.json", `{
+	  "cli": "1.0.0",
+	  "mode": { "default": "discover" },
+	  "runtime": {
+	    "server": {
+	      "auth": {
+	        "validationProfile": "oidc_jwks",
+	        "issuer": "https://broker.example.com",
+	        "jwksURL": "https://broker.example.com/.well-known/jwks.json"
+	      }
+	    }
+	  },
+	  "sources": {
+	    "tickets": {
+	      "type": "openapi",
+	      "uri": "https://example.com/openapi.json"
+	    }
+	  },
+	  "services": {
+	    "tickets": {
+	      "source": "tickets"
+	    }
+	  }
+	}`)
+
+	_, err := config.LoadEffective(config.LoadOptions{ProjectPath: projectPath, WorkingDir: dir})
+	requireValidationDiagnostic(t, err, "runtime.server.auth.audience", "required when runtime.server.auth.validationProfile is oidc_jwks")
 }
 
 func TestLoadEffectiveHigherPrecedenceLegacyRuntimeAuthModeOverridesLowerValidationProfile(t *testing.T) {

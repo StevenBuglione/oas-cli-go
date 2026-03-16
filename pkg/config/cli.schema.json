@@ -283,6 +283,7 @@
           },
           "then": {
             "required": [
+              "audience",
               "issuer",
               "jwksURL"
             ]

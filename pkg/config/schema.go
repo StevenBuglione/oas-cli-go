@@ -271,6 +271,12 @@ func validateRuntimeConfig(cfg Config) error {
 				})
 			}
 		case "oidc_jwks":
+			if auth.Audience == "" {
+				diagnostics = append(diagnostics, Diagnostic{
+					Path:    "runtime.server.auth.audience",
+					Message: "required when runtime.server.auth.validationProfile is oidc_jwks",
+				})
+			}
 			if auth.Issuer == "" {
 				diagnostics = append(diagnostics, Diagnostic{
 					Path:    "runtime.server.auth.issuer",

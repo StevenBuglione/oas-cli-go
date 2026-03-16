@@ -270,6 +270,67 @@ func TestServerRejectsWrongAudienceOIDCJWKSToken(t *testing.T) {
 	}
 }
 
+func TestServerRejectsOIDCJWKSConfigWithoutAudience(t *testing.T) {
+	dir := t.TempDir()
+	issuer := newOIDCJWKSTestIssuer(t)
+	writeRuntimeFile(t, dir, "tickets.openapi.yaml", `
+openapi: 3.1.0
+info:
+  title: Tickets API
+  version: "1.0.0"
+paths:
+  /tickets:
+    get:
+      operationId: listTickets
+      responses:
+        "200":
+          description: OK
+`)
+	configPath := writeRuntimeFile(t, dir, ".cli.json", fmt.Sprintf(`{
+	  "cli": "1.0.0",
+	  "mode": { "default": "discover" },
+	  "runtime": {
+	    "server": {
+	      "auth": {
+	        "validationProfile": "oidc_jwks",
+	        "issuer": %q,
+	        "jwksURL": %q
+	      }
+	    }
+	  },
+	  "sources": {
+	    "ticketsSource": {
+	      "type": "openapi",
+	      "uri": "./tickets.openapi.yaml",
+	      "enabled": true
+	    }
+	  },
+	  "services": {
+	    "tickets": {
+	      "source": "ticketsSource",
+	      "alias": "tickets"
+	    }
+	  }
+	}`, issuer.issuer, issuer.jwksURL))
+
+	server := runtime.NewServer(runtime.Options{AuditPath: filepath.Join(dir, "audit.log")})
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	resp, err := http.Get(httpServer.URL + "/v1/catalog/effective?config=" + configPath)
+	if err != nil {
+		t.Fatalf("get effective catalog: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400 effective catalog for oidc_jwks config without audience, got %d", resp.StatusCode)
+	}
+	body := readTrimmedBody(t, resp)
+	if !strings.Contains(body, "runtime.server.auth.audience") {
+		t.Fatalf("expected missing audience validation error, got %q", body)
+	}
+}
+
 func TestServerRejectsOIDCJWKSTokenWithoutExpiration(t *testing.T) {
 	dir := t.TempDir()
 	issuer := newOIDCJWKSTestIssuer(t)
