@@ -65,6 +65,11 @@ The official proof architecture is:
 5. `oasclird` validates the token using the configured validation profile, expected to be `oidc_jwks` for the reference deployment.
 6. The runtime derives the authorization envelope from normalized runtime scopes and enforces catalog filtering plus execution denial.
 
+For clarity, the reference deployment uses **two trust chains**, not one:
+
+- **Human chain:** Entra authenticates the user, Authentik federates that identity, then Authentik issues the runtime token.
+- **Workload chain:** the workload authenticates directly to Authentik using operator-managed client credentials, then Authentik issues the runtime token.
+
 ## Required proof paths
 
 The official reference proof must verify two equally required end-to-end paths.
@@ -96,11 +101,13 @@ For the reference deployment, the workload path does **not** rely on handing raw
 
 For the reference deployment:
 
-- workload credentials presented to Authentik are operator-managed credentials for the runtime client
+- workload credentials presented to Authentik are Authentik-managed operator credentials for the runtime client
 - Authentik is responsible for issuing short-lived runtime-compatible access tokens
 - `oascli` consumes those tokens through the existing `oauthClient` path
 - `oasclird` must fail closed when the issuer, JWKS, audience, expiry, or scopes are invalid
 - verification must include at least one negative case showing that an invalid or insufficient workload token is rejected
+
+The reference proof does **not** require Entra-backed workload credentials in phase one. Entra federation is required for the human interactive path; the workload path is required to prove non-interactive runtime-token issuance and validation through the same broker, but it uses Authentik-managed client credentials as the documented reference.
 
 ## Completion bar for "enterprise end-to-end verified"
 
@@ -151,9 +158,11 @@ To keep the example understandable and replaceable, the reference deployment is 
 
 ### 1. Upstream identity unit: Entra
 
-- authenticates the human or workload principal
+- authenticates the human principal for the interactive reference path
 - remains provider-specific and illustrative
 - is not directly consumed by `oascli`
+
+For the reference deployment, this unit is required for the **human** path and not required for the workload path.
 
 ### 2. Broker unit: Authentik
 
