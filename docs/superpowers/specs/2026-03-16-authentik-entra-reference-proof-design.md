@@ -1,0 +1,208 @@
+# Authentik Reference Proof with Entra Federation Design
+
+## Problem
+
+The brokered runtime auth contract is implemented and locally verified, including a live broker-shaped smoke using real `oascli` and `oasclird` binaries. What is still missing is an enterprise-grade external proof that demonstrates the contract works with a real identity stack, not just an in-process reference broker fixture.
+
+The project needs one official reference deployment that:
+
+- proves the contract can be adopted by real organizations
+- preserves the broker-neutral design of `oascli`
+- demonstrates strong enterprise integration with a common upstream identity provider
+- avoids turning the spec into a product-specific requirement
+
+## Goals
+
+- Keep the runtime auth contract broker-neutral.
+- Provide one official, enterprise-grade reference proof deployment.
+- Use a real upstream identity provider commonly used by enterprises.
+- Verify both human and workload auth paths end to end.
+- Document the minimum evidence required before claiming full enterprise E2E verification.
+
+## Non-goals
+
+- Requiring all organizations to use Authentik.
+- Making Entra-specific behavior part of the normative runtime contract.
+- Publishing multiple official broker examples in this phase.
+- Standardizing an organization's internal group-to-scope mapping policy.
+
+## Selected approach
+
+Use a two-layer model:
+
+1. **Normative contract:** `oascli` and compatible runtimes remain broker-neutral.
+2. **Official reference proof:** Authentik is the single documented reference broker, with Microsoft Entra ID as the documented upstream federation example.
+
+This gives the project one concrete, enterprise-relevant reference implementation without coupling the contract to a single vendor product.
+
+## Why this is the right solution
+
+### Why not Entra-only
+
+An Entra-only example proves one real provider path, but it does not prove broker portability. It risks teaching users that the reference architecture is "direct Microsoft integration" instead of "provider-neutral runtime contract plus organization-chosen broker."
+
+### Why Authentik as the reference broker
+
+Authentik is a good reference broker because it:
+
+- speaks standard OAuth2/OIDC surfaces
+- can federate upstream enterprise identity providers such as Entra
+- can issue broker-owned tokens suitable for the runtime contract
+- resembles the architecture many organizations will actually deploy
+
+### Why not multiple official brokers right now
+
+Two or more official reference brokers would improve interoperability confidence, but it would also multiply maintenance burden, example drift, and verification cost. One strong reference broker is the right first proof.
+
+## Reference architecture
+
+The official proof architecture is:
+
+1. A user or workload authenticates against **Microsoft Entra ID**.
+2. **Authentik** federates that upstream identity and applies organization-defined policy.
+3. Authentik issues a **runtime-compatible token** for audience `oasclird`.
+4. `oascli` acquires that token through the standard runtime contract.
+5. `oasclird` validates the token using the configured validation profile, expected to be `oidc_jwks` for the reference deployment.
+6. The runtime derives the authorization envelope from normalized runtime scopes and enforces catalog filtering plus execution denial.
+
+## Required proof paths
+
+The official reference proof must verify two equally required end-to-end paths.
+
+### 1. Human interactive path
+
+This path proves that a real user can authenticate through the standard runtime browser flow:
+
+- `oascli` reads runtime metadata from `GET /v1/runtime/info`
+- `oascli` reads browser-login metadata from `GET /v1/auth/browser-config`
+- `oascli` completes `browserLogin` with authorization-code + PKCE
+- Authentik federates the login to Entra
+- Authentik returns a runtime-compatible token
+- `oasclird` validates the token and enforces runtime authz
+
+### 2. Workload path
+
+This path proves that non-interactive service access works as well:
+
+- `oascli` uses `runtime.remote.oauth.mode: "oauthClient"`
+- the token endpoint used is owned by or fronted through Authentik
+- the resulting runtime token satisfies the same audience, expiry, identity, and scope semantics
+- `oasclird` validates the token and enforces the same authorization envelope behavior
+
+## Completion bar for "enterprise end-to-end verified"
+
+The project should not claim full enterprise E2E verification until all of the following are captured for the reference deployment.
+
+### Deployment evidence
+
+- a real Authentik deployment exists
+- a real Entra application registration exists
+- Entra-to-Authentik federation is configured and documented
+- Authentik is configured to issue runtime-compatible tokens
+- `oasclird` is configured to validate those tokens using discovery/JWKS
+
+### Human-flow evidence
+
+- a real browser-based sign-in completes successfully
+- `oascli` obtains the token using the runtime metadata contract
+- authenticated catalog output shows only authorized tools
+- an authorized tool execution succeeds
+- an unauthorized tool execution is denied
+
+### Workload-flow evidence
+
+- a real non-interactive client obtains a runtime token from the documented workload path
+- authenticated catalog output shows only authorized tools
+- an authorized tool execution succeeds
+- an unauthorized tool execution is denied
+
+### Documentation evidence
+
+- operator setup docs exist for the Authentik reference deployment
+- Entra federation steps are documented
+- claim-to-runtime-scope mapping is documented
+- "bring your own broker" guidance makes clear that Authentik is illustrative, not normative
+
+## Contract boundaries
+
+The spec remains clear on these boundaries:
+
+- **Normative:** runtime metadata contract, runtime token semantics, authorization behavior, fail-closed expectations
+- **Illustrative:** Authentik deployment shape, Entra federation wiring, claim mapping examples
+
+Organizations may replace Authentik with another broker, gateway, or compatible custom implementation as long as they preserve the external contract expected by `oascli`.
+
+## Reference deployment requirements
+
+The official Authentik example should include:
+
+- an example runtime config using `runtime.server.auth.validationProfile: "oidc_jwks"`
+- a documented Authentik application/provider setup
+- documented Entra upstream federation steps
+- example user-to-scope and workload-to-scope mappings
+- a verification runbook for both browser and workload flows
+
+## What is already proven vs. still missing
+
+### Already proven
+
+- the broker-neutral contract is implemented
+- `oascli` and `oasclird` interoperate with a live broker-shaped OIDC/JWKS issuer
+- the runtime enforces catalog filtering and fail-closed authorization
+- the project has one executable reference broker fixture
+
+### Still missing
+
+- real Authentik deployment proof
+- real Entra federation proof
+- real browser-login proof against an external IdP chain
+- real workload-token proof against the same external chain
+- operator runbooks and setup docs for the reference deployment
+
+## Testing strategy
+
+Testing for the official proof should be split into three layers:
+
+1. **Contract tests**
+   - existing unit/product coverage
+   - local reference broker smoke
+
+2. **Reference deployment verification**
+   - Authentik + Entra browserLogin proof
+   - Authentik + Entra workload proof
+
+3. **Operator documentation verification**
+   - follow-the-docs runbook validation on a clean environment
+
+## Risks and mitigations
+
+### Risk: reference example becomes mistaken for the only supported architecture
+
+Mitigation:
+
+- repeatedly label Authentik as the reference implementation, not the required product
+- keep the normative contract sections separate from deployment-example sections
+
+### Risk: Entra-specific claims leak into the contract
+
+Mitigation:
+
+- keep provider-specific claim handling inside the illustrative broker mapping layer
+- document normalized runtime claims separately from upstream claims
+
+### Risk: example drift
+
+Mitigation:
+
+- require a verification runbook
+- require reproducible evidence for both human and workload paths
+- keep the example narrow: one broker, one upstream provider, two required flows
+
+## Decision
+
+The correct solution is:
+
+- keep the **spec broker-neutral**
+- adopt **Authentik as the single official reference broker**
+- document **Microsoft Entra ID as the upstream enterprise federation path**
+- require both **browserLogin** and **oauthClient** to pass real external end-to-end verification before claiming full enterprise proof
