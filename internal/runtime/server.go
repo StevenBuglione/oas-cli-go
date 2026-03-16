@@ -748,6 +748,9 @@ func (server *Server) authenticateRequest(ctx context.Context, request *http.Req
 			return nil, &runtimeAuthError{StatusCode: http.StatusUnauthorized, Code: "authn_failed", Message: err.Error()}
 		}
 		principal = firstNonEmpty(claims.Subject, claims.ClientID)
+		if principal == "" {
+			return nil, &runtimeAuthError{StatusCode: http.StatusUnauthorized, Code: "authn_failed", Message: "oidc_jwks token must contain sub or client_id"}
+		}
 		scopes = strings.Fields(claims.Scope)
 	} else {
 		introspection, err := server.introspectToken(ctx, *authCfg, token)
