@@ -1011,6 +1011,14 @@ func hasLocalMCPSource(cfg configpkg.Config) bool {
 }
 
 func resolveRuntimeToken(options CommandOptions, oauth configpkg.RemoteOAuthConfig) (string, *runtimeTokenSession, error) {
+	var runtimeHandshake embeddedruntime.HandshakeInfo
+	if options.RuntimeURL != "" && (oauth.Mode == "oauthClient" || oauth.Mode == "browserLogin") {
+		info, err := fetchRuntimeHandshake(options.RuntimeURL)
+		if err != nil {
+			return "", nil, err
+		}
+		runtimeHandshake = info
+	}
 	switch oauth.Mode {
 	case "", "providedToken":
 		token := ""
@@ -1022,8 +1030,12 @@ func resolveRuntimeToken(options CommandOptions, oauth configpkg.RemoteOAuthConf
 		if oauth.Client == nil {
 			return "", nil, fmt.Errorf("runtime.remote.oauth.client is required for oauthClient mode")
 		}
+		effectiveOAuth := oauth
+		if effectiveOAuth.Audience == "" && runtimeHandshake.Auth != nil {
+			effectiveOAuth.Audience = runtimeHandshake.Auth.Audience
+		}
 		acquire := func(ctx context.Context) (runtimeSessionToken, error) {
-			return resolveRuntimeOAuthClientToken(ctx, oauth)
+			return resolveRuntimeOAuthClientToken(ctx, effectiveOAuth)
 		}
 		token, err := acquire(context.Background())
 		if err != nil {
@@ -1034,7 +1046,16 @@ func resolveRuntimeToken(options CommandOptions, oauth configpkg.RemoteOAuthConf
 		if options.RuntimeURL == "" {
 			return "", nil, fmt.Errorf("runtime URL is required for browserLogin mode")
 		}
-		metadata, err := fetchRuntimeBrowserLoginMetadata(options.RuntimeURL)
+		browserConfigEndpoint := "/v1/auth/browser-config"
+		if runtimeHandshake.Auth != nil && runtimeHandshake.Auth.BrowserLogin != nil {
+			if !runtimeHandshake.Auth.BrowserLogin.Configured {
+				return "", nil, fmt.Errorf("runtime browser login is not configured")
+			}
+			if endpoint := strings.TrimSpace(runtimeHandshake.Auth.BrowserLogin.ConfigEndpoint); endpoint != "" {
+				browserConfigEndpoint = endpoint
+			}
+		}
+		metadata, err := fetchRuntimeBrowserLoginMetadata(options.RuntimeURL, browserConfigEndpoint)
 		if err != nil {
 			return "", nil, err
 		}
@@ -1048,8 +1069,14 @@ func resolveRuntimeToken(options CommandOptions, oauth configpkg.RemoteOAuthConf
 			Audience: metadata.Audience,
 			StateDir: paths.StateDir,
 		}
+		if request.Audience == "" && runtimeHandshake.Auth != nil {
+			request.Audience = runtimeHandshake.Auth.Audience
+		}
 		if oauth.Audience != "" {
 			request.Audience = oauth.Audience
+		}
+		if strings.TrimSpace(request.Audience) == "" {
+			return "", nil, fmt.Errorf("runtime browser login metadata missing audience")
 		}
 		if oauth.BrowserLogin != nil {
 			request.CallbackPort = oauth.BrowserLogin.CallbackPort
@@ -1311,8 +1338,16 @@ func localRuntimeConfigFingerprint(options CommandOptions) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func fetchRuntimeBrowserLoginMetadata(baseURL string) (runtimeBrowserLoginMetadata, error) {
-	req, err := http.NewRequest(http.MethodGet, baseURL+"/v1/auth/browser-config", nil)
+func fetchRuntimeHandshake(baseURL string) (embeddedruntime.HandshakeInfo, error) {
+	return getJSON[embeddedruntime.HandshakeInfo](strings.TrimRight(baseURL, "/")+"/v1/runtime/info", "")
+}
+
+func fetchRuntimeBrowserLoginMetadata(baseURL, endpoint string) (runtimeBrowserLoginMetadata, error) {
+	endpointURL, err := resolveRuntimeEndpointURL(baseURL, endpoint)
+	if err != nil {
+		return runtimeBrowserLoginMetadata{}, err
+	}
+	req, err := http.NewRequest(http.MethodGet, endpointURL, nil)
 	if err != nil {
 		return runtimeBrowserLoginMetadata{}, err
 	}
@@ -1329,7 +1364,39 @@ func fetchRuntimeBrowserLoginMetadata(baseURL string) (runtimeBrowserLoginMetada
 	if err := json.NewDecoder(resp.Body).Decode(&metadata); err != nil {
 		return runtimeBrowserLoginMetadata{}, err
 	}
+	if err := validateRuntimeBrowserLoginMetadata(metadata); err != nil {
+		return runtimeBrowserLoginMetadata{}, err
+	}
 	return metadata, nil
+}
+
+func resolveRuntimeEndpointURL(baseURL, endpoint string) (string, error) {
+	if strings.TrimSpace(baseURL) == "" {
+		return "", fmt.Errorf("runtime URL is required")
+	}
+	if strings.HasPrefix(endpoint, "http://") || strings.HasPrefix(endpoint, "https://") {
+		return endpoint, nil
+	}
+	if endpoint == "" {
+		endpoint = "/"
+	}
+	if !strings.HasPrefix(endpoint, "/") {
+		endpoint = "/" + endpoint
+	}
+	return strings.TrimRight(baseURL, "/") + endpoint, nil
+}
+
+func validateRuntimeBrowserLoginMetadata(metadata runtimeBrowserLoginMetadata) error {
+	switch {
+	case strings.TrimSpace(metadata.AuthorizationURL) == "":
+		return fmt.Errorf("runtime browser login metadata missing authorizationURL")
+	case strings.TrimSpace(metadata.TokenURL) == "":
+		return fmt.Errorf("runtime browser login metadata missing tokenURL")
+	case strings.TrimSpace(metadata.ClientID) == "":
+		return fmt.Errorf("runtime browser login metadata missing clientId")
+	default:
+		return nil
+	}
 }
 
 func acquireRuntimeBrowserLoginToken(request runtimeBrowserLoginRequest) (string, error) {

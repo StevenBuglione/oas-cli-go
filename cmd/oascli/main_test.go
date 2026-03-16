@@ -1108,11 +1108,25 @@ func TestRootCommandUsesOAuthClientRemoteRuntimeBearerToken(t *testing.T) {
 	defer authServer.Close()
 
 	runtimeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if got := r.Header.Get("Authorization"); got != "Bearer oauth-client-token" {
-			t.Fatalf("expected runtime bearer token from oauth client flow, got %q", got)
-		}
 		switch r.URL.Path {
+		case "/v1/runtime/info":
+			if got := r.Header.Get("Authorization"); got != "" {
+				t.Fatalf("expected unauthenticated runtime info discovery, got %q", got)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"contractVersion": "1.1",
+				"capabilities":    []string{"catalog", "brokered-auth"},
+				"auth": map[string]any{
+					"required":                true,
+					"audience":                "oasclird",
+					"scopePrefixes":           []string{"bundle:", "profile:", "tool:"},
+					"tokenValidationProfiles": []string{"oidc_jwks"},
+				},
+			})
 		case "/v1/catalog/effective":
+			if got := r.Header.Get("Authorization"); got != "Bearer oauth-client-token" {
+				t.Fatalf("expected runtime bearer token from oauth client flow, got %q", got)
+			}
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"catalog": map[string]any{
 					"services": []map[string]any{},
@@ -1141,7 +1155,6 @@ func TestRootCommandUsesOAuthClientRemoteRuntimeBearerToken(t *testing.T) {
 	      "url": %q,
 	      "oauth": {
 	        "mode": "oauthClient",
-	        "audience": "oasclird",
 	        "scopes": ["bundle:payments"],
 	        "client": {
 	          "tokenURL": %q,
@@ -1211,6 +1224,20 @@ func TestHTTPRuntimeClientRefreshesExpiredOAuthClientTokenOnce(t *testing.T) {
 	runtimeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		seenAuth = append(seenAuth, r.Header.Get("Authorization"))
 		switch r.URL.Path {
+		case "/v1/runtime/info":
+			if got := r.Header.Get("Authorization"); got != "" {
+				t.Fatalf("expected unauthenticated runtime info discovery, got %q", got)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"contractVersion": "1.1",
+				"capabilities":    []string{"catalog", "brokered-auth"},
+				"auth": map[string]any{
+					"required":                true,
+					"audience":                "oasclird",
+					"scopePrefixes":           []string{"bundle:", "profile:", "tool:"},
+					"tokenValidationProfiles": []string{"oidc_jwks"},
+				},
+			})
 		case "/v1/catalog/effective":
 			if got := r.Header.Get("Authorization"); got == "Bearer oauth-client-token-1" && len(seenAuth) > 1 {
 				http.Error(w, "authn_failed", http.StatusUnauthorized)
@@ -1325,6 +1352,20 @@ func TestHTTPRuntimeClientRefreshesAfterAuthnFailedOnNextRequest(t *testing.T) {
 	runtimeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		seenAuth = append(seenAuth, r.Header.Get("Authorization"))
 		switch r.URL.Path {
+		case "/v1/runtime/info":
+			if got := r.Header.Get("Authorization"); got != "" {
+				t.Fatalf("expected unauthenticated runtime info discovery, got %q", got)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"contractVersion": "1.1",
+				"capabilities":    []string{"catalog", "brokered-auth"},
+				"auth": map[string]any{
+					"required":                true,
+					"audience":                "oasclird",
+					"scopePrefixes":           []string{"bundle:", "profile:", "tool:"},
+					"tokenValidationProfiles": []string{"oidc_jwks"},
+				},
+			})
 		case "/v1/tools/execute":
 			executeCalls++
 			if executeCalls == 1 {
@@ -1444,13 +1485,30 @@ func TestRootCommandUsesRemoteBrowserLoginBearerToken(t *testing.T) {
 
 	runtimeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/v1/auth/browser-config":
+		case "/v1/runtime/info":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"contractVersion": "1.1",
+				"capabilities":    []string{"catalog", "brokered-auth", "authorization-envelope"},
+				"auth": map[string]any{
+					"required":                true,
+					"audience":                "oasclird",
+					"scopePrefixes":           []string{"bundle:", "profile:", "tool:"},
+					"tokenValidationProfiles": []string{"oidc_jwks"},
+					"browserLogin": map[string]any{
+						"configured":     true,
+						"configEndpoint": "/v1/runtime/browser-auth",
+					},
+				},
+			})
+		case "/v1/runtime/browser-auth":
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"authorizationURL": "https://auth.example.com/authorize",
 				"tokenURL":         "https://auth.example.com/token",
 				"clientId":         "browser-client",
 				"audience":         "oasclird",
 			})
+		case "/v1/auth/browser-config":
+			t.Fatalf("expected browser login metadata endpoint from runtime info, not default path")
 		case "/v1/catalog/effective":
 			if got := r.Header.Get("Authorization"); got != "Bearer browser-login-token" {
 				t.Fatalf("expected browser login bearer token, got %q", got)
@@ -1483,7 +1541,6 @@ func TestRootCommandUsesRemoteBrowserLoginBearerToken(t *testing.T) {
 	      "url": %q,
 	      "oauth": {
 	        "mode": "browserLogin",
-	        "audience": "oasclird",
 	        "scopes": ["bundle:payments"],
 	        "browserLogin": {
 	          "callbackPort": 9123
@@ -1518,6 +1575,87 @@ func TestRootCommandUsesRemoteBrowserLoginBearerToken(t *testing.T) {
 	}
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("Execute returned error: %v", err)
+	}
+}
+
+func TestRootCommandFailsClosedOnInvalidRuntimeBrowserLoginMetadata(t *testing.T) {
+	previousAcquirer := runtimeBrowserLoginTokenAcquirer
+	t.Cleanup(func() { runtimeBrowserLoginTokenAcquirer = previousAcquirer })
+	runtimeBrowserLoginTokenAcquirer = func(request runtimeBrowserLoginRequest) (string, error) {
+		t.Fatalf("expected invalid runtime metadata to fail before browser login token acquisition")
+		return "", nil
+	}
+
+	runtimeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/runtime/info":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"contractVersion": "1.1",
+				"capabilities":    []string{"catalog", "brokered-auth", "authorization-envelope"},
+				"auth": map[string]any{
+					"required":                true,
+					"audience":                "oasclird",
+					"scopePrefixes":           []string{"bundle:", "profile:", "tool:"},
+					"tokenValidationProfiles": []string{"oidc_jwks"},
+					"browserLogin": map[string]any{
+						"configured":     true,
+						"configEndpoint": "/v1/runtime/browser-auth",
+					},
+				},
+			})
+		case "/v1/runtime/browser-auth":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"authorizationURL": "https://auth.example.com/authorize",
+				"tokenURL":         "https://auth.example.com/token",
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer runtimeServer.Close()
+
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, ".cli.json")
+	if err := os.WriteFile(configPath, []byte(fmt.Sprintf(`{
+	  "cli": "1.0.0",
+	  "mode": { "default": "discover" },
+	  "runtime": {
+	    "mode": "remote",
+	    "remote": {
+	      "url": %q,
+	      "oauth": {
+	        "mode": "browserLogin",
+	        "scopes": ["bundle:payments"],
+	        "browserLogin": {
+	          "callbackPort": 9123
+	        }
+	      }
+	    }
+	  },
+	  "sources": {
+	    "tickets": {
+	      "type": "openapi",
+	      "uri": "https://example.com/openapi.json"
+	    }
+	  },
+	  "services": {
+	    "tickets": {
+	      "source": "tickets"
+	    }
+	  }
+	}`, runtimeServer.URL)), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	_, err := NewRootCommand(CommandOptions{
+		ConfigPath: configPath,
+		StateDir:   filepath.Join(dir, "state"),
+		Stdout:     &stdout,
+		Stderr:     &stdout,
+	}, []string{"catalog", "list", "--format", "json"})
+	if err == nil || !strings.Contains(err.Error(), "runtime browser login metadata missing clientId") {
+		t.Fatalf("expected invalid runtime browser login metadata error, got %v", err)
 	}
 }
 
@@ -1615,6 +1753,21 @@ func TestRootCommandCompletesRemoteBrowserLoginAuthorizationCodeFlow(t *testing.
 
 	runtimeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case "/v1/runtime/info":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"contractVersion": "1.1",
+				"capabilities":    []string{"catalog", "brokered-auth", "authorization-envelope"},
+				"auth": map[string]any{
+					"required":                true,
+					"audience":                "oasclird",
+					"scopePrefixes":           []string{"bundle:", "profile:", "tool:"},
+					"tokenValidationProfiles": []string{"oidc_jwks"},
+					"browserLogin": map[string]any{
+						"configured":     true,
+						"configEndpoint": "/v1/auth/browser-config",
+					},
+				},
+			})
 		case "/v1/auth/browser-config":
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"authorizationURL": authServer.URL + "/authorize",
