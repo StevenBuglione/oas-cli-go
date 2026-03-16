@@ -124,7 +124,7 @@ Current remote client auth modes:
 
 - `providedToken` forwards a bearer token from an environment reference such as `env:OAS_REMOTE_TOKEN`
 - `oauthClient` acquires a client-credentials bearer token before runtime HTTP requests
-- `browserLogin` fetches browser-login metadata from the runtime and completes an authorization-code + PKCE flow against the server-configured IdP
+- `browserLogin` fetches browser-login metadata from the runtime and completes an authorization-code + PKCE flow against the broker or issuer selected by that runtime deployment
 
 Remote runtimes can also enforce scope-filtered access on the server side:
 
@@ -133,11 +133,12 @@ Remote runtimes can also enforce scope-filtered access on the server side:
   "runtime": {
     "server": {
       "auth": {
-        "mode": "oauth2Introspection",
+        "validationProfile": "oidc_jwks",
+        "issuer": "https://broker.example.com",
+        "jwksURL": "https://broker.example.com/jwks.json",
         "audience": "oasclird",
-        "introspectionURL": "https://auth.example.com/oauth/introspect",
-        "authorizationURL": "https://auth.example.com/authorize",
-        "tokenURL": "https://auth.example.com/token",
+        "authorizationURL": "https://broker.example.com/authorize",
+        "tokenURL": "https://broker.example.com/token",
         "browserClientId": "oascli-browser"
       }
     }
@@ -153,6 +154,8 @@ With that server-side auth enabled, `oasclird` now:
 - exposes browser-login metadata at `GET /v1/auth/browser-config`
 - exposes runtime discovery/session-control surfaces at `GET /v1/runtime/info`, `POST /v1/runtime/heartbeat`, `POST /v1/runtime/stop`, and `POST /v1/runtime/session-close`
 - records explicit audit event types for authenticated connect, authn failure, authz denial, token refresh, session close, session expiry, and tool execution
+
+Supported validation profiles now include both `oidc_jwks` and `oauth2_introspection`. See `examples/runtime-auth-broker/reference/` for the runnable broker-shaped reference example used in product verification.
 
 ## Install from source
 

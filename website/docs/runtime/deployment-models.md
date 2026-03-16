@@ -90,6 +90,8 @@ Current remote auth support:
 - `oauthClient` acquires a client-credentials token before runtime requests
 - `browserLogin` fetches runtime-hosted browser metadata and completes an authorization-code + PKCE flow
 
+Brokered deployments typically pair those client modes with `runtime.server.auth.validationProfile: "oidc_jwks"` so the daemon can validate broker-issued runtime tokens locally. See `examples/runtime-auth-broker/reference/` for the reference example shape.
+
 ## 4. Multiple isolated instances
 
 Best for:

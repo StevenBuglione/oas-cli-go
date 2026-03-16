@@ -199,7 +199,7 @@ Example response:
   "audience": "oasclird",
   "required": true,
   "scopePrefixes": ["bundle:", "profile:", "tool:"],
-  "tokenValidationProfiles": ["oauth2_introspection"],
+  "tokenValidationProfiles": ["oidc_jwks"],
   "authorizationEnvelope": {
     "version": "1.0",
     "scopePrefixes": ["bundle:", "profile:", "tool:"]
@@ -240,7 +240,7 @@ Example response:
     "required": true,
     "audience": "oasclird",
     "scopePrefixes": ["bundle:", "profile:", "tool:"],
-    "tokenValidationProfiles": ["oauth2_introspection"],
+    "tokenValidationProfiles": ["oidc_jwks"],
     "browserLogin": {
       "configured": true,
       "configEndpoint": "/v1/auth/browser-config"
@@ -268,7 +268,7 @@ Example response:
 Notes:
 
 - `contractVersion` and top-level `capabilities` are the runtime handshake surface used by `oascli` compatibility checks.
-- `auth.required`, `auth.tokenValidationProfiles`, and `auth.browserLogin` tell remote clients whether they must attach a bearer token and whether browser login discovery is available.
+- `auth.required`, `auth.tokenValidationProfiles`, and `auth.browserLogin` tell remote clients whether they must attach a bearer token and whether browser login discovery is available. Common profiles are `oidc_jwks` and `oauth2_introspection`.
 - `auth.principal` is echoed only when the runtime already resolved an authenticated subject for the current request.
 - `auth.authorizationEnvelope.version` and `auth.scopePrefixes` let operators diagnose catalog/execution parity when runtime scopes are involved.
 - `runtimeMode` is typically `embedded` or `local` in the current implementation.

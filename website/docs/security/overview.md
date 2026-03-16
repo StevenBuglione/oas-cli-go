@@ -18,7 +18,7 @@ The current implementation focuses heavily on the second layer and leaves the fi
 - unauthenticated on loopback-only local deployments
 - with runtime auth enabled through `runtime.server.auth`
 
-The current server-side auth mode is `oauth2Introspection`. When enabled, the daemon validates bearer tokens, derives runtime scopes from the introspection response, filters catalogs by those scopes, and rejects out-of-scope execution requests.
+The current server-side auth surface is profile-based rather than introspection-only. `oasclird` can validate runtime bearer tokens with `oauth2_introspection` or `oidc_jwks`, derive runtime scopes from the validated token, filter catalogs by those scopes, and reject out-of-scope execution requests.
 
 If you expose the runtime on a broader network, do not rely on bind address alone. Use runtime auth and deployment controls such as:
 

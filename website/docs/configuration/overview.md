@@ -106,7 +106,7 @@ Controls how `oascli` reaches execution:
 - `oauthClient`: acquire a client-credentials token for the remote runtime before calling it
 - `browserLogin`: fetch runtime-hosted browser-login metadata and complete an authorization-code + PKCE flow
 
-`runtime.server.auth` configures remote-runtime enforcement on the daemon itself. The current server-side mode is `oauth2Introspection`, which lets `oasclird` authenticate bearer tokens, filter catalogs by runtime scopes, and reject out-of-scope execution.
+`runtime.server.auth` configures remote-runtime enforcement on the daemon itself. The daemon now supports generalized validation profiles such as `oidc_jwks` and `oauth2_introspection`, while preserving the same fail-closed behavior: authenticate bearer tokens, derive runtime scopes, filter catalogs, and reject out-of-scope execution.
 
 ### `sources`
 

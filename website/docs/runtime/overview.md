@@ -88,3 +88,5 @@ When `runtime.server.auth` is enabled on `oasclird`, the daemon itself now becom
 - `GET /v1/runtime/info` advertises whether auth is required, which validation profile is active, the scope prefixes used to derive the authorization envelope, and the envelope metadata version for compatibility checks
 - `GET /v1/auth/browser-config` exposes the browser-login metadata plus the same scope/envelope diagnostics that remote clients need before starting an interactive sign-in flow
 - when a request is already authenticated, the runtime handshake echoes the resolved principal for diagnostics and operator troubleshooting
+
+The reference brokered deployment verified in product tests is documented under `examples/runtime-auth-broker/reference/`.
