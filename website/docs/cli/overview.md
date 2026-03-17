@@ -4,6 +4,8 @@ title: CLI Overview
 
 # CLI Overview
 
+**Read this if** you are deploying or scripting `oascli` and need to understand its command shape, flag surface, and runtime dependency. This page answers: how are commands named, what flags exist everywhere, and why does `oascli --help` need a reachable runtime.
+
 `oascli` is a **runtime-backed CLI**. It does not ship a fixed set of service commands. Instead, it asks the runtime for the effective catalog, then builds a Cobra command tree from the returned services and tools.
 
 ## Command families
@@ -107,6 +109,16 @@ The current catalog builder creates tools for these OpenAPI methods:
 - `DELETE`
 
 Do not assume that `HEAD`, `OPTIONS`, or `TRACE` operations become CLI tools in the current implementation.
+
+## If you are trying to…
+
+| Goal | Go to |
+| --- | --- |
+| Understand how commands are named from your OpenAPI | [Catalog and explain](./catalog-and-explain) |
+| Map flags and request body fields to HTTP calls | [Tool execution](./tool-execution) |
+| Choose or debug how `oascli` finds the runtime | [Deployment models](../runtime/deployment-models) |
+| Run multi-step operations as a single command | [Workflow run](./workflow-run) |
+| Configure which tools different agents can see | [Configuration overview](../configuration/overview) |
 
 ## Learn the next layer
 

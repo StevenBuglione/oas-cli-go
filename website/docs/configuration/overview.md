@@ -4,6 +4,8 @@ title: Configuration Overview
 
 # Configuration Overview
 
+**Read this if** you are an operator writing or tuning `.cli.json` for your environment. This page answers: what does each top-level config block control, how do sources and services relate, and what is the minimum viable config vs a fully curated one.
+
 `oascli` and `oasclird` are driven by **JSON config files** named `.cli.json` (plus optional scope variants described in [Scope merging](./scope-merging)).
 
 ## What the config controls
@@ -208,6 +210,17 @@ A minimal config only needs:
 ```
 
 If you stop there, unreferenced sources are still processed directly. The runtime will derive a service ID automatically, but you will not get an explicit alias unless you add a `services` entry. Overlays, skills, and workflows can still arrive indirectly from discovered service metadata when that source type supports them.
+
+## If you are trying to…
+
+| Goal | Go to |
+| --- | --- |
+| Understand how multiple `.cli.json` files merge at runtime | [Scope merging](./scope-merging) |
+| Control which tools each agent profile can see | [Modes and profiles](./modes-and-profiles) |
+| Look up every field and default value | [Config schema](./config-schema) |
+| Connect a remote runtime with auth | [Deployment models](../runtime/deployment-models) |
+| Understand how secrets map to OpenAPI security schemes | [Secret sources](../security/secret-sources) |
+| Set up approval for sensitive tool calls | [Policy and approval](../security/policy-and-approval) |
 
 ## Recommended reading order
 

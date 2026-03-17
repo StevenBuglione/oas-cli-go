@@ -13,6 +13,17 @@ That reference proof covers two paths:
 
 Authentik is the example, not the requirement. Any broker or gateway is acceptable as long as it satisfies the runtime auth contract expected by `oascli` and `oasclird`.
 
+## Proof boundary
+
+| Path | Proof type | What you need |
+|---|---|---|
+| `oauthClient` automated proof | CI-reproducible | Authentik container only (`make authentik-up`) |
+| Browser-login (manual) | Live proof only | Real Authentik instance with a UI |
+| Entra federation | Live proof only | Real Entra tenant, application registration, test identity |
+| Token revocation | **Not implemented** | No proof path exists; tracked gap |
+
+The automated proof is the reproducible CI artifact. The browser-login and Entra federation paths are documented and exercisable by operators, but they require real external infrastructure — they cannot be run in a CI-only environment.
+
 ## What the automated proof verifies
 
 The automated Authentik product test proves that:

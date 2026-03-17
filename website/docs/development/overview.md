@@ -4,6 +4,8 @@ title: Development Overview
 
 # Development Overview
 
+**Read this if** you are contributing to `oas-cli-go` or evaluating the maturity of the implementation. This page answers: how is the repo organized, what is the contributor workflow, and why fleet validation and the product test harness are the primary signals that the implementation is production-ready — not just design intent.
+
 The repository is organized around a clear split:
 
 - **CLI surface** in `cmd/oascli`
@@ -45,5 +47,21 @@ Each bucket has a natural owner package; resist the urge to push behavior into `
 - the runtime is the enforcement point for policy, auth, cache, and audit
 - instance isolation is file-system based
 - observability is abstracted behind `pkg/obs.Observer`
+
+## Maturity signal: fleet validation
+
+Contributors and evaluators can both read this the same way: the fleet validation matrix in `product-tests/testdata/fleet/capability-matrix.yaml` is executable evidence, not aspirational copy. It covers multi-session daemon lifecycle, remote runtime auth, MCP transports, and real upstream API patterns. The live proof matrix covers flows that require external identity infrastructure.
+
+See [Fleet validation](./fleet-validation) for the full picture.
+
+## If you are trying to…
+
+| Goal | Go to |
+| --- | --- |
+| Understand the package ownership for a specific concern | [Repo layout](./repo-layout) |
+| Run the reproducible fleet matrix locally | [Fleet validation](./fleet-validation) |
+| Add or extend test coverage | [Testing](./testing) |
+| Extend the runtime with new behavior | [Extending the runtime](./extending-the-runtime) |
+| Verify the build before a handoff | Run `make verify` then `cd website && npm ci && npm run build` |
 
 Use the next pages for package-level detail.

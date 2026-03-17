@@ -4,6 +4,8 @@ title: Tracing and Instances
 
 # Tracing and Instances
 
+**Read this if** you are running multiple isolated `oasclird` instances, need deterministic instance IDs, or want to understand the observability hooks available in the runtime. This page answers: how instance IDs are derived, what `runtime.json` contains, and what happens when a registration goes stale.
+
 Instances keep runtime state isolated. Observability hooks make it possible to inspect what the runtime is doing internally.
 
 ## Instance ID derivation
@@ -57,11 +59,20 @@ Built-in implementations in the repo are:
 - `obs.NewNop()`
 - `obs.NewRecorder()` for tests
 
-There is no built-in OpenTelemetry exporter or on-disk trace sink.
+There is no built-in OpenTelemetry exporter or on-disk trace sink. If you need production trace export, `obs.Observer` is the extension point — you implement the interface and wire it in. There is no ready-made OTEL integration today; plan this as an operator-owned integration if your environment requires distributed tracing.
 
 ## Request IDs
 
 The runtime uses `X-Request-ID` if the caller provides one. Otherwise it generates a timestamp-based request ID and attaches it to observer context.
+
+## If you are trying to…
+
+| Goal | Go to |
+| --- | --- |
+| Start multiple isolated daemon instances | See [Practical multi-instance pattern](#practical-multi-instance-pattern) in this page |
+| Understand runtime resolution order when `runtime.json` exists | [Deployment models](../runtime/deployment-models) |
+| Plug in a custom observer for testing | See `pkg/obs.Observer` — `obs.NewRecorder()` is the test implementation |
+| Add OpenTelemetry export | Not available today; `obs.Observer` is the extension point |
 
 ## Practical multi-instance pattern
 

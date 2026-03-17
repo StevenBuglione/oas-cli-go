@@ -4,6 +4,8 @@ title: Deployment Models
 
 # Deployment Models
 
+**Read this if** you are choosing how to run `oascli` — one-off embedded, a reusable local daemon, or a remote runtime — and need to understand runtime resolution order, instance isolation, and what happens when a registry entry goes stale.
+
 The current repo supports three practical ways to run the system, and `.cli.json` can now choose between them through `runtime.mode`.
 
 ## 1. Embedded mode
@@ -168,5 +170,15 @@ If you bind beyond localhost:
 - keep network controls in place as a second boundary, such as a reverse proxy, firewall policy, or SSH tunnel
 
 See [Runtime Overview](./overview) for the runtime-auth handshake surface and [Authentik reference proof](./authentik-reference) for the worked brokered example.
+
+## If you are trying to…
+
+| Goal | Go to |
+| --- | --- |
+| Configure client auth for a remote runtime | [Runtime overview](./overview) |
+| Enable runtime bearer token validation on the daemon | [Security overview](../security/overview) |
+| Isolate multiple teams with separate state and audit logs | [Tracing and instances](../operations/tracing-and-instances) |
+| See the full brokered deployment worked example | [Authentik reference proof](./authentik-reference) |
+| Evaluate enterprise readiness as an operator | [Enterprise readiness](./enterprise-readiness) |
 
 For the evaluator-focused path that ties those pages together with fleet proof and operations, continue to [Enterprise readiness](./enterprise-readiness).

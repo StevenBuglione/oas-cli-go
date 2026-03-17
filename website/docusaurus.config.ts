@@ -54,6 +54,53 @@ const config: Config = {
           label: 'Docs',
         },
         {
+          type: 'dropdown',
+          label: 'Get Started',
+          position: 'left',
+          items: [
+            {type: 'doc', docId: 'getting-started/choose-your-path', label: 'Choose Your Path'},
+            {type: 'doc', docId: 'getting-started/installation', label: 'Installation'},
+            {type: 'doc', docId: 'getting-started/quickstart', label: 'Quickstart'},
+            {type: 'doc', docId: 'cli/overview', label: 'CLI Overview'},
+          ],
+        },
+        {
+          type: 'dropdown',
+          label: 'Runtime & Security',
+          position: 'left',
+          items: [
+            {type: 'doc', docId: 'runtime/overview', label: 'Runtime'},
+            {type: 'doc', docId: 'runtime/deployment-models', label: 'Deployment Models'},
+            {type: 'doc', docId: 'security/overview', label: 'Security'},
+            {type: 'doc', docId: 'configuration/overview', label: 'Configuration'},
+            {type: 'doc', docId: 'discovery-catalog/overview', label: 'Discovery & Catalog'},
+            {type: 'doc', docId: 'operations/overview', label: 'Operations'},
+          ],
+        },
+        {
+          type: 'dropdown',
+          label: 'Enterprise',
+          position: 'left',
+          items: [
+            {type: 'doc', docId: 'enterprise/overview', label: 'Enterprise Overview'},
+            {type: 'doc', docId: 'enterprise/adoption-checklist', label: 'Adoption Checklist'},
+            {type: 'doc', docId: 'runtime/enterprise-readiness', label: 'Readiness Assessment'},
+            {type: 'doc', docId: 'runtime/authentik-reference', label: 'Auth Reference Proof'},
+            {type: 'doc', docId: 'development/fleet-validation', label: 'Fleet Validation'},
+          ],
+        },
+        {
+          type: 'dropdown',
+          label: 'Development',
+          position: 'left',
+          items: [
+            {type: 'doc', docId: 'development/overview', label: 'Development Overview'},
+            {type: 'doc', docId: 'development/repo-layout', label: 'Repo Layout'},
+            {type: 'doc', docId: 'development/testing', label: 'Testing'},
+            {type: 'doc', docId: 'development/extending-the-runtime', label: 'Extending the Runtime'},
+          ],
+        },
+        {
           href: 'https://github.com/StevenBuglione/oas-cli-go',
           label: 'GitHub',
           position: 'right',
@@ -66,9 +113,11 @@ const config: Config = {
         {
           title: 'Docs',
           items: [
+            {label: 'Docs Hub', to: '/docs/intro'},
             {label: 'Getting Started', to: '/docs/getting-started/intro'},
             {label: 'CLI', to: '/docs/cli/overview'},
             {label: 'Runtime', to: '/docs/runtime/overview'},
+            {label: 'Enterprise', to: '/docs/enterprise/overview'},
           ],
         },
         {

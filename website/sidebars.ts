@@ -2,6 +2,7 @@ import type {SidebarsConfig} from '@docusaurus/plugin-content-docs';
 
 const sidebars: SidebarsConfig = {
   mainSidebar: [
+    'intro',
     {
       type: 'category',
       label: 'Getting Started',
@@ -57,6 +58,12 @@ const sidebars: SidebarsConfig = {
       label: 'Operations',
       link: {type: 'doc', id: 'operations/overview'},
       items: ['operations/audit-logging', 'operations/cache-and-refresh', 'operations/tracing-and-instances'],
+    },
+    {
+      type: 'category',
+      label: 'Enterprise',
+      link: {type: 'doc', id: 'enterprise/overview'},
+      items: ['enterprise/adoption-checklist'],
     },
     {
       type: 'category',

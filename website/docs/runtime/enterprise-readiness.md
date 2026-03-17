@@ -6,6 +6,25 @@ title: Enterprise Readiness
 
 This page is the shortest honest route through the parts of `oas-cli-go` that matter during an enterprise evaluation.
 
+## Proof boundary summary
+
+Before reading the detail sections, understand where each capability claim sits:
+
+| Claim | Proof type | What backs it |
+|---|---|---|
+| Deployment models (embedded / local / remote) | CI-reproducible | Fleet matrix lanes |
+| Runtime bearer auth, scope filtering, execution denial | CI-reproducible | Fleet matrix + Authentik product test |
+| Auth failure paths (missing, expired, tampered tokens) | CI-reproducible | Fleet matrix `remote-runtime-auth-failures` lane |
+| Authentik automated proof (`oauthClient`) | CI-reproducible | `capability_runtime_auth_authentik_test.go` |
+| Browser-login + Entra federation | Live proof only | Requires real IdP infrastructure; tracked in `live-proof-matrix.yaml` |
+| Token revocation / introspection-backed auth | **Not implemented** | Tracked gap; no current proof path |
+| Audit log rotation, retention, SIEM push | **Not provided** | Operator-owned infrastructure required |
+| Network perimeter beyond bind address | **Not provided** | Operator-owned firewall / proxy / isolation required |
+
+This table is the answer to "what does the repo actually prove vs. what do I still own?" If you need detail on any row, follow the references in the sections below.
+
+---
+
 ## What you can evaluate today
 
 The repository already exposes concrete proof for:
@@ -73,3 +92,12 @@ By the time you finish the pages above, you should be able to answer:
 ## What still remains a known gap
 
 The project does **not** currently claim token revocation or introspection-backed runtime auth as a solved, reproducible proof path. Expiry, signature validation, issuer/audience checks, and scope enforcement are covered; revocation remains a tracked gap rather than a hidden assumption.
+
+The following are also explicitly outside what the repository provides:
+
+- audit log rotation, retention, and purge policies (operator tooling required)
+- push-based audit export / SIEM integration (pull-based file read is the only path today)
+- network perimeter beyond bind address (firewall, proxy, or isolation are operator-owned)
+- OpenTelemetry trace export (the `obs.Observer` interface is the extension point; no built-in exporter exists)
+
+See [Enterprise Overview — External operational requirements](../enterprise/overview#6-external-operational-requirements) for the consolidated list.

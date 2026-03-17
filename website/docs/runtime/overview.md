@@ -4,6 +4,8 @@ title: Runtime Overview
 
 # Runtime Overview
 
+**Read this if** you are deploying `oasclird`, debugging policy or auth behavior, or evaluating the runtime as a shared enforcement point. This page answers: what does the runtime own, what is its HTTP surface, and how does the request lifecycle work end to end.
+
 `oasclird` is the execution and policy plane for `oascli`.
 
 Even when you use embedded mode, the same runtime server implementation is doing the work behind the scenes.
@@ -90,5 +92,16 @@ When `runtime.server.auth` is enabled on `oasclird`, the daemon itself now becom
 - when a request is already authenticated, the runtime handshake echoes the resolved principal for diagnostics and operator troubleshooting
 
 The reference brokered deployment verified in product tests is documented in [Authentik reference proof](./authentik-reference).
+
+## If you are trying to…
+
+| Goal | Go to |
+| --- | --- |
+| Choose between embedded, local daemon, or remote runtime | [Deployment models](./deployment-models) |
+| Enable runtime bearer auth and catalog filtering | [Security overview](../security/overview) |
+| Review HTTP API request/response shapes | [HTTP API](./http-api) |
+| Evaluate enterprise or brokered deployment readiness | [Enterprise readiness](./enterprise-readiness) |
+| See the broker-neutral worked example with Authentik | [Authentik reference proof](./authentik-reference) |
+| Understand how cache and refresh work at runtime | [Refresh and audit](./refresh-and-audit) |
 
 If you are evaluating whether the runtime is ready for a hosted or brokered deployment, use [Enterprise readiness](./enterprise-readiness) as the curated next step.

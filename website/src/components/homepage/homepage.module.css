@@ -1,0 +1,499 @@
+/* ─── Layout helpers ──────────────────────────────────────────── */
+
+.section {
+  padding: 4rem 0;
+}
+
+.sectionMuted {
+  background: #f7f9fc;
+  border-top: 1px solid var(--ifm-color-emphasis-200);
+  border-bottom: 1px solid var(--ifm-color-emphasis-200);
+}
+
+.sectionHeader {
+  margin: 0 auto 2rem;
+  max-width: 760px;
+  text-align: center;
+}
+
+/* ─── Hero ────────────────────────────────────────────────────── */
+
+.heroBanner {
+  padding: 5.5rem 0 4.5rem;
+}
+
+.heroTitle {
+  font-size: clamp(2rem, 5vw, 3rem);
+  line-height: 1.15;
+  max-width: 760px;
+  margin: 0 auto 0.5rem;
+}
+
+.heroTitleAccent {
+  color: var(--ifm-color-primary);
+  white-space: nowrap;
+}
+
+[data-theme='dark'] .heroTitleAccent {
+  color: var(--ifm-color-primary-lighter);
+}
+
+.heroLead {
+  font-size: 1.18rem;
+  line-height: 1.7;
+  margin: 0 auto;
+  max-width: 820px;
+}
+
+.heroSummary {
+  font-size: 1rem;
+  line-height: 1.7;
+  margin: 1rem auto 0;
+  max-width: 760px;
+}
+
+.heroButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.9rem;
+  justify-content: center;
+  margin-top: 1.75rem;
+}
+
+/* ─── HowItWorks layout ───────────────────────────────────────── */
+
+.howItWorksLayout {
+  align-items: flex-start;
+  display: flex;
+  gap: 3rem;
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.howItWorksDiagram {
+  flex-shrink: 0;
+  margin: 0;
+  max-width: 420px;
+  width: 100%;
+}
+
+.howItWorksDiagram img {
+  border-radius: var(--ifm-global-radius);
+  border: 1px solid var(--ifm-color-emphasis-200);
+  width: 100%;
+  height: auto;
+}
+
+.diagramCaption {
+  color: var(--ifm-font-color-secondary);
+  font-size: 0.8rem;
+  margin-top: 0.5rem;
+  text-align: center;
+}
+
+/* ─── WhyItExists ─────────────────────────────────────────────── */
+
+.whyGrid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 2rem;
+}
+
+.whyBlock {
+  background: var(--ifm-card-background-color, var(--ifm-background-surface-color));
+  border: 1px solid var(--ifm-color-emphasis-200);
+  border-radius: var(--ifm-global-radius);
+  padding: 1.25rem;
+}
+
+.whyBlockTitle {
+  font-size: 1rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  margin-top: 0;
+}
+
+.whyBlockBody {
+  color: var(--ifm-font-color-secondary);
+  font-size: 0.9rem;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.whySolution {
+  background: var(--ifm-color-primary-lightest);
+  border-left: 3px solid var(--ifm-color-primary);
+  border-radius: 0 var(--ifm-global-radius) var(--ifm-global-radius) 0;
+  color: var(--ifm-font-color-base);
+  margin: 0 auto;
+  max-width: 760px;
+  padding: 0.9rem 1.2rem;
+  text-align: left;
+}
+
+[data-theme='dark'] .whySolution {
+  background: rgba(123, 176, 255, 0.1);
+}
+
+/* ─── Deployment diagram ──────────────────────────────────────── */
+
+.deploymentDiagram {
+  margin: 0 0 2rem;
+  text-align: center;
+}
+
+.deploymentDiagram img {
+  border-radius: var(--ifm-global-radius);
+  border: 1px solid var(--ifm-color-emphasis-200);
+  max-width: 100%;
+  height: auto;
+}
+
+/* ─── First-run snippet ───────────────────────────────────────── */
+
+.firstRunSection {
+  background: var(--ifm-color-primary-darkest);
+  color: #fff;
+  padding: 4rem 0;
+}
+
+.firstRunSection .sectionHeader p,
+.firstRunSection .sectionHeader {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.firstRunSection .sectionHeader a {
+  color: var(--ifm-color-primary-lightest);
+}
+
+.snippetWrapper {
+  margin: 0 auto 2.5rem;
+  max-width: 760px;
+}
+
+.deepLinkNav {
+  margin: 0 auto;
+  max-width: 760px;
+  text-align: center;
+}
+
+.deepLinkLabel {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.8rem;
+  letter-spacing: 0.06em;
+  margin-bottom: 0.75rem;
+  text-transform: uppercase;
+}
+
+.deepLinkList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  justify-content: center;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.deepLinkItem {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.875rem;
+  padding: 0.4rem 0.9rem;
+  text-decoration: none;
+  transition: background 0.15s ease;
+}
+
+.deepLinkItem:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  text-decoration: none;
+}
+
+[data-theme='dark'] .firstRunSection {
+  background: #0d1f38;
+}
+
+.stepList {
+  counter-reset: none;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  list-style: none;
+  margin: 0 auto;
+  max-width: 820px;
+  padding: 0;
+}
+
+.stepItem {
+  align-items: flex-start;
+  background: var(--ifm-card-background-color, var(--ifm-background-surface-color));
+  border: 1px solid var(--ifm-color-emphasis-200);
+  border-radius: var(--ifm-global-radius);
+  display: flex;
+  gap: 1rem;
+  padding: 1.1rem 1.25rem;
+}
+
+.stepNumber {
+  align-items: center;
+  background: var(--ifm-color-primary);
+  border-radius: 50%;
+  color: #fff;
+  display: flex;
+  flex-shrink: 0;
+  font-size: 0.85rem;
+  font-weight: 700;
+  height: 1.75rem;
+  justify-content: center;
+  margin-top: 0.1rem;
+  width: 1.75rem;
+}
+
+.stepContent {
+  flex: 1;
+}
+
+.stepLabel {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.stepDetail {
+  color: var(--ifm-font-color-secondary);
+  margin: 0;
+}
+
+/* ─── Persona paths ───────────────────────────────────────────── */
+
+.grid3 {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.personaCard {
+  background: var(--ifm-card-background-color, var(--ifm-background-surface-color));
+  border: 1px solid var(--ifm-color-emphasis-200);
+  border-radius: var(--ifm-global-radius);
+  padding: 1.25rem;
+}
+
+.personaTitle {
+  margin-bottom: 0.2rem;
+}
+
+.personaAudience {
+  color: var(--ifm-font-color-secondary);
+  font-size: 0.85rem;
+  margin-bottom: 0.75rem;
+}
+
+.personaDescription {
+  margin-bottom: 0.75rem;
+}
+
+.personaLinks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.personaLinks li + li {
+  margin-top: 0.35rem;
+}
+
+/* ─── Capability strip ────────────────────────────────────────── */
+
+.capabilitySection {
+  background: var(--ifm-color-primary-darkest);
+  color: #fff;
+  padding: 2.5rem 0;
+}
+
+.capabilityHeading {
+  color: #fff;
+  font-size: 1rem;
+  letter-spacing: 0.08em;
+  margin-bottom: 1.25rem;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.capabilityList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  justify-content: center;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.capabilityItem {
+  align-items: flex-start;
+  display: flex;
+  flex-direction: column;
+  max-width: 190px;
+  text-align: center;
+}
+
+.capabilityName {
+  color: #fff;
+  font-size: 1rem;
+}
+
+.capabilityName:hover {
+  color: var(--ifm-color-primary-lighter);
+}
+
+.capabilitySummary {
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  margin-top: 0.25rem;
+}
+
+/* ─── Deployment mode cards ───────────────────────────────────── */
+
+.modeCard {
+  background: var(--ifm-card-background-color, var(--ifm-background-surface-color));
+  border: 1px solid var(--ifm-color-emphasis-200);
+  border-radius: var(--ifm-global-radius);
+  padding: 1.25rem;
+}
+
+.modeTitle {
+  margin-bottom: 0.2rem;
+}
+
+.modeTagline {
+  color: var(--ifm-color-primary);
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+}
+
+.modeTradeoffs {
+  border-top: 1px solid var(--ifm-color-emphasis-200);
+  color: var(--ifm-font-color-secondary);
+  font-size: 0.875rem;
+  margin-bottom: 0.75rem;
+  padding-top: 0.75rem;
+}
+
+.cardLink {
+  font-weight: 600;
+}
+
+/* ─── Trust boundary table ────────────────────────────────────── */
+
+.tableWrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.boundaryTable {
+  border-collapse: collapse;
+  margin: 0 auto;
+  max-width: 900px;
+  width: 100%;
+}
+
+.boundaryTable th,
+.boundaryTable td {
+  border: 1px solid var(--ifm-color-emphasis-200);
+  padding: 0.7rem 1rem;
+  vertical-align: top;
+}
+
+.boundaryTable thead th {
+  background: var(--ifm-color-emphasis-100);
+  text-align: left;
+}
+
+.trustNote {
+  margin: 1.25rem auto 0;
+  max-width: 760px;
+  text-align: center;
+}
+
+/* ─── Evidence panel ──────────────────────────────────────────── */
+
+.grid2 {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.evidenceCard {
+  background: var(--ifm-card-background-color, var(--ifm-background-surface-color));
+  border: 1px solid var(--ifm-color-emphasis-200);
+  border-radius: var(--ifm-global-radius);
+  padding: 1.25rem;
+}
+
+.evidenceTitle {
+  margin-bottom: 0.5rem;
+}
+
+/* ─── Dark mode overrides ─────────────────────────────────────── */
+
+[data-theme='dark'] .sectionMuted {
+  background: rgba(15, 23, 42, 0.42);
+}
+
+[data-theme='dark'] .stepItem,
+[data-theme='dark'] .personaCard,
+[data-theme='dark'] .modeCard,
+[data-theme='dark'] .evidenceCard {
+  box-shadow: none;
+}
+
+[data-theme='dark'] .capabilitySection {
+  background: var(--ifm-color-primary-darkest);
+}
+
+/* ─── Responsive ──────────────────────────────────────────────── */
+
+@media screen and (max-width: 996px) {
+  .heroBanner {
+    padding: 4rem 0 3.5rem;
+  }
+
+  .howItWorksLayout {
+    flex-direction: column;
+  }
+
+  .howItWorksDiagram {
+    max-width: 100%;
+  }
+
+  .grid3 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .whyGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media screen and (max-width: 640px) {
+  .grid3,
+  .grid2,
+  .whyGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .capabilityItem {
+    max-width: 100%;
+    text-align: left;
+  }
+
+  .deepLinkList {
+    gap: 0.5rem;
+  }
+}

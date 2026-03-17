@@ -4,6 +4,8 @@ title: Operations Overview
 
 # Operations Overview
 
+**Read this if** you are managing a running `oasclird` installation and need to understand the state layout, how to inspect cache and audit data, or how to isolate multiple instances. This page answers: where does state live, what does the runtime persist, and which pages go deeper on each operational concern.
+
 Operationally, `oas-cli-go` is mostly about **state management**:
 
 - where the runtime is registered
@@ -48,6 +50,24 @@ If `oascli` is given `--state-dir`, it also derives the cache root under `<state
 - `runtime.json`: daemon URL plus audit/cache hints
 - `audit.log`: newline-delimited JSON audit events
 - cache metadata/body pairs for remote fetches
+
+## If you are trying to…
+
+| Goal | Go to |
+| --- | --- |
+| Understand what events are written and what is missing | [Audit logging](./audit-logging) |
+| Expire, refresh, or inspect the HTTP cache | [Cache and refresh](./cache-and-refresh) |
+| Run multiple isolated runtimes side by side | [Tracing and instances](./tracing-and-instances) |
+| Override state or cache root paths | [Deployment models](../runtime/deployment-models) |
+
+## Operational limits to know before a production deployment
+
+These are not roadmap items — they are current facts that affect production planning:
+
+- **No built-in log rotation or retention.** The audit file grows without bound unless you add external tooling (`logrotate`, a log sidecar, or a forwarder).
+- **No audit push export.** Audit data is readable from disk or via `GET /v1/audit/events`. There is no push exporter or SIEM connector today.
+- **No OpenTelemetry export.** The `obs.Observer` interface is the extension point; there is no built-in trace sink.
+- **Network perimeter is operator-owned.** For remote deployments, firewall rules, reverse proxy auth, or container isolation must be provided outside the daemon.
 
 Continue with:
 

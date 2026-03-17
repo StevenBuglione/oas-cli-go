@@ -4,6 +4,8 @@ title: Security Overview
 
 # Security Overview
 
+**Read this if** you are responsible for the auth model, secret management, or understanding when and how `oasclird` becomes an authorization boundary. This page answers: what are the two distinct security layers, when is runtime auth enforced, and what are the real current caveats around OAuth and missing secrets.
+
 Security in `oas-cli-go` has two distinct layers:
 
 1. **runtime access**: who is allowed to call `oasclird`
@@ -69,4 +71,15 @@ See [Policy and approval](./policy-and-approval).
 - `exec` secrets are disabled unless explicitly allowed by policy
 - only managed-scope deny rules are enforced directly as hard denies today
 
-Those are not hypothetical edge cases; they follow the code as currently implemented.
+**Token revocation is a tracked gap.** The runtime validates tokens at presentation time (expiry, signature, issuer, audience, scope). It does not perform revocation checks or call an introspection endpoint. If you need post-issuance revocation, you must enforce it outside the runtime (short expiry windows, network controls, or a proxy that calls your IdP's introspection endpoint).
+
+## If you are trying to…
+
+| Goal | Go to |
+| --- | --- |
+| Understand how OpenAPI security schemes become runtime credentials | [Auth resolution](./auth-resolution) |
+| Configure `env`, `file`, or `exec` secret sources | [Secret sources](./secret-sources) |
+| Set up approval requirements for sensitive tools | [Policy and approval](./policy-and-approval) |
+| Set up the runtime as a full authorization boundary end to end | [Enterprise readiness](../runtime/enterprise-readiness) |
+| See the broker-neutral worked example with Authentik | [Authentik reference proof](../runtime/authentik-reference) |
+| Configure MCP transport OAuth and header secrets | [Secret sources – MCP transport](./secret-sources#mcp-headersecrets) |
