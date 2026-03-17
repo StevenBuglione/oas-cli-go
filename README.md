@@ -1,81 +1,102 @@
 # oas-cli-go
 
-`oas-cli-go` is the Go reference implementation of OAS-CLI. It turns OpenAPI documents, discovery metadata, native MCP servers, overlays, and policy into a local command surface that humans and agents can use safely.
+**`oascli`** and **`oasclird`** turn OpenAPI descriptions and MCP servers into a local, policy-aware command surface. Discovery, auth resolution, policy enforcement, and audit logging happen inside the runtime — not spread across callers.
 
-- **Full docs:** https://stevenbuglione.github.io/oas-cli-go/
-- **Getting started:** https://stevenbuglione.github.io/oas-cli-go/docs/getting-started/intro
-- **Development guide:** https://stevenbuglione.github.io/oas-cli-go/docs/development/overview
-- **Verification:** `make verify` for the Go implementation, plus `cd website && npm ci && npm run build` when docs change
+This is the Go reference implementation of the [OAS-CLI specification](spec/).
 
-## What this repository ships
+**Full docs:** https://stevenbuglione.github.io/oas-cli-go/
 
-The project is intentionally split into two binaries:
+---
 
-| Binary | Purpose | Use it when |
-| --- | --- | --- |
-| `oascli` | Operator-facing CLI that renders the effective catalog, exposes dynamic commands, and forwards execution requests. | You want to inspect services, explain tools, render schemas, run workflows, or execute a tool. |
-| `oasclird` | Local runtime daemon that loads config, performs discovery, normalizes catalogs, resolves auth, enforces policy, executes upstream HTTP calls, and records audit events. | You want a reusable runtime process instead of starting one inside each CLI invocation. |
+## Two binaries, one execution model
 
-The common flow looks like this:
+The project ships two binaries with a deliberate split:
 
-1. `oascli` resolves a runtime target or starts an embedded runtime.
-2. The runtime loads `.cli.json`, merges scopes, and validates the effective config.
-3. Discovery loads OpenAPI descriptions, overlays, workflows, and related metadata.
-4. `oascli` renders catalog-driven commands while `oasclird` remains the enforcement point for policy, auth, retries, cache state, and audit logging.
+| Binary | Role |
+|--------|------|
+| `oascli` | Operator-facing CLI. Renders the effective catalog, exposes dynamic commands derived from your OpenAPI or MCP sources, and forwards execution requests. |
+| `oasclird` | Runtime daemon. Loads config, performs discovery, normalizes catalogs, resolves auth, enforces policy, executes upstream HTTP requests, and records audit events. |
 
-If you want the deeper model, start with the docs site: https://stevenbuglione.github.io/oas-cli-go/
+`oascli` always needs a runtime. In **embedded mode** it starts one in-process — no separate process required. In **local daemon mode** it connects to a running `oasclird`. In either case the same runtime server logic executes.
 
-## Native MCP and OAuth support
+---
 
-The current implementation supports both traditional OpenAPI sources and native MCP sources.
+## First success: embedded mode
 
-- MCP transports: `stdio`, legacy `sse`, and `streamable-http`
-- `.mcp.json`-style compatibility through top-level `mcpServers`
-- OpenAPI `oauth2` and `openIdConnect` runtime auth
-- MCP `streamable-http` transport auth with `clientCredentials` `oauth` and `transport.headerSecrets`
-- per-instance OAuth token caching under the runtime state directory
+**Prerequisites:** Go 1.25.1+
 
-Example:
+Build the binaries from the repository root:
+
+```bash
+go build -o ./bin/oascli ./cmd/oascli
+go build -o ./bin/oasclird ./cmd/oasclird
+```
+
+Create a minimal `.cli.json` pointing at an OpenAPI document:
 
 ```json
 {
   "cli": "1.0.0",
   "mode": { "default": "discover" },
   "sources": {
-    "filesystem": {
-      "type": "mcp",
-      "transport": {
-        "type": "stdio",
-        "command": "npx",
-        "args": ["-y", "@modelcontextprotocol/server-filesystem", "/workspace"]
-      }
-    },
-    "remoteDocs": {
-      "type": "mcp",
-      "transport": {
-        "type": "streamable-http",
-        "url": "https://mcp.example.com/mcp",
-        "headerSecrets": {
-          "X-API-Key": "mcp.apiKey"
-        }
-      },
-      "oauth": {
-        "mode": "clientCredentials",
-        "tokenURL": "https://auth.example.com/oauth/token",
-        "clientId": { "type": "env", "value": "MCP_CLIENT_ID" },
-        "clientSecret": { "type": "env", "value": "MCP_CLIENT_SECRET" }
-      }
+    "ticketsSource": {
+      "type": "openapi",
+      "uri": "./tickets.openapi.yaml",
+      "enabled": true
     }
   },
-  "secrets": {
-    "mcp.apiKey": { "type": "env", "value": "MCP_API_KEY" }
+  "services": {
+    "tickets": {
+      "source": "ticketsSource",
+      "alias": "helpdesk"
+    }
   }
 }
 ```
 
-## Runtime deployment in `.cli.json`
+Inspect the catalog — no daemon, no upstream calls:
 
-Runtime selection can now come from configuration, not just flags:
+```bash
+./bin/oascli --embedded --config ./.cli.json catalog list --format pretty
+```
+
+This prints the normalized catalog: service aliases, tools, and generated command names derived from your OpenAPI document. Nothing contacts any upstream service.
+
+Inspect a specific tool before executing it:
+
+```bash
+./bin/oascli --embedded --config ./.cli.json tool schema tickets:listTickets --format pretty
+./bin/oascli --embedded --config ./.cli.json explain tickets:listTickets --format pretty
+```
+
+Preview the generated command tree:
+
+```bash
+./bin/oascli --embedded --config ./.cli.json helpdesk tickets --help
+```
+
+For a complete walkthrough including a sample OpenAPI document, see the [quickstart](https://stevenbuglione.github.io/oas-cli-go/docs/getting-started/quickstart).
+
+---
+
+## Deployment modes
+
+| Mode | Description | When to use |
+|------|-------------|-------------|
+| **Embedded** | Runtime runs in-process per invocation. No daemon required. | Local dev, scripting, CI |
+| **Local daemon** | Single `oasclird` shared across CLI invocations. Warmed catalog cache. | Local MCP servers, persistent session, shared cache |
+| **Remote runtime** | Centrally hosted `oasclird` with network-controlled access. | Team-shared enforcement point, brokered access control |
+
+**Starting a local daemon:**
+
+```bash
+./bin/oasclird --config ./.cli.json --addr 127.0.0.1:8765
+
+# In another shell:
+./bin/oascli --runtime http://127.0.0.1:8765 --config ./.cli.json catalog list --format pretty
+```
+
+**Config-driven selection** — avoid flags by declaring mode in `.cli.json`:
 
 ```json
 {
@@ -83,8 +104,6 @@ Runtime selection can now come from configuration, not just flags:
     "mode": "auto",
     "local": {
       "sessionScope": "terminal",
-      "heartbeatSeconds": 15,
-      "missedHeartbeatLimit": 3,
       "shutdown": "when-owner-exits",
       "share": "exclusive"
     }
@@ -92,195 +111,87 @@ Runtime selection can now come from configuration, not just flags:
 }
 ```
 
-Current behavior:
+`mode: auto` stays embedded unless local MCP sources are present, in which case `oascli` promotes to local-daemon mode automatically. Managed local runtimes register a session lease and shut down when the owning session exits.
 
-- `runtime.mode=embedded` keeps execution in-process
-- `runtime.mode=local` uses a local `oasclird`
-- `runtime.mode=remote` uses the configured remote runtime URL
-- `runtime.mode=auto` stays embedded unless local MCP sources are present, in which case `oascli` promotes to local-daemon mode automatically
-- managed local runtimes now register a session lease, renew it with heartbeat calls, and can shut down automatically when the owning session exits
-- local reuse now enforces `share` and `sessionScope` through explicit attach conflicts and config-fingerprint mismatch checks before a second client attaches
+---
 
-For remote mode, the runtime block also supports remote OAuth metadata:
+## Auth, policy, and audit
 
-```json
-{
-  "runtime": {
-    "mode": "remote",
-    "remote": {
-      "url": "https://runtime.example.com",
-      "oauth": {
-        "mode": "providedToken",
-        "audience": "oasclird",
-        "scopes": ["bundle:payments"],
-        "tokenRef": "env:OAS_REMOTE_TOKEN"
-      }
-    }
-  }
-}
-```
+Auth and policy enforcement live inside the runtime, not in the CLI layer.
 
-Current remote client auth modes:
+**Per-request auth resolution** — OpenAPI `oauth2` and `openIdConnect` flows; MCP `streamable-http` with `clientCredentials` OAuth and `headerSecrets`; MCP transports `stdio`, legacy `sse`, and `streamable-http`; per-instance token caching under the runtime state directory.
 
-- `providedToken` forwards a bearer token from an environment reference such as `env:OAS_REMOTE_TOKEN`
-- `oauthClient` acquires a client-credentials bearer token before runtime HTTP requests
-- `browserLogin` fetches browser-login metadata from the runtime and completes an authorization-code + PKCE flow against the broker or issuer selected by that runtime deployment
+**Remote runtime bearer auth** — when `oasclird` is deployed with `runtime.server.auth` configured, it:
 
-Remote runtimes can also enforce scope-filtered access on the server side:
-
-```json
-{
-  "runtime": {
-    "server": {
-      "auth": {
-        "validationProfile": "oidc_jwks",
-        "issuer": "https://broker.example.com",
-        "jwksURL": "https://broker.example.com/jwks.json",
-        "audience": "oasclird",
-        "authorizationURL": "https://broker.example.com/authorize",
-        "tokenURL": "https://broker.example.com/token",
-        "browserClientId": "oascli-browser"
-      }
-    }
-  }
-}
-```
-
-With that server-side auth enabled, `oasclird` now:
-
-- requires bearer auth for catalog, execute, workflow, refresh, and audit surfaces
+- validates bearer tokens against `oidc_jwks` or `oauth2_introspection`
 - filters the visible catalog by `bundle:*`, `profile:*`, and `tool:*` scopes
-- re-checks execution against the same resolved authorization envelope
-- exposes browser-login metadata at `GET /v1/auth/browser-config`
-- exposes runtime discovery/session-control surfaces at `GET /v1/runtime/info`, `POST /v1/runtime/heartbeat`, `POST /v1/runtime/stop`, and `POST /v1/runtime/session-close`
-- records explicit audit event types for authenticated connect, authn failure, authz denial, token refresh, session close, session expiry, and tool execution
+- re-checks execution against the resolved authorization envelope
+- records audit events for connect, auth failures, authz denials, token refresh, session lifecycle, and tool execution
+- exposes the audit log at `GET /v1/audit/events`
 
-Supported validation profiles now include both `oidc_jwks` and `oauth2_introspection`. The repository now ships an official Authentik-based reference proof for both `oauthClient` and `browserLogin` runtime auth paths, with separate public/browser and confidential/workload Authentik configurations:
+Remote client auth modes — `providedToken` (forward a bearer token from an env reference), `oauthClient` (acquire a client-credentials token), and `browserLogin` (authorization-code + PKCE flow against the runtime's broker).
 
-- repo assets: `examples/runtime-auth-broker/authentik/`
-- docs guide: `website/docs/runtime/authentik-reference.md`
+**Reference proof** — the repository ships an Authentik-based reference proof for both `oauthClient` and `browserLogin` runtime auth paths:
 
-## Install from source
+- Repo assets: `examples/runtime-auth-broker/authentik/`
+- Docs: [Authentik reference proof](https://stevenbuglione.github.io/oas-cli-go/docs/runtime/authentik-reference)
+- Microsoft Entra is documented as an upstream federation target in that same proof
 
-There are no packaged installers in this repository today; the documented path is to build from source.
+---
 
-### Prerequisites
+## Where to go next
 
-- Go **1.25.1+**
-- Node.js **18+** only if you need to build the docs site under `website/`
+| Goal | Link |
+|------|------|
+| Quickstart with a sample OpenAPI document | [Quickstart](https://stevenbuglione.github.io/oas-cli-go/docs/getting-started/quickstart) |
+| Choose embedded, local daemon, or remote runtime | [Deployment models](https://stevenbuglione.github.io/oas-cli-go/docs/runtime/deployment-models) |
+| Configuration reference | [Configuration overview](https://stevenbuglione.github.io/oas-cli-go/docs/configuration/overview) |
+| Full CLI command model | [CLI overview](https://stevenbuglione.github.io/oas-cli-go/docs/cli/overview) |
+| Auth, policy, and secret sources | [Security overview](https://stevenbuglione.github.io/oas-cli-go/docs/security/overview) |
+| Enterprise readiness checklist | [Enterprise overview](https://stevenbuglione.github.io/oas-cli-go/docs/enterprise/overview) |
+| Contributing and development | [Development guide](https://stevenbuglione.github.io/oas-cli-go/docs/development/overview) |
 
-### Build the binaries
+---
 
-From the repository root:
+## Repository layout
 
-```bash
-go build -o ./bin/oascli ./cmd/oascli
-go build -o ./bin/oasclird ./cmd/oasclird
+```
+cmd/oascli        CLI entrypoint and runtime client
+cmd/oasclird      Daemon entrypoint
+internal/runtime  Runtime HTTP API and wiring
+pkg/              Config, discovery, catalog, policy, execution, caching, audit, observability
+spec/             Normative OAS-CLI specification and JSON schemas (single source of truth)
+conformance/      Language-neutral conformance fixtures and expected outputs
+website/          Docusaurus site content, navigation, and landing page
+.github/          CI and Pages automation
 ```
 
-Or install them into your Go bin directory:
+---
+
+## Verification
 
 ```bash
-go install ./cmd/oascli
-go install ./cmd/oasclird
+make verify             # format Go code, run tests, build both binaries
+make verify-spec        # validate spec examples against schemas
+make verify-conformance # run conformance fixtures against spec/schemas
+make verify-all         # all three
 ```
 
-## Run it
+Spec and conformance targets install their own Python dependencies via `pip install -q -r requirements.txt`.
 
-### Daemon mode
-
-Start the runtime:
+**Product tests** — end-to-end capability tests in `product-tests/`:
 
 ```bash
-go run ./cmd/oasclird --config /path/to/.cli.json --addr 127.0.0.1:8765
+make product-test-smoke  # validate infra configs only, no services started (runs in CI)
+make product-test-full   # bring up services and run all capability tests (requires Docker)
 ```
 
-In another shell, point the CLI at that runtime:
+**Docs site** — when `website/` or repo-facing docs change:
 
 ```bash
-go run ./cmd/oascli --runtime http://127.0.0.1:8765 --config /path/to/.cli.json catalog list --format pretty
+cd website && npm ci && npm run build
 ```
 
-### Embedded mode
+See [`product-tests/README.md`](product-tests/README.md) for the full list of product test targets.
 
-For one-off inspection or local experimentation, run the runtime in-process:
-
-```bash
-go run ./cmd/oascli --embedded --config /path/to/.cli.json catalog list --format pretty
-```
-
-### Config-driven local mode
-
-If your `.cli.json` contains local MCP servers and `runtime.mode` is `auto`, `oascli` now promotes to local-daemon mode automatically and will start a managed local `oasclird` when no live runtime is registered for that instance yet.
-
-For `runtime.local.sessionScope: "terminal"` and `"agent"`, the managed local runtime identity now includes the owning session identity instead of only the config path. That keeps concurrent terminals or agent sessions from accidentally colliding onto the same exclusive runtime. For `shared-group`, the identity uses `shareKey`.
-
-For a fuller walkthrough, see the quickstart: https://stevenbuglione.github.io/oas-cli-go/docs/getting-started/quickstart
-
-## Verify changes
-
-### Go implementation
-
-```bash
-make verify
-```
-
-That target formats Go code, runs `go test ./...`, and builds both binaries.
-
-### Spec and conformance
-
-`spec/` is the single source of truth for the OAS-CLI contract.  `conformance/` holds the language-neutral fixtures that validate implementations against those schemas.
-
-```bash
-make verify-spec          # validate spec examples against schemas
-make verify-conformance   # run conformance fixtures against spec/schemas
-make verify-all           # verify + verify-spec + verify-conformance
-```
-
-Both targets install their own Python dependencies via `pip install -q -r requirements.txt` before running.
-
-### Product tests
-
-`product-tests/` runs end-to-end capability tests against live infrastructure. Two entry points:
-
-```bash
-make product-test-smoke   # validate infra configs only — no services started
-make product-test-full    # bring up services and run all capability tests
-```
-
-The smoke target runs automatically in CI on every push and PR. The full suite requires Docker and outbound npm access; run it locally before merging changes that touch product behaviour or infra configs.
-
-See [`product-tests/README.md`](product-tests/README.md) for the full list of targets and per-capability test commands.
-
-### Docs site
-
-When `README.md`, `website/`, or repo-facing docs change, also verify the Docusaurus site:
-
-```bash
-cd website
-npm ci
-npm run build
-```
-
-## Where the full docs live
-
-The Docusaurus site is the long-form documentation for this repo:
-
-- Introduction: https://stevenbuglione.github.io/oas-cli-go/docs/getting-started/intro
-- Installation: https://stevenbuglione.github.io/oas-cli-go/docs/getting-started/installation
-- CLI and runtime behavior: https://stevenbuglione.github.io/oas-cli-go/docs/cli/overview
-- Configuration, discovery, and security: https://stevenbuglione.github.io/oas-cli-go/docs/configuration/overview
-- Contributor guidance: https://stevenbuglione.github.io/oas-cli-go/docs/development/overview
-
-## Repository guide
-
-- `cmd/oascli`: CLI entrypoint and runtime client
-- `cmd/oasclird`: daemon entrypoint
-- `internal/runtime`: runtime HTTP API and wiring
-- `pkg/`: reusable packages for config, discovery, catalog building, policy, execution, caching, audit, and observability
-- `spec/`: normative OAS-CLI specification and JSON schemas (single source of truth for the public contract)
-- `conformance/`: language-neutral conformance fixtures and expected outputs
-- `website/`: Docusaurus site content, navigation, and landing page
-- `.github/workflows/`: CI and Pages automation
-
-If you change behavior, update the owning Go package tests and the relevant docs page in the same change whenever possible.
+If you change behavior, update the owning Go package tests and the relevant docs page in the same commit.
