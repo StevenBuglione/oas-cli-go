@@ -45,7 +45,7 @@ See [HTTP API](./http-api) for request and response examples.
 - the OS picks an available port
 - the chosen URL is written to the instance registry (`runtime.json`)
 
-This default matters because the runtime has **no built-in caller authentication or authorization layer**. If you bind it to a broader interface, secure it with external network controls.
+This default matters because the safest baseline is still local-only access on loopback. When you do expose the daemon more broadly, `oasclird` can enforce its own runtime auth boundary through `runtime.server.auth`, and you should still keep external network controls in front of it.
 
 ## Default config path behavior
 
@@ -89,4 +89,4 @@ When `runtime.server.auth` is enabled on `oasclird`, the daemon itself now becom
 - `GET /v1/auth/browser-config` exposes the browser-login metadata plus the same scope/envelope diagnostics that remote clients need before starting an interactive sign-in flow
 - when a request is already authenticated, the runtime handshake echoes the resolved principal for diagnostics and operator troubleshooting
 
-The reference brokered deployment verified in product tests is documented under `examples/runtime-auth-broker/reference/`.
+The reference brokered deployment verified in product tests is documented in [Authentik reference proof](./authentik-reference).

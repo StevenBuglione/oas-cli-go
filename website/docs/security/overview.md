@@ -31,6 +31,8 @@ If you expose the runtime on a broader network, do not rely on bind address alon
 - SSH tunneling
 - container/network isolation
 
+See also [Deployment models](../runtime/deployment-models) for the local-loopback default and [Runtime overview](../runtime/overview) for the runtime handshake and browser-config surfaces.
+
 ## Upstream auth model
 
 Upstream auth comes from three pieces working together:

@@ -525,14 +525,14 @@ git commit -m "feat: enforce and publish fleet evidence artifacts"
 - Modify: `website/docs/runtime/overview.md`
 - Modify: `website/docs/security/overview.md` if cross-links need adjustment
 
-- [ ] **Step 1: Write down the exact contradictions to remove**
+- [x] **Step 1: Write down the exact contradictions to remove**
 
 Current contradictions:
 
 - “no built-in auth” wording in `deployment-models.md`
 - stale proof path in `runtime/overview.md` (`examples/runtime-auth-broker/reference/`)
 
-- [ ] **Step 2: Patch docs to match the implemented runtime auth model**
+- [x] **Step 2: Patch docs to match the implemented runtime auth model**
 
 Requirements:
 
@@ -540,7 +540,7 @@ Requirements:
 - point to `runtime/authentik-reference`
 - explain that remote runtime auth exists and can be enabled server-side
 
-- [ ] **Step 3: Build docs**
+- [x] **Step 3: Build docs**
 
 Run:
 

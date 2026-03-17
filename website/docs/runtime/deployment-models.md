@@ -160,4 +160,11 @@ What it does **not** do:
 
 ## Security note for remote bindings
 
-`oasclird` has no built-in auth for its own HTTP API. If you bind beyond localhost, use an external reverse proxy, firewall, SSH tunnel, or similar network controls.
+`oasclird` is safe-by-default for local development because it binds to loopback by default, but it does have an optional built-in runtime auth layer when you enable `runtime.server.auth`.
+
+If you bind beyond localhost:
+
+- enable `runtime.server.auth` so the daemon validates runtime bearer tokens and filters the catalog by runtime scopes
+- keep network controls in place as a second boundary, such as a reverse proxy, firewall policy, or SSH tunnel
+
+See [Runtime Overview](./overview) for the runtime-auth handshake surface and [Authentik reference proof](./authentik-reference) for the worked brokered example.
