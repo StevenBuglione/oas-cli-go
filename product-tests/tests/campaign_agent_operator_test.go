@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	"github.com/StevenBuglione/oas-cli-go/internal/runtime"
+	"github.com/StevenBuglione/oas-cli-go/pkg/audit"
 	"github.com/StevenBuglione/oas-cli-go/product-tests/tests/helpers"
 )
 
@@ -283,9 +284,14 @@ func TestCampaignAgentOperator(t *testing.T) {
 			URL:       srv.URL,
 			AuditPath: filepath.Join(dir, "audit.log"),
 		}
-		count := inst.AuditEventCount(t)
-		fr.Check("audit-event-count", "at least one audit event recorded per executed tool call",
-			">0", fmt.Sprintf("%d", count), count > 0, "")
+		events := inst.AuditEvents(t)
+		count := len(events)
+		fr.Check("audit-event-count", "one audit event is recorded per executed tool call",
+			"6", fmt.Sprintf("%d", count), count == 6, "")
+		fr.CheckBool("audit-has-list-items", "audit trail contains listItems execution", hasAuditTool(events, "campaign:listItems"), "")
+		fr.CheckBool("audit-has-create-item", "audit trail contains createItem execution", hasAuditTool(events, "campaign:createItem"), "")
+		fr.CheckBool("audit-has-delete-item", "audit trail contains deleteItem execution", hasAuditTool(events, "campaign:deleteItem"), "")
+		fr.CheckBool("audit-all-allowed", "audit trail records allowed decisions for happy-path tool calls", auditDecisionsMatch(events, "allowed"), "")
 		fr.Note(fmt.Sprintf("audit trail contains %d events after campaign", count))
 	})
 }
@@ -387,9 +393,33 @@ func TestCampaignAgentOperatorWithAuth(t *testing.T) {
 			URL:       srv.URL,
 			AuditPath: filepath.Join(dir, "audit.log"),
 		}
-		count := inst.AuditEventCount(t)
-		fr.Check("auth-audit-events", "audit trail has events after auth campaign",
-			">0", fmt.Sprintf("%d", count), count > 0, "")
+		events := inst.AuditEvents(t)
+		count := len(events)
+		fr.Check("auth-audit-events", "audit trail records both authenticated listItems calls",
+			"2", fmt.Sprintf("%d", count), count == 2, "")
+		fr.CheckBool("auth-audit-tool-id", "audit trail records protected:listItems", hasAuditTool(events, "protected:listItems"), "")
+		fr.CheckBool("auth-audit-allowed", "authenticated audit events are recorded as allowed", auditDecisionsMatch(events, "allowed"), "")
 		fr.Note(fmt.Sprintf("auth campaign: %d audit events, %d token calls", count, tokenCalls))
 	})
+}
+
+func hasAuditTool(events []audit.Event, toolID string) bool {
+	for _, event := range events {
+		if event.ToolID == toolID {
+			return true
+		}
+	}
+	return false
+}
+
+func auditDecisionsMatch(events []audit.Event, decision string) bool {
+	if len(events) == 0 {
+		return false
+	}
+	for _, event := range events {
+		if event.Decision != decision {
+			return false
+		}
+	}
+	return true
 }
