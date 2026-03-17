@@ -94,6 +94,17 @@ jobs:
           path: /tmp/oascli-fleet
           if-no-files-found: error
 
+  product-test-website-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Run website review campaign
+        run: make product-test-website-review
+
   product-test-authentik:
     runs-on: ubuntu-latest
     timeout-minutes: 20

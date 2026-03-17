@@ -180,6 +180,9 @@ export default function Home(): ReactNode {
               <Link className={styles.quickLink} to="/docs/getting-started/choose-your-path">
                 Choose your path
               </Link>
+              <Link className={styles.quickLink} to="/docs/getting-started/quickstart">
+                Quickstart
+              </Link>
               <Link className={styles.quickLink} to="/docs/cli/overview">
                 CLI mental model
               </Link>

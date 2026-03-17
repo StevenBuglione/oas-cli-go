@@ -644,7 +644,7 @@ git commit -m "docs: add onboarding and enterprise bridge pages"
 - Modify: `product-tests/Makefile`
 - Modify: `.github/workflows/ci.yml`
 
-- [ ] **Step 1: Write the failing website-review campaign**
+- [x] **Step 1: Write the failing website-review campaign**
 
 The campaign should:
 
@@ -654,7 +654,7 @@ The campaign should:
 
 Keep it honest: it can verify IA/link/path structure before trying to verify content quality.
 
-- [ ] **Step 2: Run it and confirm failure**
+- [x] **Step 2: Run it and confirm failure**
 
 Run:
 
@@ -662,7 +662,7 @@ Run:
 go test ./product-tests/tests -run ^TestCampaignWebsiteReview$ -count=1 -v
 ```
 
-- [ ] **Step 3: Implement the minimal campaign**
+- [x] **Step 3: Implement the minimal campaign**
 
 Good first-wave checks:
 
@@ -671,14 +671,14 @@ Good first-wave checks:
 - runtime sidebar contains the enterprise proof path
 - fleet-validation page links to concrete proof surfaces
 
-- [ ] **Step 4: Add a Make target and CI job**
+- [x] **Step 4: Add a Make target and CI job**
 
 Examples:
 
 - `make product-test-website-review`
 - dedicated CI job or inclusion in the reproducible fleet if the output shape fits
 
-- [ ] **Step 5: Re-run**
+- [x] **Step 5: Re-run**
 
 Run:
 

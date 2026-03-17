@@ -4,19 +4,47 @@ sections:
     criteria:
       - id: first-success-path
         description: A new user can identify a clear path from intro to quickstart.
+        path: website/src/pages/index.tsx
+        expectLinks:
+          - /docs/getting-started/choose-your-path
+          - /docs/getting-started/quickstart
       - id: mental-model
         description: The site explains oascli versus oasclird early.
+        path: website/docs/getting-started/intro.md
+        expectText:
+          - "`oascli`"
+          - "`oasclird`"
   - id: depth
     title: Progressive depth
     criteria:
       - id: concept-ordering
         description: Advanced concepts are introduced after core mental model pages.
+        path: website/docs/getting-started/intro.md
+        expectLinks:
+          - ./choose-your-path
+          - ../runtime/enterprise-readiness
       - id: cross-links
         description: Advanced docs are reachable through intentional bridges.
+        path: website/docs/development/fleet-validation.md
+        expectLinks:
+          - ../runtime/enterprise-readiness
+          - ../runtime/authentik-reference
+        expectText:
+          - rubric.json
+          - transcript.log
   - id: enterprise
     title: Enterprise confidence
     criteria:
       - id: enterprise-proof
         description: Enterprise claims link to runnable examples, proof artifacts, or deployment guidance.
+        path: website/sidebars.ts
+        expectText:
+          - runtime/enterprise-readiness
+          - runtime/authentik-reference
       - id: security-runtime-story
         description: The site surfaces auth, policy, runtime, and operations depth clearly.
+        path: website/src/pages/index.tsx
+        expectLinks:
+          - /docs/runtime/enterprise-readiness
+          - /docs/runtime/deployment-models
+          - /docs/security/overview

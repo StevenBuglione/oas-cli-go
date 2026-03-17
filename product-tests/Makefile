@@ -1,4 +1,4 @@
-.PHONY: check-prereqs services-up services-down authentik-up authentik-down mcp-remote-up mcp-remote-down smoke full test-mcp-stdio test-mcp-remote test-runtime-auth-authentik fleet-matrix-ci fleet-matrix-mcp-remote
+.PHONY: check-prereqs services-up services-down authentik-up authentik-down mcp-remote-up mcp-remote-down smoke full test-mcp-stdio test-mcp-remote test-runtime-auth-authentik fleet-matrix-ci fleet-matrix-mcp-remote test-website-review
 
 FLEET_OUTPUT_DIR ?= /tmp/oascli-fleet
 FLEET_MATRIX ?= product-tests/testdata/fleet/capability-matrix.yaml
@@ -45,6 +45,9 @@ test-runtime-auth-authentik: authentik-up
 	  status=$$?; \
 	  $(MAKE) authentik-down; \
 	  exit $$status
+
+test-website-review:
+	go test ./tests/... -run '^TestCampaignWebsiteReview$$' -count=1 -v -timeout 60s
 
 fleet-matrix-ci:
 	rm -rf $(FLEET_OUTPUT_DIR)
