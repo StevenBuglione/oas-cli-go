@@ -718,11 +718,13 @@ func (server *Server) handleRuntimeStop(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "runtime stop is not configured", http.StatusNotImplemented)
 		return
 	}
-	if err := server.shutdown(); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
 	writeJSON(w, http.StatusOK, map[string]any{"stopped": true})
+	if flusher, ok := w.(http.Flusher); ok {
+		flusher.Flush()
+	}
+	go func() {
+		_ = server.shutdown()
+	}()
 }
 
 func (server *Server) handleRuntimeSessionClose(w http.ResponseWriter, r *http.Request) {

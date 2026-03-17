@@ -317,7 +317,7 @@ git commit -m "test: deepen remote runtime fleet coverage"
 - Create: `product-tests/tests/campaign_remote_api_failures_test.go`
 - Test: `product-tests/tests/campaign_agent_operator_test.go`
 
-- [ ] **Step 1: Write failing tests for stronger audit proof**
+- [x] **Step 1: Write failing tests for stronger audit proof**
 
 Add checks for:
 
@@ -325,7 +325,7 @@ Add checks for:
 - denied/error calls produce audit entries
 - at least one audit entry contains the expected tool identifier
 
-- [ ] **Step 2: Run the focused tests**
+- [x] **Step 2: Run the focused tests**
 
 Run:
 
@@ -333,11 +333,11 @@ Run:
 go test ./product-tests/tests -run 'TestCampaignAgentOperator|TestCampaignRemoteAPIFailures' -count=1 -v
 ```
 
-- [ ] **Step 3: Implement the minimal stronger audit inspection**
+- [x] **Step 3: Implement the minimal stronger audit inspection**
 
 Use existing helper access to the audit file and inspect actual event payloads rather than count only.
 
-- [ ] **Step 4: Add at least one failure-path campaign**
+- [x] **Step 4: Add at least one failure-path campaign**
 
 Scenarios:
 
@@ -345,7 +345,7 @@ Scenarios:
 - upstream 500 is surfaced
 - non-JSON upstream response is handled explicitly
 
-- [ ] **Step 5: Re-run**
+- [x] **Step 5: Re-run**
 
 Run:
 
@@ -370,7 +370,7 @@ git commit -m "test: add failure and audit proof to remote API fleet lanes"
 - Modify: `product-tests/testdata/fleet/capability-matrix.yaml`
 - Test: `cmd/oasclird`, `cmd/oascli`, product tests
 
-- [ ] **Step 1: Write the failing process-backed campaign**
+- [x] **Step 1: Write the failing process-backed campaign**
 
 The test should:
 
@@ -379,7 +379,7 @@ The test should:
 3. prove at least one attach/use path
 4. stop the daemon cleanly
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run:
 
@@ -387,18 +387,18 @@ Run:
 go test ./product-tests/tests -run ^TestCampaignLocalDaemonProcess$ -count=1 -v
 ```
 
-- [ ] **Step 3: Implement minimal process orchestration**
+- [x] **Step 3: Implement minimal process orchestration**
 
 Use `os/exec` with temp dirs and explicit cleanup. Keep it small and deterministic.
 
-- [ ] **Step 4: Update the matrix if needed**
+- [x] **Step 4: Update the matrix if needed**
 
 Either:
 
 - replace the existing local-daemon lane, or
 - add a new `local-daemon-process` lane and keep the current in-process lane as a lower-level lifecycle proof
 
-- [ ] **Step 5: Re-run the local daemon fleet coverage**
+- [x] **Step 5: Re-run the local daemon fleet coverage**
 
 Run:
 
