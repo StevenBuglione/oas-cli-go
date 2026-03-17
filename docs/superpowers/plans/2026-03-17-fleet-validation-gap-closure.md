@@ -763,7 +763,7 @@ If anything still cannot be proven automatically, add it explicitly to:
 
 Result: no new automatic-proof gaps surfaced during the final sweep. The remaining non-automated boundary is still the already-documented live-proof/manual slice for external identity federation and hosted-runtime scenarios, plus the explicitly tracked revocation/introspection auth gap.
 
-- [ ] **Step 6: Commit final verification changes**
+- [x] **Step 6: Commit final verification changes**
 
 ```bash
 git add .
@@ -775,13 +775,13 @@ git commit -m "chore: finalize fleet validation gap closure"
 **Files:**
 - No file changes required unless merge conflict resolution is needed
 
-- [ ] **Step 1: Push the branch**
+- [x] **Step 1: Push the branch**
 
 ```bash
 git push origin feature/copilot-fleet-validation
 ```
 
-- [ ] **Step 2: Open or update the PR**
+- [x] **Step 2: Open or update the PR**
 
 Use the PR description to summarize:
 
@@ -789,7 +789,9 @@ Use the PR description to summarize:
 - remaining manual/live-proof items
 - exact verification commands run
 
-- [ ] **Step 3: Merge to main**
+Status: a direct merge path was used instead of opening a PR because the requested integration target was immediate feature-branch push plus merge to `main`.
+
+- [x] **Step 3: Merge to main**
 
 Preferred:
 
@@ -799,7 +801,7 @@ gh pr merge --merge
 
 Or use the repo’s preferred merge strategy.
 
-- [ ] **Step 4: Verify main**
+- [x] **Step 4: Verify main**
 
 ```bash
 git checkout main
@@ -807,7 +809,9 @@ git pull
 make verify
 ```
 
-- [ ] **Step 5: Push main if needed**
+- [x] **Step 5: Push main if needed**
+
+Note: `main` was verified and advanced through a temporary clean worktree because the shared local `main` worktree contained unrelated untracked files and was intentionally left untouched.
 
 ```bash
 git push origin main
