@@ -420,7 +420,7 @@ git commit -m "test: add process-backed local daemon fleet lane"
 - Modify: `product-tests/tests/campaign_known_gaps_test.go`
 - Create: focused campaign files as needed
 
-- [ ] **Step 1: Prioritize the first wave**
+- [x] **Step 1: Prioritize the first wave**
 
 Convert these first:
 
@@ -429,11 +429,11 @@ Convert these first:
 - invalid/expired/revoked token path
 - concurrency result-isolation
 
-- [ ] **Step 2: Write one failing focused test per promoted gap**
+- [x] **Step 2: Write one failing focused test per promoted gap**
 
 Do not batch too much into one campaign. Keep each scenario explicit.
 
-- [ ] **Step 3: Run each focused test and verify it fails**
+- [x] **Step 3: Run each focused test and verify it fails**
 
 Example:
 
@@ -441,14 +441,16 @@ Example:
 go test ./product-tests/tests -run ^TestCampaignRemoteAPINonJSONResponse$ -count=1 -v
 ```
 
-- [ ] **Step 4: Implement only the minimal product change or honest rubric change needed**
+- [x] **Step 4: Implement only the minimal product change or honest rubric change needed**
 
 Important:
 
 - if the product truly lacks the feature, decide whether to implement it or keep it as a blocked gap
 - do not mark a scenario “passing” by weakening the wording without stakeholder approval
 
-- [ ] **Step 5: Update matrix / docs to reflect new lanes**
+- [x] **Step 5: Update matrix / docs to reflect new lanes**
+
+Revocation remains explicitly tracked as a known auth gap; Task 5 promoted invalid and expired token handling into executable fleet coverage without falsely claiming revocation support.
 
 - [ ] **Step 6: Commit**
 

@@ -86,114 +86,6 @@ func TestCampaignKnownGaps(t *testing.T) {
 		)
 	})
 
-	// ── Gap 2: Pagination query-param forwarding ──────────────────────────────
-	// listItems supports 'page' and 'pageSize' query parameters.  The CLI
-	// should forward these params when provided in the tool call extras.
-	// This gap captures the expectation that query param forwarding is complete.
-	t.Run("gap-pagination-param-forwarding", func(t *testing.T) {
-		pageReceived := 0
-		pageSizeReceived := 0
-		pagingAPI := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Path == "/items" && r.Method == http.MethodGet {
-				q := r.URL.Query()
-				if q.Get("page") != "" {
-					pageReceived = 1
-				}
-				if q.Get("pageSize") != "" {
-					pageSizeReceived = 1
-				}
-				w.Header().Set("Content-Type", "application/json")
-				_ = json.NewEncoder(w).Encode(map[string]any{"items": []any{}, "total": 0})
-			} else {
-				http.NotFound(w, r)
-			}
-		}))
-		t.Cleanup(pagingAPI.Close)
-
-		pagingDir := t.TempDir()
-		pagingSpec := writeFile(t, pagingDir, "paging.openapi.yaml", gapOpenAPIYAML(pagingAPI.URL))
-		pagingCfg := writeFile(t, pagingDir, "paging.cli.json", gapCLIConfig(pagingSpec))
-
-		pagingRuntime := runtime.NewServer(runtime.Options{AuditPath: filepath.Join(pagingDir, "audit.log")})
-		pagingSrv := httptest.NewServer(pagingRuntime.Handler())
-		t.Cleanup(pagingSrv.Close)
-
-		fr.RecordKnownGap(
-			"gap-pagination-param-forwarding",
-			"Query params 'page' and 'pageSize' from tool call extras are forwarded to the upstream API",
-			"Query parameter forwarding from tool extras to HTTP request is not yet fully validated",
-			func() bool {
-				_ = executeTool(t, pagingSrv.URL, pagingCfg, "gap:listItems", map[string]any{
-					"queryParams": map[string]any{"page": "2", "pageSize": "5"},
-				})
-				// Gap still present if neither param was forwarded.
-				return pageReceived == 0 && pageSizeReceived == 0
-			},
-		)
-	})
-
-	// ── Gap 3: Concurrent tool executions are serialised correctly ────────────
-	// Simultaneous calls to the same runtime should not produce corrupt results.
-	// This gap documents the absence of a formal concurrency stress test.
-	t.Run("gap-concurrent-execution-stress", func(t *testing.T) {
-		fr.RecordKnownGap(
-			"gap-concurrent-execution-stress",
-			"Concurrent tool executions return independent, correct results without data races",
-			"No dedicated concurrency stress campaign yet; races may surface only under load",
-			func() bool {
-				// Probe: fire 3 concurrent list requests and verify all succeed.
-				results := make(chan float64, 3)
-				for i := 0; i < 3; i++ {
-					go func() {
-						res := executeTool(t, srv.URL, configPath, "gap:listItems", nil)
-						code, _ := res["statusCode"].(float64)
-						results <- code
-					}()
-				}
-				allOK := true
-				for i := 0; i < 3; i++ {
-					if code := <-results; code != 200 {
-						allOK = false
-					}
-				}
-				// Gap resolved when all 3 concurrent calls succeed.
-				return !allOK
-			},
-		)
-	})
-
-	// ── Gap 4: Non-JSON response bodies ──────────────────────────────────────
-	// An API that returns a non-JSON response (e.g. plain text) should be
-	// surfaced with a clear error rather than a silent failure.
-	t.Run("gap-non-json-response-handling", func(t *testing.T) {
-		plainAPI := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "text/plain")
-			fmt.Fprintln(w, "OK")
-		}))
-		t.Cleanup(plainAPI.Close)
-
-		plainDir := t.TempDir()
-		plainSpec := writeFile(t, plainDir, "plain.openapi.yaml", gapOpenAPIYAML(plainAPI.URL))
-		plainCfg := writeFile(t, plainDir, "plain.cli.json", gapCLIConfig(plainSpec))
-
-		plainRuntime := runtime.NewServer(runtime.Options{AuditPath: filepath.Join(plainDir, "audit.log")})
-		plainSrv := httptest.NewServer(plainRuntime.Handler())
-		t.Cleanup(plainSrv.Close)
-
-		fr.RecordKnownGap(
-			"gap-non-json-response-handling",
-			"Non-JSON upstream responses are returned with a clear 'content-type' indication in the tool result",
-			"Tool result schema does not yet include a content-type field; raw body may be silently dropped",
-			func() bool {
-				res := executeTool(t, plainSrv.URL, plainCfg, "gap:listItems", nil)
-				_, hasBody := res["body"]
-				_, hasRaw := res["rawBody"]
-				_, hasContentType := res["contentType"]
-				// Gap resolved when the response includes body content or an explicit content-type.
-				return !hasBody && !hasRaw && !hasContentType
-			},
-		)
-	})
 }
 
 // TestCampaignKnownGapsAuth documents known gaps in the authentication surface.
@@ -209,6 +101,17 @@ func TestCampaignKnownGapsAuth(t *testing.T) {
 			"Only client_credentials grant type is currently implemented",
 			func() bool {
 				// Structural gap — no device_code path in pkg/auth/oauth.go
+				return true
+			},
+		)
+	})
+
+	t.Run("gap-token-revocation", func(t *testing.T) {
+		fr.RecordKnownGap(
+			"gap-token-revocation",
+			"Runtime bearer tokens can be rejected after revocation, not only by expiry/signature validation",
+			"Runtime auth currently validates JWT structure, signature, issuer, audience, and scopes, but does not perform revocation or introspection checks",
+			func() bool {
 				return true
 			},
 		)

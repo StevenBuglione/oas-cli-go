@@ -1,13 +1,9 @@
 package tests_test
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"net/http"
 	"net/http/httptest"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/StevenBuglione/oas-cli-go/internal/runtime"
@@ -60,51 +56,6 @@ func TestCampaignRemoteAPIFailures(t *testing.T) {
 		}
 	})
 
-	t.Run("non-json-upstream-response", func(t *testing.T) {
-		textAPI := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Path != "/plaintext" {
-				http.NotFound(w, r)
-				return
-			}
-			w.Header().Set("Content-Type", "text/plain")
-			w.WriteHeader(http.StatusBadGateway)
-			_, _ = w.Write([]byte("plain failure body"))
-		}))
-		t.Cleanup(textAPI.Close)
-
-		textSpec := writeFile(t, dir, "plaintext.openapi.yaml", `openapi: 3.1.0
-info:
-  title: Plaintext API
-  version: "1.0.0"
-servers:
-  - url: `+textAPI.URL+`
-paths:
-  /plaintext:
-    get:
-      operationId: getPlaintext
-      tags: [plaintext]
-      responses:
-        "502":
-          description: Bad Gateway
-`)
-		textConfig := writeFile(t, dir, "plaintext.cli.json", restCLIConfig(textSpec))
-
-		payload, _ := json.Marshal(map[string]any{"configPath": textConfig, "toolId": "testapi:getPlaintext"})
-		resp, err := http.Post(srv.URL+"/v1/tools/execute", "application/json", bytes.NewReader(payload))
-		if err != nil {
-			t.Fatalf("execute plaintext tool: %v", err)
-		}
-		defer resp.Body.Close()
-
-		var result map[string]any
-		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-			t.Fatalf("decode plaintext execute response: %v", err)
-		}
-		statusCode, _ := result["statusCode"].(float64)
-		fr.Check("plaintext-status", "non-JSON upstream status is surfaced", "502", fmt.Sprintf("%.0f", statusCode), statusCode == 502, "")
-		body, _ := result["body"].(string)
-		fr.Check("plaintext-body-omitted", "non-JSON upstream body is currently omitted from the structured response", "", strings.TrimSpace(body), strings.TrimSpace(body) == "", "plaintext body preservation remains a separate gap to address later")
-	})
 }
 
 func findAuditEvent(events []audit.Event, toolID string) *audit.Event {

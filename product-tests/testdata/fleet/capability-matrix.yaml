@@ -29,6 +29,16 @@ lanes:
     expectedArtifacts:
       - transcript.log
       - rubric.json
+  - id: remote-runtime-auth-failures
+    workstream: product-validation
+    capability: remote-runtime
+    capabilityFamily: auth
+    environmentClass: ci-containerized
+    authPattern: oauthClient
+    goTestPattern: ^TestCampaignRemoteRuntimeFailures$
+    expectedArtifacts:
+      - transcript.log
+      - rubric.json
   - id: mcp-stdio-core
     workstream: product-validation
     capability: mcp-stdio
@@ -56,6 +66,46 @@ lanes:
     environmentClass: ci-containerized
     authPattern: none
     goTestPattern: ^TestCampaignAgentOperator$
+    expectedArtifacts:
+      - transcript.log
+      - rubric.json
+  - id: remote-api-failures
+    workstream: product-validation
+    capability: remote-api
+    capabilityFamily: integration
+    environmentClass: ci-containerized
+    authPattern: none
+    goTestPattern: ^TestCampaignRemoteAPIFailures$
+    expectedArtifacts:
+      - transcript.log
+      - rubric.json
+  - id: remote-api-pagination
+    workstream: product-validation
+    capability: remote-api
+    capabilityFamily: integration
+    environmentClass: ci-containerized
+    authPattern: none
+    goTestPattern: ^TestCampaignRemoteAPIPaginationForwarding$
+    expectedArtifacts:
+      - transcript.log
+      - rubric.json
+  - id: remote-api-concurrency
+    workstream: product-validation
+    capability: remote-api
+    capabilityFamily: integration
+    environmentClass: ci-containerized
+    authPattern: none
+    goTestPattern: ^TestCampaignRemoteAPIConcurrencyIsolation$
+    expectedArtifacts:
+      - transcript.log
+      - rubric.json
+  - id: remote-api-nonjson
+    workstream: product-validation
+    capability: remote-api
+    capabilityFamily: integration
+    environmentClass: ci-containerized
+    authPattern: none
+    goTestPattern: ^TestCampaignRemoteAPINonJSONResponse$
     expectedArtifacts:
       - transcript.log
       - rubric.json

@@ -64,4 +64,13 @@ func TestCampaignRemoteRuntimeFailures(t *testing.T) {
 		fr.Check("expired-token-status", "expired runtime bearer token is rejected", "401", http.StatusText(resp.StatusCode), resp.StatusCode == http.StatusUnauthorized, body)
 		fr.Check("expired-token-body", "expired runtime bearer token returns authn_failed", "authn_failed", body, body == "authn_failed", "")
 	})
+
+	t.Run("invalid-token", func(t *testing.T) {
+		token := broker.AcquireClientCredentialsToken(t, "microsoft", "oasclird", []string{"bundle:tickets", "tool:tickets:listTickets"})
+		invalidToken := token[:len(token)-2] + "zz"
+		resp, body := executeRuntimeRequest(t, http.MethodGet, runtimeServer.URL+"/v1/catalog/effective?config="+url.QueryEscape(configPath), invalidToken, nil)
+		defer resp.Body.Close()
+		fr.Check("invalid-token-status", "runtime rejects a tampered bearer token", "401", http.StatusText(resp.StatusCode), resp.StatusCode == http.StatusUnauthorized, body)
+		fr.Check("invalid-token-body", "tampered runtime bearer token returns authn_failed", "authn_failed", body, body == "authn_failed", "")
+	})
 }

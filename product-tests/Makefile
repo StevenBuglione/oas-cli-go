@@ -50,9 +50,15 @@ fleet-matrix-ci:
 	rm -rf $(FLEET_OUTPUT_DIR)
 	python3 scripts/run-agent-campaign.py --matrix $(FLEET_MATRIX) \
 	  --lane local-daemon-core \
+	  --lane local-daemon-process \
 	  --lane remote-runtime-oauth-client \
+	  --lane remote-runtime-auth-failures \
 	  --lane mcp-stdio-core \
 	  --lane remote-api-core \
+	  --lane remote-api-failures \
+	  --lane remote-api-pagination \
+	  --lane remote-api-concurrency \
+	  --lane remote-api-nonjson \
 	  --output-dir $(FLEET_OUTPUT_DIR)
 	$(call summarize_fleet,$(FLEET_OUTPUT_DIR))
 

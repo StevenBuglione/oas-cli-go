@@ -129,6 +129,7 @@ type executeToolResponse struct {
 	StatusCode int             `json:"statusCode"`
 	Body       json.RawMessage `json:"body,omitempty"`
 	Text       string          `json:"text,omitempty"`
+	ContentType string         `json:"contentType,omitempty"`
 }
 
 type workflowRunRequest struct {
@@ -356,6 +357,9 @@ func (server *Server) handleExecuteTool(w http.ResponseWriter, r *http.Request) 
 		response.Body = append([]byte(nil), result.Body...)
 	} else {
 		response.Text = string(result.Body)
+	}
+	if contentType := result.Headers.Get("Content-Type"); contentType != "" {
+		response.ContentType = contentType
 	}
 	writeJSON(w, http.StatusOK, response)
 }
