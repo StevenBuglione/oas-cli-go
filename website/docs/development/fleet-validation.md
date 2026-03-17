@@ -20,9 +20,12 @@ The executable source of truth lives in:
 Current CI-safe lanes cover:
 
 - local daemon lifecycle and multi-session behavior
+- a real process-backed local daemon attach/use/stop flow
 - remote runtime authorization filtering
+- runtime auth failure paths such as missing, expired, and tampered bearer tokens
 - MCP stdio execution
 - remote API operator workflows
+- remote API failure, pagination, concurrency-isolation, and non-JSON response handling
 
 Run the default reproducible fleet locally from the repo root:
 
@@ -40,6 +43,31 @@ Artifacts are written under `/tmp/oascli-fleet/` by default. Each lane gets its 
 
 - `transcript.log`
 - `rubric.json`
+- additional evidence files when the lane needs them, such as `browser-config.json` or `forbidden-response.json`
+
+Example `rubric.json` excerpt:
+
+```json
+{
+  "campaign": "remote-runtime-matrix",
+  "capability": "remote-runtime",
+  "artifactPaths": [
+    "browser-config.json",
+    "rubric.json",
+    "transcript.log"
+  ],
+  "pass": true
+}
+```
+
+Example `transcript.log` excerpt:
+
+```text
+[run-agent-campaign] lane='remote-runtime-oauth-client' pattern='^TestCampaignRemoteRuntimeMatrix$' timeout=120s
+[run-agent-campaign] wrote rubric → /tmp/oascli-fleet/remote-runtime-oauth-client/rubric.json
+```
+
+If you are reviewing enterprise-oriented proof rather than implementation mechanics, continue to [Enterprise readiness](../runtime/enterprise-readiness) or the [Authentik reference proof](../runtime/authentik-reference).
 
 ## Remote MCP lane
 
@@ -80,3 +108,5 @@ This program is designed to test the product the way operators actually use it:
 - real MCP transports
 - real remote APIs
 - artifact-backed campaign summaries that are readable by both engineers and reviewers
+
+For the evaluator-facing path through those artifacts, see [Enterprise readiness](../runtime/enterprise-readiness).

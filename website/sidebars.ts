@@ -6,7 +6,7 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'Getting Started',
       link: {type: 'doc', id: 'getting-started/intro'},
-      items: ['getting-started/installation', 'getting-started/quickstart'],
+      items: ['getting-started/choose-your-path', 'getting-started/installation', 'getting-started/quickstart'],
     },
     {
       type: 'category',
@@ -18,7 +18,7 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'Runtime',
       link: {type: 'doc', id: 'runtime/overview'},
-      items: ['runtime/http-api', 'runtime/refresh-and-audit', 'runtime/deployment-models'],
+      items: ['runtime/http-api', 'runtime/refresh-and-audit', 'runtime/deployment-models', 'runtime/enterprise-readiness', 'runtime/authentik-reference'],
     },
     {
       type: 'category',

@@ -569,7 +569,7 @@ git commit -m "docs: align runtime docs with auth implementation"
 - Modify: `website/docs/runtime/deployment-models.md`
 - Modify: `website/src/pages/index.tsx`
 
-- [ ] **Step 1: Write the bridge pages**
+- [x] **Step 1: Write the bridge pages**
 
 `choose-your-path.md` should route readers to:
 
@@ -593,7 +593,7 @@ git commit -m "docs: align runtime docs with auth implementation"
 - example `transcript.log`
 - visible link to the Authentik evidence checklist or enterprise-readiness page
 
-- [ ] **Step 2: Wire the pages into the IA**
+- [x] **Step 2: Wire the pages into the IA**
 
 Update sidebars so enterprise proof is not buried under Development.
 
@@ -607,14 +607,14 @@ Possible target structure:
   - testing
   - fleet validation (implementation view)
 
-- [ ] **Step 3: Update homepage and intro links**
+- [x] **Step 3: Update homepage and intro links**
 
 Make the role-based path visible from:
 
 - homepage CTA/quick links
 - intro persona section
 
-- [ ] **Step 4: Build docs**
+- [x] **Step 4: Build docs**
 
 Run:
 

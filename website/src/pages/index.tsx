@@ -16,8 +16,8 @@ const features: FeatureItem[] = [
   {
     title: 'Get started quickly',
     description:
-      'Build the binaries, launch oasclird, and use oascli to inspect the effective catalog in a few commands.',
-    href: '/docs/getting-started/quickstart',
+      'Start with the path chooser if you are not sure whether you want embedded mode, a reusable daemon, MCP, or an enterprise evaluation flow.',
+    href: '/docs/getting-started/choose-your-path',
   },
   {
     title: 'Learn the CLI surface',
@@ -52,8 +52,8 @@ const features: FeatureItem[] = [
   {
     title: 'Evaluate enterprise auth',
     description:
-      'Start from the Authentik reference proof when you need a concrete, brokered runtime-auth example with real browser login and scoped runtime access.',
-    href: '/docs/runtime/authentik-reference',
+      'Start from enterprise readiness when you need the curated path through deployment models, security, Authentik proof, fleet validation, and operations evidence.',
+    href: '/docs/runtime/enterprise-readiness',
   },
   {
     title: 'See fleet validation',
@@ -95,12 +95,12 @@ function HomepageHero() {
         </p>
         <div className={styles.buttons}>
           <Link className="button button--primary button--lg" to="/docs/getting-started/quickstart">
-            Start with Quickstart
+            Choose Your Path
           </Link>
           <Link
             className="button button--secondary button--lg"
-            to="/docs/runtime/authentik-reference">
-            Evaluate Enterprise Auth
+            to="/docs/runtime/enterprise-readiness">
+            Evaluate Enterprise Readiness
           </Link>
         </div>
       </div>
@@ -171,20 +171,23 @@ export default function Home(): ReactNode {
             <div className={styles.sectionHeader}>
               <Heading as="h2">Choose the path that matches why you are here</Heading>
               <p>
-                New users should start with the quickstart and CLI overview. Operators and enterprise
-                evaluators should jump directly to runtime deployment, security, the Authentik reference
-                proof, and fleet validation.
+                 New users should start with the path chooser and quickstart. Operators and enterprise
+                 evaluators should jump directly to enterprise readiness, runtime deployment, security,
+                 the Authentik reference proof, and fleet validation.
               </p>
             </div>
             <div className={styles.quickLinks}>
-              <Link className={styles.quickLink} to="/docs/getting-started/quickstart">
-                First run
+              <Link className={styles.quickLink} to="/docs/getting-started/choose-your-path">
+                Choose your path
               </Link>
               <Link className={styles.quickLink} to="/docs/cli/overview">
                 CLI mental model
               </Link>
               <Link className={styles.quickLink} to="/docs/runtime/deployment-models">
                 Runtime deployment
+              </Link>
+              <Link className={styles.quickLink} to="/docs/runtime/enterprise-readiness">
+                Enterprise readiness
               </Link>
               <Link className={styles.quickLink} to="/docs/runtime/authentik-reference">
                 Enterprise auth proof

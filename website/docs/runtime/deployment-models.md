@@ -168,3 +168,5 @@ If you bind beyond localhost:
 - keep network controls in place as a second boundary, such as a reverse proxy, firewall policy, or SSH tunnel
 
 See [Runtime Overview](./overview) for the runtime-auth handshake surface and [Authentik reference proof](./authentik-reference) for the worked brokered example.
+
+For the evaluator-focused path that ties those pages together with fleet proof and operations, continue to [Enterprise readiness](./enterprise-readiness).

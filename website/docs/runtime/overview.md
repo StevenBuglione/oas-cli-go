@@ -90,3 +90,5 @@ When `runtime.server.auth` is enabled on `oasclird`, the daemon itself now becom
 - when a request is already authenticated, the runtime handshake echoes the resolved principal for diagnostics and operator troubleshooting
 
 The reference brokered deployment verified in product tests is documented in [Authentik reference proof](./authentik-reference).
+
+If you are evaluating whether the runtime is ready for a hosted or brokered deployment, use [Enterprise readiness](./enterprise-readiness) as the curated next step.
