@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"net/http"
 
-	mcpclient "github.com/StevenBuglione/oas-cli-go/pkg/mcp/client"
+	mcpclient "github.com/StevenBuglione/open-cli/pkg/mcp/client"
 	"github.com/getkin/kin-openapi/openapi3"
 )
 
@@ -123,7 +123,7 @@ func buildDocumentFromRefs(serviceID, sourceID, transport string, tools []mcpcli
 			Description: tool.Description,
 			Tags:        []string{serviceID},
 			Extensions: map[string]any{
-				"x-oascli-backend": map[string]any{
+				"x-ocli-backend": map[string]any{
 					"kind":         "mcp",
 					"sourceId":     sourceID,
 					"toolName":     tool.Name,

@@ -23,12 +23,12 @@ import (
 	"syscall"
 	"time"
 
-	embeddedruntime "github.com/StevenBuglione/oas-cli-go/internal/runtime"
-	oauthruntime "github.com/StevenBuglione/oas-cli-go/pkg/auth"
-	"github.com/StevenBuglione/oas-cli-go/pkg/catalog"
-	configpkg "github.com/StevenBuglione/oas-cli-go/pkg/config"
-	toolsexec "github.com/StevenBuglione/oas-cli-go/pkg/exec"
-	"github.com/StevenBuglione/oas-cli-go/pkg/instance"
+	embeddedruntime "github.com/StevenBuglione/open-cli/internal/runtime"
+	oauthruntime "github.com/StevenBuglione/open-cli/pkg/auth"
+	"github.com/StevenBuglione/open-cli/pkg/catalog"
+	configpkg "github.com/StevenBuglione/open-cli/pkg/config"
+	toolsexec "github.com/StevenBuglione/open-cli/pkg/exec"
+	"github.com/StevenBuglione/open-cli/pkg/instance"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
@@ -234,7 +234,7 @@ func NewRootCommand(options CommandOptions, args []string) (*cobra.Command, erro
 	}
 
 	root := &cobra.Command{
-		Use:           "oascli",
+		Use:           "ocli",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
@@ -876,13 +876,13 @@ func resolveCommandOptions(options CommandOptions) (CommandOptions, error) {
 		return cachedRuntimeCfg, cachedRuntimeCfg != nil
 	}
 	if options.InstanceID == "" {
-		options.InstanceID = os.Getenv("OASCLI_INSTANCE_ID")
+		options.InstanceID = os.Getenv("OCLI_INSTANCE_ID")
 	}
 	if options.StateDir == "" {
-		options.StateDir = os.Getenv("OASCLI_STATE_DIR")
+		options.StateDir = os.Getenv("OCLI_STATE_DIR")
 	}
 	if !options.Embedded {
-		options.Embedded = envBool("OASCLI_EMBEDDED")
+		options.Embedded = envBool("OCLI_EMBEDDED")
 	}
 	if options.Embedded {
 		options.RuntimeDeployment = "embedded"
@@ -912,7 +912,7 @@ func resolveCommandOptions(options CommandOptions) (CommandOptions, error) {
 		return options, nil
 	}
 	if options.RuntimeURL == "" {
-		options.RuntimeURL = os.Getenv("OASCLI_RUNTIME_URL")
+		options.RuntimeURL = os.Getenv("OCLI_RUNTIME_URL")
 	}
 	if options.RuntimeURL == "" && options.RuntimeDeployment == "remote" {
 		if runtimeCfg, ok := loadCachedRuntimeConfig(); ok && runtimeCfg.Remote != nil && runtimeCfg.Remote.URL != "" {
@@ -1514,14 +1514,14 @@ func managedRuntimeArgs(options CommandOptions, runtimeCfg *configpkg.RuntimeCon
 func resolveDaemonBinary() (string, error) {
 	executable, err := os.Executable()
 	if err == nil {
-		sibling := filepath.Join(filepath.Dir(executable), "oasclird")
+		sibling := filepath.Join(filepath.Dir(executable), "oclird")
 		if _, statErr := os.Stat(sibling); statErr == nil {
 			return sibling, nil
 		}
 	}
-	path, err := exec.LookPath("oasclird")
+	path, err := exec.LookPath("oclird")
 	if err != nil {
-		return "", fmt.Errorf("resolve oasclird binary: %w", err)
+		return "", fmt.Errorf("resolve oclird binary: %w", err)
 	}
 	return path, nil
 }
@@ -1604,7 +1604,7 @@ func cacheRootForState(stateDir string) string {
 }
 
 func detectTerminalSessionIdentity() string {
-	if value := os.Getenv("OASCLI_TERMINAL_SESSION_ID"); value != "" {
+	if value := os.Getenv("OCLI_TERMINAL_SESSION_ID"); value != "" {
 		return value
 	}
 	for _, fdPath := range []string{"/proc/self/fd/0", "/proc/self/fd/1", "/proc/self/fd/2"} {
@@ -1617,7 +1617,7 @@ func detectTerminalSessionIdentity() string {
 }
 
 func detectAgentSessionIdentity() string {
-	for _, name := range []string{"OASCLI_AGENT_SESSION_ID", "COPILOT_SESSION_ID"} {
+	for _, name := range []string{"OCLI_AGENT_SESSION_ID", "COPILOT_SESSION_ID"} {
 		if value := os.Getenv(name); value != "" {
 			return value
 		}
@@ -1643,7 +1643,7 @@ func shouldSendLocalHeartbeat(cmd *cobra.Command) bool {
 		return false
 	}
 	switch cmd.CommandPath() {
-	case "oascli runtime stop", "oascli runtime session-close":
+	case "ocli runtime stop", "ocli runtime session-close":
 		return false
 	default:
 		return true

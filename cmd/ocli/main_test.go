@@ -20,9 +20,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/StevenBuglione/oas-cli-go/pkg/catalog"
-	configpkg "github.com/StevenBuglione/oas-cli-go/pkg/config"
-	"github.com/StevenBuglione/oas-cli-go/pkg/instance"
+	"github.com/StevenBuglione/open-cli/pkg/catalog"
+	configpkg "github.com/StevenBuglione/open-cli/pkg/config"
+	"github.com/StevenBuglione/open-cli/pkg/instance"
 )
 
 func TestRootCommandInvokesRuntimeToolsAndSchemas(t *testing.T) {
@@ -381,8 +381,8 @@ paths:
 }
 
 func TestResolveCommandOptionsFallsBackWhenRuntimeRegistryIsStale(t *testing.T) {
-	t.Setenv("OASCLI_RUNTIME_URL", "")
-	t.Setenv("OASCLI_EMBEDDED", "")
+	t.Setenv("OCLI_RUNTIME_URL", "")
+	t.Setenv("OCLI_EMBEDDED", "")
 
 	deadServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
@@ -420,6 +420,42 @@ func TestResolveCommandOptionsFallsBackWhenRuntimeRegistryIsStale(t *testing.T) 
 	}
 	if _, err := os.Stat(paths.RuntimePath); !os.IsNotExist(err) {
 		t.Fatalf("expected stale runtime registry to be removed, stat err=%v", err)
+	}
+}
+
+func TestResolveCommandOptionsUsesOCLIEnvironmentVariables(t *testing.T) {
+	stateDir := t.TempDir()
+	t.Setenv("OCLI_INSTANCE_ID", "ocli-instance")
+	t.Setenv("OCLI_STATE_DIR", stateDir)
+	t.Setenv("OCLI_RUNTIME_URL", "http://127.0.0.1:18765")
+
+	resolved, err := resolveCommandOptions(CommandOptions{})
+	if err != nil {
+		t.Fatalf("resolveCommandOptions: %v", err)
+	}
+	if resolved.InstanceID != "ocli-instance" {
+		t.Fatalf("expected instance id from OCLI_INSTANCE_ID, got %q", resolved.InstanceID)
+	}
+	if resolved.StateDir != stateDir {
+		t.Fatalf("expected state dir from OCLI_STATE_DIR, got %q", resolved.StateDir)
+	}
+	if resolved.RuntimeURL != "http://127.0.0.1:18765" {
+		t.Fatalf("expected runtime url from OCLI_RUNTIME_URL, got %q", resolved.RuntimeURL)
+	}
+}
+
+func TestResolveCommandOptionsUsesOCLIEmbeddedEnvironmentVariable(t *testing.T) {
+	t.Setenv("OCLI_EMBEDDED", "1")
+
+	resolved, err := resolveCommandOptions(CommandOptions{})
+	if err != nil {
+		t.Fatalf("resolveCommandOptions: %v", err)
+	}
+	if !resolved.Embedded {
+		t.Fatalf("expected embedded mode when OCLI_EMBEDDED=1")
+	}
+	if resolved.RuntimeDeployment != "embedded" {
+		t.Fatalf("expected embedded runtime deployment, got %q", resolved.RuntimeDeployment)
 	}
 }
 
@@ -966,7 +1002,7 @@ func TestResolveCommandOptionsUsesConfiguredRemoteRuntimeURL(t *testing.T) {
 	      "url": "https://runtime.example.com",
 	      "oauth": {
 	        "mode": "providedToken",
-	        "audience": "oasclird",
+	        "audience": "oclird",
 	        "scopes": ["bundle:payments"],
 	        "tokenRef": "env:OAS_REMOTE_TOKEN"
 	      }
@@ -1013,7 +1049,7 @@ func TestRootCommandUsesProvidedRemoteRuntimeBearerToken(t *testing.T) {
 	      "url": "https://runtime.example.com",
 	      "oauth": {
 	        "mode": "providedToken",
-	        "audience": "oasclird",
+	        "audience": "oclird",
 	        "scopes": ["bundle:payments"],
 	        "tokenRef": "env:OAS_REMOTE_TOKEN"
 	      }
@@ -1093,8 +1129,8 @@ func TestRootCommandUsesOAuthClientRemoteRuntimeBearerToken(t *testing.T) {
 		if got := r.PostForm.Get("client_secret"); got != "runtime-secret" {
 			t.Fatalf("expected oauth client secret, got %q", got)
 		}
-		if got := r.PostForm.Get("audience"); got != "oasclird" {
-			t.Fatalf("expected audience oasclird, got %q", got)
+		if got := r.PostForm.Get("audience"); got != "oclird" {
+			t.Fatalf("expected audience oclird, got %q", got)
 		}
 		if got := r.PostForm.Get("scope"); got != "bundle:payments" {
 			t.Fatalf("expected scope bundle:payments, got %q", got)
@@ -1118,7 +1154,7 @@ func TestRootCommandUsesOAuthClientRemoteRuntimeBearerToken(t *testing.T) {
 				"capabilities":    []string{"catalog", "brokered-auth"},
 				"auth": map[string]any{
 					"required":                true,
-					"audience":                "oasclird",
+					"audience":                "oclird",
 					"scopePrefixes":           []string{"bundle:", "profile:", "tool:"},
 					"tokenValidationProfiles": []string{"oidc_jwks"},
 				},
@@ -1233,7 +1269,7 @@ func TestHTTPRuntimeClientRefreshesExpiredOAuthClientTokenOnce(t *testing.T) {
 				"capabilities":    []string{"catalog", "brokered-auth"},
 				"auth": map[string]any{
 					"required":                true,
-					"audience":                "oasclird",
+					"audience":                "oclird",
 					"scopePrefixes":           []string{"bundle:", "profile:", "tool:"},
 					"tokenValidationProfiles": []string{"oidc_jwks"},
 				},
@@ -1271,7 +1307,7 @@ func TestHTTPRuntimeClientRefreshesExpiredOAuthClientTokenOnce(t *testing.T) {
 	      "url": %q,
 	      "oauth": {
 	        "mode": "oauthClient",
-	        "audience": "oasclird",
+	        "audience": "oclird",
 	        "scopes": ["bundle:payments"],
 	        "client": {
 	          "tokenURL": %q,
@@ -1361,7 +1397,7 @@ func TestHTTPRuntimeClientRefreshesAfterAuthnFailedOnNextRequest(t *testing.T) {
 				"capabilities":    []string{"catalog", "brokered-auth"},
 				"auth": map[string]any{
 					"required":                true,
-					"audience":                "oasclird",
+					"audience":                "oclird",
 					"scopePrefixes":           []string{"bundle:", "profile:", "tool:"},
 					"tokenValidationProfiles": []string{"oidc_jwks"},
 				},
@@ -1402,7 +1438,7 @@ func TestHTTPRuntimeClientRefreshesAfterAuthnFailedOnNextRequest(t *testing.T) {
 	      "url": %q,
 	      "oauth": {
 	        "mode": "oauthClient",
-	        "audience": "oasclird",
+	        "audience": "oclird",
 	        "scopes": ["bundle:payments"],
 	        "client": {
 	          "tokenURL": %q,
@@ -1468,8 +1504,8 @@ func TestRootCommandUsesRemoteBrowserLoginBearerToken(t *testing.T) {
 		if request.Metadata.ClientID != "browser-client" {
 			t.Fatalf("expected browser client id from runtime metadata, got %q", request.Metadata.ClientID)
 		}
-		if request.Audience != "oasclird" {
-			t.Fatalf("expected runtime audience oasclird, got %q", request.Audience)
+		if request.Audience != "oclird" {
+			t.Fatalf("expected runtime audience oclird, got %q", request.Audience)
 		}
 		if len(request.Scopes) != 1 || request.Scopes[0] != "bundle:payments" {
 			t.Fatalf("expected runtime scopes from config, got %#v", request.Scopes)
@@ -1491,7 +1527,7 @@ func TestRootCommandUsesRemoteBrowserLoginBearerToken(t *testing.T) {
 				"capabilities":    []string{"catalog", "brokered-auth", "authorization-envelope"},
 				"auth": map[string]any{
 					"required":                true,
-					"audience":                "oasclird",
+					"audience":                "oclird",
 					"scopePrefixes":           []string{"bundle:", "profile:", "tool:"},
 					"tokenValidationProfiles": []string{"oidc_jwks"},
 					"browserLogin": map[string]any{
@@ -1505,7 +1541,7 @@ func TestRootCommandUsesRemoteBrowserLoginBearerToken(t *testing.T) {
 				"authorizationURL": "https://auth.example.com/authorize",
 				"tokenURL":         "https://auth.example.com/token",
 				"clientId":         "browser-client",
-				"audience":         "oasclird",
+				"audience":         "oclird",
 			})
 		case "/v1/auth/browser-config":
 			t.Fatalf("expected browser login metadata endpoint from runtime info, not default path")
@@ -1594,7 +1630,7 @@ func TestRootCommandFailsClosedOnInvalidRuntimeBrowserLoginMetadata(t *testing.T
 				"capabilities":    []string{"catalog", "brokered-auth", "authorization-envelope"},
 				"auth": map[string]any{
 					"required":                true,
-					"audience":                "oasclird",
+					"audience":                "oclird",
 					"scopePrefixes":           []string{"bundle:", "profile:", "tool:"},
 					"tokenValidationProfiles": []string{"oidc_jwks"},
 					"browserLogin": map[string]any{
@@ -1706,8 +1742,8 @@ func TestRootCommandCompletesRemoteBrowserLoginAuthorizationCodeFlow(t *testing.
 			if got := query.Get("scope"); got != "bundle:payments" {
 				t.Fatalf("expected scope bundle:payments, got %q", got)
 			}
-			if got := query.Get("audience"); got != "oasclird" {
-				t.Fatalf("expected audience oasclird, got %q", got)
+			if got := query.Get("audience"); got != "oclird" {
+				t.Fatalf("expected audience oclird, got %q", got)
 			}
 			if got := query.Get("code_challenge_method"); got != "S256" {
 				t.Fatalf("expected code_challenge_method S256, got %q", got)
@@ -1759,7 +1795,7 @@ func TestRootCommandCompletesRemoteBrowserLoginAuthorizationCodeFlow(t *testing.
 				"capabilities":    []string{"catalog", "brokered-auth", "authorization-envelope"},
 				"auth": map[string]any{
 					"required":                true,
-					"audience":                "oasclird",
+					"audience":                "oclird",
 					"scopePrefixes":           []string{"bundle:", "profile:", "tool:"},
 					"tokenValidationProfiles": []string{"oidc_jwks"},
 					"browserLogin": map[string]any{
@@ -1773,7 +1809,7 @@ func TestRootCommandCompletesRemoteBrowserLoginAuthorizationCodeFlow(t *testing.
 				"authorizationURL": authServer.URL + "/authorize",
 				"tokenURL":         authServer.URL + "/token",
 				"clientId":         "browser-client",
-				"audience":         "oasclird",
+				"audience":         "oclird",
 			})
 		case "/v1/catalog/effective":
 			if got := r.Header.Get("Authorization"); got != "Bearer browser-login-token-live" {
@@ -1806,7 +1842,7 @@ func TestRootCommandCompletesRemoteBrowserLoginAuthorizationCodeFlow(t *testing.
 	      "url": %q,
 	      "oauth": {
 	        "mode": "browserLogin",
-	        "audience": "oasclird",
+	        "audience": "oclird",
 	        "scopes": ["bundle:payments"],
 	        "browserLogin": {
 	          "callbackPort": %d
@@ -1971,6 +2007,23 @@ func TestResolveCommandOptionsUsesShareKeyForSharedGroupLocalRuntime(t *testing.
 	}
 	if !bytes.Contains([]byte(capturedInstanceID), []byte("team-a")) {
 		t.Fatalf("expected shared-group instance id to include share key, got %q", capturedInstanceID)
+	}
+}
+
+func TestDetectTerminalSessionIdentityUsesOCLIEnvironmentVariable(t *testing.T) {
+	t.Setenv("OCLI_TERMINAL_SESSION_ID", "ocli-terminal")
+
+	if got := detectTerminalSessionIdentity(); got != "ocli-terminal" {
+		t.Fatalf("expected OCLI terminal session id, got %q", got)
+	}
+}
+
+func TestDetectAgentSessionIdentityUsesOCLIEnvironmentVariable(t *testing.T) {
+	t.Setenv("OCLI_AGENT_SESSION_ID", "ocli-agent")
+	t.Setenv("COPILOT_SESSION_ID", "copilot-agent")
+
+	if got := detectAgentSessionIdentity(); got != "ocli-agent" {
+		t.Fatalf("expected OCLI agent session id, got %q", got)
 	}
 }
 

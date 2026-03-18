@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/StevenBuglione/oas-cli-go/pkg/config"
-	mcpclient "github.com/StevenBuglione/oas-cli-go/pkg/mcp/client"
+	"github.com/StevenBuglione/open-cli/pkg/config"
+	mcpclient "github.com/StevenBuglione/open-cli/pkg/mcp/client"
 )
 
 func TestOpenStdioUsesNewlineDelimitedJSONRPC(t *testing.T) {
@@ -28,6 +28,8 @@ for line in sys.stdin:
     message = json.loads(line)
     method = message.get("method")
     if method == "initialize":
+        if message["params"]["clientInfo"]["name"] != "open-cli":
+            raise AssertionError(f'expected initialize clientInfo.name "open-cli", got {message["params"]["clientInfo"]["name"]!r}')
         sys.stdout.write(json.dumps({
             "jsonrpc": "2.0",
             "id": message["id"],

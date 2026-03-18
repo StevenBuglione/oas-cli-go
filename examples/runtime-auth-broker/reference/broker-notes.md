@@ -10,16 +10,16 @@ The broker may accept identity from:
 - Google
 - GitHub
 
-Those upstream identities are normalized before runtime token issuance. `oascli` does not need provider-specific logic for each one.
+Those upstream identities are normalized before runtime token issuance. `ocli` does not need provider-specific logic for each one.
 
 ## Runtime token requirements
 
-The broker-issued token must be acceptable to `oasclird` under `validationProfile: "oidc_jwks"` and should include:
+The broker-issued token must be acceptable to `oclird` under `validationProfile: "oidc_jwks"` and should include:
 
 ```json
 {
   "iss": "https://broker.example.com",
-  "aud": "oasclird",
+  "aud": "oclird",
   "sub": "github:user-123",
   "scope": "bundle:tickets tool:tickets:listTickets",
   "exp": 1773599999

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/StevenBuglione/oas-cli-go/product-tests/testdata/expected/agent-rubric.schema.json",
+  "$id": "https://github.com/StevenBuglione/open-cli/product-tests/testdata/expected/agent-rubric.schema.json",
   "title": "CampaignRubric",
   "description": "Structured output emitted by every agent/operator campaign run. Contains scored rubric criteria plus freeform findings.",
   "type": "object",

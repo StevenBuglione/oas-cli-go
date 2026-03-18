@@ -13,12 +13,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/StevenBuglione/oas-cli-go/pkg/cache"
-	"github.com/StevenBuglione/oas-cli-go/pkg/config"
-	"github.com/StevenBuglione/oas-cli-go/pkg/discovery"
-	mcpclient "github.com/StevenBuglione/oas-cli-go/pkg/mcp/client"
-	mcpopenapi "github.com/StevenBuglione/oas-cli-go/pkg/mcp/openapi"
-	"github.com/StevenBuglione/oas-cli-go/pkg/openapi"
+	"github.com/StevenBuglione/open-cli/pkg/cache"
+	"github.com/StevenBuglione/open-cli/pkg/config"
+	"github.com/StevenBuglione/open-cli/pkg/discovery"
+	mcpclient "github.com/StevenBuglione/open-cli/pkg/mcp/client"
+	mcpopenapi "github.com/StevenBuglione/open-cli/pkg/mcp/openapi"
+	"github.com/StevenBuglione/open-cli/pkg/openapi"
 	"github.com/getkin/kin-openapi/openapi3"
 	"gopkg.in/yaml.v3"
 )
@@ -401,7 +401,7 @@ func buildTools(service Service, document *openapi3.T, guidance map[string]Guida
 
 			var backend *ToolBackend
 			if allowBackendMetadata {
-				backend = operationStructExtension[ToolBackend](entry.op, "x-oascli-backend")
+				backend = operationStructExtension[ToolBackend](entry.op, "x-ocli-backend")
 			}
 			tool := Tool{
 				ID:               toolID,

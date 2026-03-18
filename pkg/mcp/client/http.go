@@ -11,7 +11,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/StevenBuglione/oas-cli-go/pkg/config"
+	"github.com/StevenBuglione/open-cli/pkg/config"
 )
 
 type streamableHTTPClient struct {
@@ -161,7 +161,7 @@ func (client *streamableHTTPClient) ensureInitialized(ctx context.Context) error
 		"protocolVersion": "2025-03-26",
 		"capabilities":    map[string]any{},
 		"clientInfo": map[string]any{
-			"name":    "oas-cli-go",
+			"name":    "open-cli",
 			"version": "1.0.0",
 		},
 	}, &result, false); err != nil {
@@ -312,7 +312,7 @@ func (client *sseClient) ensureInitialized(ctx context.Context) error {
 		"protocolVersion": "2024-11-05",
 		"capabilities":    map[string]any{},
 		"clientInfo": map[string]any{
-			"name":    "oas-cli-go",
+			"name":    "open-cli",
 			"version": "1.0.0",
 		},
 	}, &result, true); err != nil {

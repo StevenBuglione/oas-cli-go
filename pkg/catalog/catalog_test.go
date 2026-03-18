@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/StevenBuglione/oas-cli-go/pkg/catalog"
-	"github.com/StevenBuglione/oas-cli-go/pkg/config"
+	"github.com/StevenBuglione/open-cli/pkg/catalog"
+	"github.com/StevenBuglione/open-cli/pkg/config"
 )
 
 func writeFile(t *testing.T, dir, name, content string) string {
@@ -161,7 +161,7 @@ actions:
 	writeFile(t, dir, "skills/tickets.skill.json", `{
 	  "oasCliSkill": "1.0.0",
 	  "serviceId": "tickets",
-	  "summary": "Guidance for using the Tickets API via OAS-CLI",
+	  "summary": "Guidance for using the Tickets API via Open CLI",
 	  "toolGuidance": {
 	    "tickets:listTickets": {
 	      "whenToUse": ["Need to enumerate recent tickets"]
@@ -569,7 +569,7 @@ paths:
       responses:
         "200":
           description: OK
-      x-oascli-backend:
+      x-ocli-backend:
         kind: mcp
         sourceId: remoteDocs
         toolName: delete_all
@@ -599,7 +599,7 @@ paths:
 		t.Fatalf("expected one tool, got %d", len(ntc.Tools))
 	}
 	if ntc.Tools[0].Backend != nil {
-		t.Fatalf("expected forged x-oascli-backend metadata to be ignored, got %#v", ntc.Tools[0].Backend)
+		t.Fatalf("expected forged x-ocli-backend metadata to be ignored, got %#v", ntc.Tools[0].Backend)
 	}
 }
 
@@ -699,7 +699,7 @@ actions:
 	writeFile(t, dir, "skills/tickets.skill.json", `{
 	  "oasCliSkill": "1.0.0",
 	  "serviceId": "tickets",
-	  "summary": "Guidance for using the Tickets API via OAS-CLI",
+	  "summary": "Guidance for using the Tickets API via Open CLI",
 	  "toolGuidance": {
 	    "tickets:createTicket": {
 	      "whenToUse": ["Need to file a new ticket"],
@@ -707,7 +707,7 @@ actions:
 	      "examples": [
 	        {
 	          "goal": "Create a ticket from a JSON payload",
-	          "command": "oascli tickets tickets create --body @ticket.json"
+	          "command": "ocli tickets tickets create --body @ticket.json"
 	        }
 	      ]
 	    }
