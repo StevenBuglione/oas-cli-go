@@ -1,16 +1,12 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"os"
 	"os/exec"
@@ -18,7 +14,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	runtimepkg "github.com/StevenBuglione/open-cli/cmd/ocli/internal/runtime"
@@ -37,7 +32,7 @@ type CommandOptions struct {
 	RuntimeURL        string
 	RuntimeDeployment string
 	RuntimeToken      string
-	RuntimeAuth       *runtimeTokenSession
+	RuntimeAuth       *runtimepkg.TokenSession
 	ConfigPath        string
 	Mode              string
 	AgentProfile      string
@@ -54,10 +49,7 @@ type CommandOptions struct {
 	Stderr            io.Writer
 }
 
-type runtimeCatalogResponse struct {
-	Catalog catalog.NormalizedCatalog `json:"catalog"`
-	View    catalog.EffectiveView     `json:"view"`
-}
+type runtimeCatalogResponse = runtimepkg.CatalogResponse
 
 type runtimeBrowserLoginMetadata struct {
 	AuthorizationURL string `json:"authorizationURL"`
@@ -74,107 +66,18 @@ type runtimeBrowserLoginRequest struct {
 	StateDir     string
 }
 
-type executeRequest struct {
-	ConfigPath   string            `json:"configPath"`
-	Mode         string            `json:"mode,omitempty"`
-	AgentProfile string            `json:"agentProfile,omitempty"`
-	ToolID       string            `json:"toolId"`
-	PathArgs     []string          `json:"pathArgs,omitempty"`
-	Flags        map[string]string `json:"flags,omitempty"`
-	Body         []byte            `json:"body,omitempty"`
-	Approval     bool              `json:"approval,omitempty"`
-}
+type executeRequest = runtimepkg.ExecuteRequest
+type executeResponse = runtimepkg.ExecuteResponse
+type runtimeClient = runtimepkg.Client
+type runtimeSessionToken = runtimepkg.SessionToken
+type runtimeTokenSession = runtimepkg.TokenSession
 
-type executeResponse struct {
-	StatusCode  int             `json:"statusCode"`
-	Body        json.RawMessage `json:"body,omitempty"`
-	Text        string          `json:"text,omitempty"`
-	ContentType string          `json:"contentType,omitempty"`
-}
-
-type runtimeClient interface {
-	FetchCatalog(CommandOptions) (runtimeCatalogResponse, error)
-	Execute(executeRequest) (executeResponse, error)
-	RunWorkflow(map[string]any) (map[string]any, error)
-	RuntimeInfo() (map[string]any, error)
-	Heartbeat(string) (map[string]any, error)
-	Stop() (map[string]any, error)
-	SessionClose() (map[string]any, error)
-}
-
-const tokenRefreshGrace = 30 * time.Second
-
-type runtimeSessionToken struct {
-	AccessToken string
-	ExpiresAt   time.Time
-}
-
-type runtimeTokenSession struct {
-	mu        sync.Mutex
-	token     runtimeSessionToken
-	refresh   func(context.Context) (runtimeSessionToken, error)
-	refreshed bool
-}
+const tokenRefreshGrace = runtimepkg.TokenRefreshGrace
 
 type runtimeHTTPError = runtimepkg.HTTPError
 
 func newRuntimeTokenSession(token runtimeSessionToken, refresh func(context.Context) (runtimeSessionToken, error)) *runtimeTokenSession {
-	return &runtimeTokenSession{token: token, refresh: refresh}
-}
-
-func (session *runtimeTokenSession) tokenForPreflight(ctx context.Context, grace time.Duration) (string, error) {
-	if session == nil {
-		return "", nil
-	}
-	session.mu.Lock()
-	defer session.mu.Unlock()
-
-	if !session.token.isExpiring(grace) {
-		return session.token.AccessToken, nil
-	}
-	if session.refresh == nil || session.refreshed {
-		return "", &runtimeHTTPError{StatusCode: http.StatusUnauthorized, Body: "authn_failed"}
-	}
-	refreshedToken, err := session.refresh(ctx)
-	if err != nil {
-		return "", &runtimeHTTPError{StatusCode: http.StatusUnauthorized, Body: "authn_failed"}
-	}
-	session.refreshed = true
-	session.token = refreshedToken
-	return session.token.AccessToken, nil
-}
-
-func (session *runtimeTokenSession) handleAuthnFailed() error {
-	if session == nil {
-		return &runtimeHTTPError{StatusCode: http.StatusUnauthorized, Body: "authn_failed"}
-	}
-	session.mu.Lock()
-	defer session.mu.Unlock()
-	if session.refresh == nil || session.refreshed {
-		return &runtimeHTTPError{StatusCode: http.StatusUnauthorized, Body: "authn_failed"}
-	}
-	session.token.ExpiresAt = time.Unix(0, 0)
-	return nil
-}
-
-func (token runtimeSessionToken) isExpiring(grace time.Duration) bool {
-	if token.ExpiresAt.IsZero() {
-		return false
-	}
-	return time.Now().After(token.ExpiresAt.Add(-grace))
-}
-
-type httpRuntimeClient struct {
-	baseURL           string
-	session           *runtimeTokenSession
-	sessionID         string
-	configFingerprint string
-}
-
-type embeddedRuntimeClient struct {
-	handler           http.Handler
-	sessionID         string
-	configFingerprint string
+	return runtimepkg.NewTokenSession(token, refresh)
 }
 
 const defaultRuntimeURL = "http://127.0.0.1:8765"
@@ -232,7 +135,12 @@ func NewRootCommand(options CommandOptions, args []string) (*cobra.Command, erro
 	if err != nil {
 		return nil, err
 	}
-	response, err := client.FetchCatalog(options)
+	response, err := client.FetchCatalog(runtimepkg.CatalogFetchOptions{
+		ConfigPath:   options.ConfigPath,
+		Mode:         options.Mode,
+		AgentProfile: options.AgentProfile,
+		RuntimeToken: options.RuntimeToken,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -500,227 +408,6 @@ func loadBody(bodyRef string, stdin io.Reader) ([]byte, error) {
 	default:
 		return []byte(bodyRef), nil
 	}
-}
-
-func fetchCatalogHTTP(baseURL string, options CommandOptions) (runtimeCatalogResponse, error) {
-	endpoint, err := url.Parse(baseURL + "/v1/catalog/effective")
-	if err != nil {
-		return runtimeCatalogResponse{}, err
-	}
-	query := endpoint.Query()
-	if options.ConfigPath != "" {
-		query.Set("config", options.ConfigPath)
-	}
-	if options.Mode != "" {
-		query.Set("mode", options.Mode)
-	}
-	if options.AgentProfile != "" {
-		query.Set("agentProfile", options.AgentProfile)
-	}
-	endpoint.RawQuery = query.Encode()
-	req, err := http.NewRequest(http.MethodGet, endpoint.String(), nil)
-	if err != nil {
-		return runtimeCatalogResponse{}, err
-	}
-	if options.RuntimeToken != "" {
-		req.Header.Set("Authorization", "Bearer "+options.RuntimeToken)
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return runtimeCatalogResponse{}, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 400 {
-		body, _ := io.ReadAll(resp.Body)
-		return runtimeCatalogResponse{}, fmt.Errorf("%s", strings.TrimSpace(string(body)))
-	}
-	var response runtimeCatalogResponse
-	err = json.NewDecoder(resp.Body).Decode(&response)
-	return response, err
-}
-
-func (client httpRuntimeClient) FetchCatalog(options CommandOptions) (runtimeCatalogResponse, error) {
-	endpoint, err := url.Parse(client.baseURL + "/v1/catalog/effective")
-	if err != nil {
-		return runtimeCatalogResponse{}, err
-	}
-	query := endpoint.Query()
-	if options.ConfigPath != "" {
-		query.Set("config", options.ConfigPath)
-	}
-	if options.Mode != "" {
-		query.Set("mode", options.Mode)
-	}
-	if options.AgentProfile != "" {
-		query.Set("agentProfile", options.AgentProfile)
-	}
-	endpoint.RawQuery = query.Encode()
-	var response runtimeCatalogResponse
-	if err := client.do(http.MethodGet, endpoint.String(), nil, &response); err != nil {
-		return runtimeCatalogResponse{}, err
-	}
-	return response, nil
-}
-
-func (client httpRuntimeClient) Execute(request executeRequest) (executeResponse, error) {
-	var response executeResponse
-	err := client.do(http.MethodPost, client.baseURL+"/v1/tools/execute", request, &response)
-	return response, err
-}
-
-func (client httpRuntimeClient) RunWorkflow(request map[string]any) (map[string]any, error) {
-	var response map[string]any
-	err := client.do(http.MethodPost, client.baseURL+"/v1/workflows/run", request, &response)
-	return response, err
-}
-
-func (client httpRuntimeClient) RuntimeInfo() (map[string]any, error) {
-	var response map[string]any
-	err := client.do(http.MethodGet, client.baseURL+"/v1/runtime/info", nil, &response)
-	return response, err
-}
-
-func (client httpRuntimeClient) Heartbeat(sessionID string) (map[string]any, error) {
-	payload := map[string]any{"sessionId": sessionID}
-	if client.configFingerprint != "" {
-		payload["configFingerprint"] = client.configFingerprint
-	}
-	var response map[string]any
-	err := client.do(http.MethodPost, client.baseURL+"/v1/runtime/heartbeat", payload, &response)
-	return response, err
-}
-
-func (client httpRuntimeClient) Stop() (map[string]any, error) {
-	var response map[string]any
-	err := client.do(http.MethodPost, client.baseURL+"/v1/runtime/stop", map[string]any{}, &response)
-	return response, err
-}
-
-func (client httpRuntimeClient) SessionClose() (map[string]any, error) {
-	var response map[string]any
-	err := client.do(http.MethodPost, client.baseURL+"/v1/runtime/session-close", map[string]any{"sessionId": client.sessionID}, &response)
-	return response, err
-}
-
-func (client httpRuntimeClient) do(method, endpoint string, payload any, output any) error {
-	var body io.Reader
-	if payload != nil {
-		data, err := json.Marshal(payload)
-		if err != nil {
-			return err
-		}
-		body = bytes.NewReader(data)
-	}
-	req, err := http.NewRequest(method, endpoint, body)
-	if err != nil {
-		return err
-	}
-	if payload != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	token, err := client.session.tokenForPreflight(req.Context(), tokenRefreshGrace)
-	if err != nil {
-		return err
-	}
-	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 400 {
-		data, _ := io.ReadAll(resp.Body)
-		httpErr := &runtimeHTTPError{StatusCode: resp.StatusCode, Body: strings.TrimSpace(string(data))}
-		if resp.StatusCode == http.StatusUnauthorized && httpErr.Body == "authn_failed" {
-			_ = client.session.handleAuthnFailed()
-		}
-		return httpErr
-	}
-	return json.NewDecoder(resp.Body).Decode(output)
-}
-
-func (client embeddedRuntimeClient) FetchCatalog(options CommandOptions) (runtimeCatalogResponse, error) {
-	query := url.Values{}
-	if options.ConfigPath != "" {
-		query.Set("config", options.ConfigPath)
-	}
-	if options.Mode != "" {
-		query.Set("mode", options.Mode)
-	}
-	if options.AgentProfile != "" {
-		query.Set("agentProfile", options.AgentProfile)
-	}
-	var response runtimeCatalogResponse
-	if err := client.do(http.MethodGet, "/v1/catalog/effective?"+query.Encode(), nil, &response); err != nil {
-		return runtimeCatalogResponse{}, err
-	}
-	return response, nil
-}
-
-func (client embeddedRuntimeClient) Execute(request executeRequest) (executeResponse, error) {
-	var response executeResponse
-	err := client.do(http.MethodPost, "/v1/tools/execute", request, &response)
-	return response, err
-}
-
-func (client embeddedRuntimeClient) RunWorkflow(request map[string]any) (map[string]any, error) {
-	var response map[string]any
-	err := client.do(http.MethodPost, "/v1/workflows/run", request, &response)
-	return response, err
-}
-
-func (client embeddedRuntimeClient) RuntimeInfo() (map[string]any, error) {
-	var response map[string]any
-	err := client.do(http.MethodGet, "/v1/runtime/info", nil, &response)
-	return response, err
-}
-
-func (client embeddedRuntimeClient) Heartbeat(sessionID string) (map[string]any, error) {
-	var response map[string]any
-	payload := map[string]any{"sessionId": sessionID}
-	if client.configFingerprint != "" {
-		payload["configFingerprint"] = client.configFingerprint
-	}
-	err := client.do(http.MethodPost, "/v1/runtime/heartbeat", payload, &response)
-	return response, err
-}
-
-func (client embeddedRuntimeClient) Stop() (map[string]any, error) {
-	var response map[string]any
-	err := client.do(http.MethodPost, "/v1/runtime/stop", map[string]any{}, &response)
-	return response, err
-}
-
-func (client embeddedRuntimeClient) SessionClose() (map[string]any, error) {
-	var response map[string]any
-	err := client.do(http.MethodPost, "/v1/runtime/session-close", map[string]any{"sessionId": client.sessionID}, &response)
-	return response, err
-}
-
-func (client embeddedRuntimeClient) do(method, endpoint string, payload any, output any) error {
-	var body io.Reader
-	if payload != nil {
-		data, err := json.Marshal(payload)
-		if err != nil {
-			return err
-		}
-		body = bytes.NewReader(data)
-	}
-	request := httptest.NewRequest(method, endpoint, body)
-	if payload != nil {
-		request.Header.Set("Content-Type", "application/json")
-	}
-	recorder := httptest.NewRecorder()
-	client.handler.ServeHTTP(recorder, request)
-	response := recorder.Result()
-	defer response.Body.Close()
-	if response.StatusCode >= 400 {
-		data, _ := io.ReadAll(response.Body)
-		return fmt.Errorf("%s", strings.TrimSpace(string(data)))
-	}
-	return json.NewDecoder(response.Body).Decode(output)
 }
 
 func postJSON[T any](endpoint string, payload any, token string) (T, error) {
@@ -1130,133 +817,41 @@ func resolveLocalSessionID(options CommandOptions, local configpkg.LocalRuntimeC
 }
 
 func performLocalSessionHandshake(options CommandOptions) (CommandOptions, error) {
-	if options.ConfigFingerprint == "" {
-		options.ConfigFingerprint = localRuntimeConfigFingerprint(options)
+	hsOpts := runtimepkg.HandshakeOptions{
+		ConfigPath:        options.ConfigPath,
+		ConfigFingerprint: options.ConfigFingerprint,
+		RuntimeURL:        options.RuntimeURL,
+		SessionID:         options.SessionID,
+		InstanceID:        options.InstanceID,
+		HeartbeatEnabled:  options.HeartbeatEnabled,
+		Embedded:          options.Embedded,
+		StateDir:          options.StateDir,
+		RuntimeAuth:       options.RuntimeAuth,
 	}
-	client, err := newRuntimeClient(options)
+	newClient := func(h runtimepkg.HandshakeOptions) (runtimepkg.Client, error) {
+		return runtimepkg.NewClient(runtimepkg.NewClientOptions{
+			Embedded:          h.Embedded,
+			RuntimeURL:        h.RuntimeURL,
+			ConfigPath:        h.ConfigPath,
+			InstanceID:        h.InstanceID,
+			StateDir:          h.StateDir,
+			SessionID:         h.SessionID,
+			ConfigFingerprint: h.ConfigFingerprint,
+			RuntimeAuth:       h.RuntimeAuth,
+		})
+	}
+	result, err := runtimepkg.PerformLocalHandshake(hsOpts, newClient)
 	if err != nil {
 		return options, err
 	}
-	info, err := client.RuntimeInfo()
-	if err != nil {
-		return options, err
-	}
-	if err := validateRuntimeContract(info, []string{"catalog"}); err != nil {
-		return options, err
-	}
-	lifecycle, _ := info["lifecycle"].(map[string]any)
-	if !lifecycleCapabilityEnabled(lifecycle, "heartbeat") {
-		options.HeartbeatEnabled = false
-		return options, nil
-	}
-	if fingerprint, _ := lifecycle["configFingerprint"].(string); fingerprint != "" && options.ConfigFingerprint != "" && fingerprint != options.ConfigFingerprint {
-		return options, fmt.Errorf("runtime_attach_mismatch")
-	}
-	if options.SessionID == "" {
-		options.SessionID = options.InstanceID
-	}
-	if _, err := client.Heartbeat(options.SessionID); err != nil {
-		return options, err
-	}
-	options.HeartbeatEnabled = true
+	options.ConfigFingerprint = result.ConfigFingerprint
+	options.SessionID = result.SessionID
+	options.HeartbeatEnabled = result.HeartbeatEnabled
 	return options, nil
 }
 
-func validateRuntimeContract(info map[string]any, requiredCapabilities []string) error {
-	contractVersion, _ := info["contractVersion"].(string)
-	if strings.TrimSpace(contractVersion) == "" {
-		return nil
-	}
-	server := embeddedruntime.HandshakeInfo{
-		ContractVersion: contractVersion,
-		Capabilities:    stringSlice(info["capabilities"]),
-	}
-	client := embeddedruntime.HandshakeInfo{
-		ContractVersion:      embeddedruntime.CurrentContractVersion,
-		RequiredCapabilities: append([]string(nil), requiredCapabilities...),
-	}
-	return embeddedruntime.CheckCompatibility(client, server)
-}
-
-func stringSlice(value any) []string {
-	switch items := value.(type) {
-	case []string:
-		return append([]string(nil), items...)
-	case []any:
-		result := make([]string, 0, len(items))
-		for _, item := range items {
-			if text, ok := item.(string); ok && strings.TrimSpace(text) != "" {
-				result = append(result, text)
-			}
-		}
-		return result
-	default:
-		return nil
-	}
-}
-
-func lifecycleCapabilityEnabled(lifecycle map[string]any, capability string) bool {
-	if lifecycle == nil {
-		return false
-	}
-	switch capabilities := lifecycle["capabilities"].(type) {
-	case []any:
-		for _, item := range capabilities {
-			if text, ok := item.(string); ok && text == capability {
-				return true
-			}
-		}
-	case []string:
-		for _, item := range capabilities {
-			if item == capability {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 func localRuntimeConfigFingerprint(options CommandOptions) string {
-	if options.ConfigPath == "" {
-		return ""
-	}
-	effective, err := configpkg.LoadEffective(configpkg.LoadOptions{
-		ProjectPath: options.ConfigPath,
-		WorkingDir:  filepath.Dir(options.ConfigPath),
-	})
-	if err != nil || effective.Config.Runtime == nil || effective.Config.Runtime.Local == nil {
-		return ""
-	}
-	localSources := map[string]configpkg.Source{}
-	for sourceID, source := range effective.Config.Sources {
-		if source.Type == "mcp" && source.Transport != nil && source.Transport.Type == "stdio" {
-			localSources[sourceID] = source
-		}
-	}
-	localServices := map[string]configpkg.Service{}
-	for serviceID, service := range effective.Config.Services {
-		if _, ok := localSources[service.Source]; ok {
-			localServices[serviceID] = service
-		}
-	}
-	data, err := json.Marshal(struct {
-		RuntimeMode string                        `json:"runtimeMode"`
-		Local       *configpkg.LocalRuntimeConfig `json:"local"`
-		Sources     map[string]configpkg.Source   `json:"sources,omitempty"`
-		Services    map[string]configpkg.Service  `json:"services,omitempty"`
-		Policy      configpkg.PolicyConfig        `json:"policy,omitempty"`
-	}{
-		RuntimeMode: effective.Config.Runtime.Mode,
-		Local:       effective.Config.Runtime.Local,
-		Sources:     localSources,
-		Services:    localServices,
-		Policy:      effective.Config.Policy,
-	})
-	if err != nil {
-		return ""
-	}
-	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:])
+	return runtimepkg.ConfigFingerprint(options.ConfigPath)
 }
 
 func fetchRuntimeHandshake(baseURL string) (embeddedruntime.HandshakeInfo, error) {
@@ -1447,20 +1042,16 @@ func resolveDaemonBinary() (string, error) {
 }
 
 func newRuntimeClient(options CommandOptions) (runtimeClient, error) {
-	if options.Embedded {
-		paths, err := resolveInstancePaths(options)
-		if err != nil {
-			return nil, err
-		}
-		server := embeddedruntime.NewServer(embeddedruntime.Options{
-			AuditPath:         paths.AuditPath,
-			CacheDir:          paths.CacheDir,
-			DefaultConfigPath: options.ConfigPath,
-			RuntimeMode:       "embedded",
-		})
-		return embeddedRuntimeClient{handler: server.Handler(), sessionID: options.SessionID, configFingerprint: options.ConfigFingerprint}, nil
-	}
-	return httpRuntimeClient{baseURL: options.RuntimeURL, session: options.RuntimeAuth, sessionID: options.SessionID, configFingerprint: options.ConfigFingerprint}, nil
+	return runtimepkg.NewClient(runtimepkg.NewClientOptions{
+		Embedded:          options.Embedded,
+		RuntimeURL:        options.RuntimeURL,
+		ConfigPath:        options.ConfigPath,
+		InstanceID:        options.InstanceID,
+		StateDir:          options.StateDir,
+		SessionID:         options.SessionID,
+		ConfigFingerprint: options.ConfigFingerprint,
+		RuntimeAuth:       options.RuntimeAuth,
+	})
 }
 
 func resolveRuntimeURLFromInstance(options CommandOptions) (string, bool, error) {
@@ -1512,15 +1103,12 @@ func resolveInstancePaths(options CommandOptions) (instance.Paths, error) {
 		InstanceID: options.InstanceID,
 		ConfigPath: options.ConfigPath,
 		StateRoot:  options.StateDir,
-		CacheRoot:  cacheRootForState(options.StateDir),
+		CacheRoot:  runtimepkg.CacheRootForState(options.StateDir),
 	})
 }
 
 func cacheRootForState(stateDir string) string {
-	if stateDir == "" {
-		return ""
-	}
-	return filepath.Join(stateDir, "cache")
+	return runtimepkg.CacheRootForState(stateDir)
 }
 
 func detectTerminalSessionIdentity() string {
@@ -1553,12 +1141,7 @@ func shouldSendLocalHeartbeat(cmd *cobra.Command) bool {
 	if cmd == nil {
 		return false
 	}
-	switch cmd.CommandPath() {
-	case "ocli runtime stop", "ocli runtime session-close":
-		return false
-	default:
-		return true
-	}
+	return runtimepkg.ShouldSendHeartbeat(cmd.CommandPath())
 }
 
 func envBool(name string) bool {

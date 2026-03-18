@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	runtimepkg "github.com/StevenBuglione/open-cli/cmd/ocli/internal/runtime"
 	"github.com/StevenBuglione/open-cli/pkg/catalog"
 	configpkg "github.com/StevenBuglione/open-cli/pkg/config"
 	"github.com/StevenBuglione/open-cli/pkg/instance"
@@ -1344,13 +1345,13 @@ func TestHTTPRuntimeClientRefreshesExpiredOAuthClientTokenOnce(t *testing.T) {
 		t.Fatalf("newRuntimeClient: %v", err)
 	}
 
-	if _, err := client.FetchCatalog(resolved); err != nil {
+	if _, err := client.FetchCatalog(runtimepkg.CatalogFetchOptions{ConfigPath: resolved.ConfigPath, Mode: resolved.Mode, AgentProfile: resolved.AgentProfile, RuntimeToken: resolved.RuntimeToken}); err != nil {
 		t.Fatalf("initial FetchCatalog: %v", err)
 	}
 
 	time.Sleep(1100 * time.Millisecond)
 
-	if _, err := client.FetchCatalog(resolved); err != nil {
+	if _, err := client.FetchCatalog(runtimepkg.CatalogFetchOptions{ConfigPath: resolved.ConfigPath, Mode: resolved.Mode, AgentProfile: resolved.AgentProfile, RuntimeToken: resolved.RuntimeToken}); err != nil {
 		t.Fatalf("expected expired remote runtime token to refresh, got %v", err)
 	}
 	if tokenFetches != 2 {
@@ -1480,7 +1481,7 @@ func TestHTTPRuntimeClientRefreshesAfterAuthnFailedOnNextRequest(t *testing.T) {
 		t.Fatalf("expected first execute to fail with authn_failed, got %v", err)
 	}
 
-	if _, err := client.FetchCatalog(resolved); err != nil {
+	if _, err := client.FetchCatalog(runtimepkg.CatalogFetchOptions{ConfigPath: resolved.ConfigPath, Mode: resolved.Mode, AgentProfile: resolved.AgentProfile, RuntimeToken: resolved.RuntimeToken}); err != nil {
 		t.Fatalf("expected next request to refresh after authn_failed, got %v", err)
 	}
 	if tokenFetches != 2 {
