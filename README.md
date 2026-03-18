@@ -46,7 +46,21 @@ The project ships two binaries with a deliberate split:
 
 ---
 
-## First success: embedded mode
+## Quick Start
+
+### Try the demo (no setup needed)
+
+    ocli --demo catalog list --format pretty
+
+This uses a built-in sample API to show how open-cli works.
+
+### Set up your own API
+
+    ocli init https://petstore3.swagger.io/api/v3/openapi.json
+
+This creates a `.cli.json` configuration from your OpenAPI spec.
+
+### Manual configuration
 
 **Prerequisites:** Install via npm (`npm install -g @sbuglione/open-cli`) or [download a release binary](https://github.com/StevenBuglione/open-cli/releases).
 
