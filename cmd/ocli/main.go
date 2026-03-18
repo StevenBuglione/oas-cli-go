@@ -920,58 +920,15 @@ func resolveCommandOptions(options CommandOptions) (CommandOptions, error) {
 }
 
 func resolveRuntimeDeployment(options CommandOptions) string {
-	runtimeCfg, ok := loadRuntimeConfig(options)
-	if !ok {
-		return ""
-	}
-	mode := "auto"
-	if runtimeCfg != nil && runtimeCfg.Mode != "" {
-		mode = runtimeCfg.Mode
-	}
-	switch mode {
-	case "embedded", "local", "remote":
-		return mode
-	case "auto":
-		effective, err := configpkg.LoadEffective(configpkg.LoadOptions{
-			ProjectPath: options.ConfigPath,
-			WorkingDir:  filepath.Dir(options.ConfigPath),
-		})
-		if err != nil {
-			return ""
-		}
-		if hasLocalMCPSource(effective.Config) {
-			return "local"
-		}
-		return "embedded"
-	default:
-		return ""
-	}
+	return runtimepkg.ResolveDeployment(runtimepkg.DeploymentOptions{ConfigPath: options.ConfigPath})
 }
 
 func loadRuntimeConfig(options CommandOptions) (*configpkg.RuntimeConfig, bool) {
-	if options.ConfigPath == "" {
-		return nil, false
-	}
-	effective, err := configpkg.LoadEffective(configpkg.LoadOptions{
-		ProjectPath: options.ConfigPath,
-		WorkingDir:  filepath.Dir(options.ConfigPath),
-	})
-	if err != nil {
-		return nil, false
-	}
-	return effective.Config.Runtime, true
+	return runtimepkg.LoadConfig(runtimepkg.DeploymentOptions{ConfigPath: options.ConfigPath})
 }
 
 func hasLocalMCPSource(cfg configpkg.Config) bool {
-	for _, source := range cfg.Sources {
-		if source.Type != "mcp" || source.Transport == nil {
-			continue
-		}
-		if source.Transport.Type == "stdio" {
-			return true
-		}
-	}
-	return false
+	return runtimepkg.HasLocalMCPSource(cfg)
 }
 
 func resolveRuntimeToken(options CommandOptions, oauth configpkg.RemoteOAuthConfig) (string, *runtimeTokenSession, error) {
