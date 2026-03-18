@@ -28,6 +28,8 @@ for line in sys.stdin:
     message = json.loads(line)
     method = message.get("method")
     if method == "initialize":
+        if message["params"]["clientInfo"]["name"] != "open-cli":
+            raise AssertionError(f'expected initialize clientInfo.name "open-cli", got {message["params"]["clientInfo"]["name"]!r}')
         sys.stdout.write(json.dumps({
             "jsonrpc": "2.0",
             "id": message["id"],

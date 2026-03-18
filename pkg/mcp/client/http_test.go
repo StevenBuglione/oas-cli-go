@@ -39,6 +39,17 @@ func TestOpenStreamableHTTPSupportsSessionListAndCall(t *testing.T) {
 		method, _ := message["method"].(string)
 		switch method {
 		case "initialize":
+			params, ok := message["params"].(map[string]any)
+			if !ok {
+				t.Fatalf("initialize params were not an object: %#v", message["params"])
+			}
+			clientInfo, ok := params["clientInfo"].(map[string]any)
+			if !ok {
+				t.Fatalf("initialize clientInfo was not an object: %#v", params["clientInfo"])
+			}
+			if got := clientInfo["name"]; got != "open-cli" {
+				t.Fatalf("expected initialize clientInfo.name %q, got %#v", "open-cli", got)
+			}
 			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("Mcp-Session-Id", "session-1")
 			_ = json.NewEncoder(w).Encode(map[string]any{
@@ -156,6 +167,17 @@ func TestOpenSSEUsesEndpointEventListAndCall(t *testing.T) {
 			var payload map[string]any
 			switch method {
 			case "initialize":
+				params, ok := message["params"].(map[string]any)
+				if !ok {
+					t.Fatalf("initialize params were not an object: %#v", message["params"])
+				}
+				clientInfo, ok := params["clientInfo"].(map[string]any)
+				if !ok {
+					t.Fatalf("initialize clientInfo was not an object: %#v", params["clientInfo"])
+				}
+				if got := clientInfo["name"]; got != "open-cli" {
+					t.Fatalf("expected initialize clientInfo.name %q, got %#v", "open-cli", got)
+				}
 				payload = map[string]any{
 					"jsonrpc": "2.0",
 					"id":      message["id"],

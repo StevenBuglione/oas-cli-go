@@ -162,7 +162,7 @@ func (client *stdioClient) ensureInitialized() error {
 		"protocolVersion": "2025-03-26",
 		"capabilities":    map[string]any{},
 		"clientInfo": map[string]any{
-			"name":    "oas-cli-go",
+			"name":    "open-cli",
 			"version": "1.0.0",
 		},
 	}, &result); err != nil {
