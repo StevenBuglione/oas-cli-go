@@ -15,7 +15,7 @@ From the repo root:
 
 ```bash
 go test ./...
-go build ./cmd/oascli ./cmd/oasclird
+go build ./cmd/ocli ./cmd/oclird
 ```
 
 Repository convenience targets:
@@ -28,7 +28,7 @@ Current `make verify` runs:
 
 - `gofmt -w $(find . -name '*.go' -print)`
 - `go test ./...`
-- `go build ./cmd/oascli ./cmd/oasclird`
+- `go build ./cmd/ocli ./cmd/oclird`
 
 ## Docs verification
 
@@ -52,7 +52,7 @@ make verify-conformance   # run conformance fixtures; uses spec/schemas/ automat
 make verify-all           # fmt + test + build + verify-spec + verify-conformance
 ```
 
-`verify-conformance` uses `spec/schemas/` as the default schema root via the `OASCLI_SCHEMA_ROOT` fallback in `conformance/scripts/run_conformance.py`. You can override that with an explicit `--schema-root` flag if needed.
+`verify-conformance` uses `spec/schemas/` as the default schema root via the `OCLI_SCHEMA_ROOT` fallback in `conformance/scripts/run_conformance.py`. You can override that with an explicit `--schema-root` flag if needed.
 
 If you change config semantics, catalog output, schema-facing behavior, or anything else that affects the public contract, run `make verify-all` to confirm the Go implementation, the spec examples, and the conformance fixtures all agree.
 
@@ -118,7 +118,7 @@ No containers are started and no network traffic occurs. If either compose file 
 ## Useful targeted test entry points
 
 - config merge/validation: `go test ./pkg/config -run TestLoadEffective`
-- CLI runtime resolution and embedded mode: `go test ./cmd/oascli -run TestRootCommand`
+- CLI runtime resolution and embedded mode: `go test ./cmd/ocli -run TestRootCommand`
 - runtime HTTP API and auth/policy flows: `go test ./internal/runtime -run TestServer`
 - discovery and catalog integration: `go test ./pkg/catalog -run TestBuild`
 

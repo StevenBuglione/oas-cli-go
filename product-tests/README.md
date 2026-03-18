@@ -1,6 +1,6 @@
 # product-tests
 
-End-to-end product tests for oascli. These tests spin up real infrastructure
+End-to-end product tests for ocli. These tests spin up real infrastructure
 (REST API, OAuth server, MCP servers) and exercise the CLI against them.
 
 ## Layout
@@ -166,11 +166,11 @@ It is now the automated reference proof for the workload path and verifies:
 
 - live Authentik discovery/JWKS/token reachability
 - repo-managed provider/application bootstrap through Authentik
-- real `oascli` `oauthClient` token acquisition against Authentik
-- live `oidc_jwks` validation in `oasclird`
+- real `ocli` `oauthClient` token acquisition against Authentik
+- live `oidc_jwks` validation in `oclird`
 - fail-closed rejection for insufficient scope, wrong audience, expired token, and alternate issuer
 
-The product harness uses a tiny local proxy in the test fixture so `oascli` and `oasclird` can reach the self-signed Authentik test stack without weakening the runtime contract. The validated token `iss` still comes from Authentik.
+The product harness uses a tiny local proxy in the test fixture so `ocli` and `oclird` can reach the self-signed Authentik test stack without weakening the runtime contract. The validated token `iss` still comes from Authentik.
 
 This fixture is intentionally **workload-only**: it bootstraps a confidential Authentik provider for `oauthClient` and does **not** advertise `/v1/auth/browser-config`. The browser proof is covered separately with the public-client reference template under `examples/runtime-auth-broker/authentik/`.
 

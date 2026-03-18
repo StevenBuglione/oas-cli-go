@@ -20,7 +20,7 @@ def resolve_schema_root(explicit_root: Path | None = None) -> Path:
     if explicit_root is not None:
         candidates.append(explicit_root)
 
-    env_root = os.getenv("OASCLI_SCHEMA_ROOT")
+    env_root = os.getenv("OCLI_SCHEMA_ROOT")
     if env_root:
         candidates.append(Path(env_root))
 

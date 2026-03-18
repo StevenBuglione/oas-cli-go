@@ -4,7 +4,7 @@ title: Deployment Models
 
 # Deployment Models
 
-**Read this if** you are choosing how to run `oascli` — one-off embedded, a reusable local daemon, or a remote runtime — and need to understand runtime resolution order, instance isolation, and what happens when a registry entry goes stale.
+**Read this if** you are choosing how to run `ocli` — one-off embedded, a reusable local daemon, or a remote runtime — and need to understand runtime resolution order, instance isolation, and what happens when a registry entry goes stale.
 
 The current repo supports three practical ways to run the system, and `.cli.json` can now choose between them through `runtime.mode`.
 
@@ -19,12 +19,12 @@ Best for:
 Command pattern:
 
 ```bash
-./bin/oascli --embedded --config ./.cli.json catalog list --format pretty
+./bin/ocli --embedded --config ./.cli.json catalog list --format pretty
 ```
 
 Characteristics:
 
-- no separate `oasclird` process
+- no separate `oclird` process
 - cache and audit paths still come from instance resolution
 - behavior matches the runtime server implementation closely
 - no `runtime.json` registry entry is written
@@ -35,18 +35,18 @@ Best for:
 
 - interactive local development
 - agents that will run many commands against the same config
-- sharing a warmed cache across many `oascli` invocations
+- sharing a warmed cache across many `ocli` invocations
 
 Start the daemon:
 
 ```bash
-./bin/oasclird --config ./.cli.json --addr 127.0.0.1:8765
+./bin/oclird --config ./.cli.json --addr 127.0.0.1:8765
 ```
 
 Then call it:
 
 ```bash
-./bin/oascli --runtime http://127.0.0.1:8765 --config ./.cli.json catalog list
+./bin/ocli --runtime http://127.0.0.1:8765 --config ./.cli.json catalog list
 ```
 
 You can also select local-daemon behavior from config:
@@ -59,7 +59,7 @@ You can also select local-daemon behavior from config:
 }
 ```
 
-With `runtime.mode: "auto"`, `oascli` now promotes to local-daemon mode automatically when the effective config contains local MCP `stdio` sources. If no live runtime is registered for that instance, it starts a managed local `oasclird`.
+With `runtime.mode: "auto"`, `ocli` now promotes to local-daemon mode automatically when the effective config contains local MCP `stdio` sources. If no live runtime is registered for that instance, it starts a managed local `oclird`.
 
 ## 3. Remote runtime
 
@@ -111,8 +111,8 @@ Best for:
 Example:
 
 ```bash
-./bin/oasclird --config /srv/team-a/.cli.json --instance-id team-a
-./bin/oasclird --config /srv/team-b/.cli.json --instance-id team-b
+./bin/oclird --config /srv/team-a/.cli.json --instance-id team-a
+./bin/oclird --config /srv/team-b/.cli.json --instance-id team-b
 ```
 
 Each instance gets its own:
@@ -122,9 +122,9 @@ Each instance gets its own:
 - audit log
 - cache directory
 
-## Runtime resolution order in `oascli`
+## Runtime resolution order in `ocli`
 
-When `--embedded` is **not** set, `oascli` resolves the runtime in this order:
+When `--embedded` is **not** set, `ocli` resolves the runtime in this order:
 
 1. explicit runtime deployment choice from config when present
 2. `--runtime`
@@ -142,18 +142,18 @@ The instance selection itself can come from:
 3. derived ID from the config path
 4. `default`
 
-If you pass `--state-dir` (or `OCLI_STATE_DIR`), `oascli` also derives the cache root under that state directory.
+If you pass `--state-dir` (or `OCLI_STATE_DIR`), `ocli` also derives the cache root under that state directory.
 
 ## Stale runtime registry fallback
 
-If `runtime.json` points at a daemon whose recorded PID is no longer alive, or at a runtime URL that no longer answers TCP connections, `oascli`:
+If `runtime.json` points at a daemon whose recorded PID is no longer alive, or at a runtime URL that no longer answers TCP connections, `ocli`:
 
 1. terminates any recorded managed MCP child processes for that dead daemon
 2. removes the stale registry file
 3. ignores that URL
 4. either restarts the managed local runtime or falls back to the default runtime URL, depending on deployment mode
 
-Managed `oasclird` also removes its own `runtime.json` on shutdown so normal stop/close flows do not leave behind stale registry entries.
+Managed `oclird` also removes its own `runtime.json` on shutdown so normal stop/close flows do not leave behind stale registry entries.
 
 What it does **not** do:
 
@@ -162,7 +162,7 @@ What it does **not** do:
 
 ## Security note for remote bindings
 
-`oasclird` is safe-by-default for local development because it binds to loopback by default, but it does have an optional built-in runtime auth layer when you enable `runtime.server.auth`.
+`oclird` is safe-by-default for local development because it binds to loopback by default, but it does have an optional built-in runtime auth layer when you enable `runtime.server.auth`.
 
 If you bind beyond localhost:
 
