@@ -15,15 +15,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	stdruntime "runtime"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	embeddedruntime "github.com/StevenBuglione/open-cli/internal/runtime"
+	"github.com/StevenBuglione/open-cli/internal/version"
 	oauthruntime "github.com/StevenBuglione/open-cli/pkg/auth"
 	"github.com/StevenBuglione/open-cli/pkg/catalog"
 	configpkg "github.com/StevenBuglione/open-cli/pkg/config"
@@ -193,6 +192,15 @@ var cleanupManagedProcesses = toolsexec.CleanupManagedProcesses
 var runtimeProcessAlive = toolsexec.ProcessAlive
 
 func main() {
+	for _, arg := range os.Args[1:] {
+		if arg == "--version" || arg == "-v" {
+			fmt.Println(version.String())
+			return
+		}
+		if arg == "--" {
+			break
+		}
+	}
 	options := bootstrapFromArgs(os.Args[1:])
 	command, err := NewRootCommand(options, os.Args[1:])
 	if err != nil {
@@ -235,9 +243,11 @@ func NewRootCommand(options CommandOptions, args []string) (*cobra.Command, erro
 
 	root := &cobra.Command{
 		Use:           "ocli",
+		Version:       version.Version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
+	root.SetVersionTemplate(version.String() + "\n")
 	if options.RuntimeDeployment == "local" && options.HeartbeatEnabled && options.SessionID != "" {
 		root.PersistentPreRunE = func(cmd *cobra.Command, _ []string) error {
 			if !shouldSendLocalHeartbeat(cmd) {
@@ -1626,16 +1636,7 @@ func detectAgentSessionIdentity() string {
 }
 
 func configureManagedRuntimeCommand(cmd *exec.Cmd) {
-	if cmd == nil {
-		return
-	}
-	if stdruntime.GOOS != "linux" {
-		return
-	}
-	if cmd.SysProcAttr == nil {
-		cmd.SysProcAttr = &syscall.SysProcAttr{}
-	}
-	cmd.SysProcAttr.Pdeathsig = syscall.SIGTERM
+	configureManagedRuntimePlatform(cmd)
 }
 
 func shouldSendLocalHeartbeat(cmd *cobra.Command) bool {

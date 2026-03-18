@@ -1,0 +1,45 @@
+{
+  "name": "@sbuglione/open-cli",
+  "version": "0.0.0",
+  "description": "Turn OpenAPI descriptions and MCP servers into a local, policy-aware command surface",
+  "keywords": [
+    "openapi",
+    "mcp",
+    "cli",
+    "open-cli",
+    "ocli",
+    "api",
+    "rest",
+    "policy",
+    "audit"
+  ],
+  "homepage": "https://open-cli.dev",
+  "bugs": {
+    "url": "https://github.com/StevenBuglione/open-cli/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/StevenBuglione/open-cli.git"
+  },
+  "license": "GPL-3.0",
+  "author": "Steven Buglione",
+  "bin": {
+    "ocli": "bin/ocli.js",
+    "oclird": "bin/oclird.js"
+  },
+  "scripts": {
+    "postinstall": "node install.js"
+  },
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ],
+  "engines": {
+    "node": ">=16"
+  }
+}

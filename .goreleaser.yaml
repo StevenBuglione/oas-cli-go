@@ -1,0 +1,107 @@
+version: 2
+
+project_name: open-cli
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: ocli
+    main: ./cmd/ocli
+    binary: ocli
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/StevenBuglione/open-cli/internal/version.Version={{.Version}}
+      - -X github.com/StevenBuglione/open-cli/internal/version.Commit={{.ShortCommit}}
+      - -X github.com/StevenBuglione/open-cli/internal/version.Date={{.Date}}
+
+  - id: oclird
+    main: ./cmd/oclird
+    binary: oclird
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/StevenBuglione/open-cli/internal/version.Version={{.Version}}
+      - -X github.com/StevenBuglione/open-cli/internal/version.Commit={{.ShortCommit}}
+      - -X github.com/StevenBuglione/open-cli/internal/version.Date={{.Date}}
+
+archives:
+  - id: default
+    ids:
+      - ocli
+      - oclird
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+changelog:
+  sort: asc
+  use: github
+  groups:
+    - title: "🚀 Features"
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: "🐛 Bug Fixes"
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: "📚 Documentation"
+      regexp: '^.*?docs(\([[:word:]]+\))??!?:.+$'
+      order: 2
+    - title: "🔧 Maintenance"
+      order: 999
+  filters:
+    exclude:
+      - "^Merge "
+
+release:
+  github:
+    owner: StevenBuglione
+    name: open-cli
+  draft: false
+  prerelease: auto
+  name_template: "v{{.Version}}"
+  header: |
+    ## What's Changed
+
+    Install via npm (recommended):
+    ```bash
+    npm install -g @sbuglione/open-cli
+    ```
+
+    Or download a binary from the assets below.
+  footer: |
+    **Full Changelog**: https://github.com/StevenBuglione/open-cli/compare/{{ .PreviousTag }}...{{ .Tag }}
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+

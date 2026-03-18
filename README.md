@@ -8,6 +8,31 @@ This is the Go reference implementation of the [Open CLI specification](spec/).
 
 ---
 
+## Installation
+
+### npm (recommended)
+
+```bash
+npm install -g @sbuglione/open-cli
+```
+
+This installs both `ocli` and `oclird` globally. The package automatically downloads the correct binary for your platform (macOS, Linux, Windows — x64 and arm64).
+
+### Download a release binary
+
+Pre-built binaries for every platform are attached to each [GitHub Release](https://github.com/StevenBuglione/open-cli/releases). Download the archive for your OS/architecture, extract it, and place the binaries on your `PATH`.
+
+### Build from source
+
+Requires Go 1.25.1+:
+
+```bash
+go install github.com/StevenBuglione/open-cli/cmd/ocli@latest
+go install github.com/StevenBuglione/open-cli/cmd/oclird@latest
+```
+
+---
+
 ## Two binaries, one execution model
 
 The project ships two binaries with a deliberate split:
@@ -23,14 +48,7 @@ The project ships two binaries with a deliberate split:
 
 ## First success: embedded mode
 
-**Prerequisites:** Go 1.25.1+
-
-Build the binaries from the repository root:
-
-```bash
-go build -o ./bin/ocli ./cmd/ocli
-go build -o ./bin/oclird ./cmd/oclird
-```
+**Prerequisites:** Install via npm (`npm install -g @sbuglione/open-cli`) or [download a release binary](https://github.com/StevenBuglione/open-cli/releases).
 
 Create a minimal `.cli.json` pointing at an OpenAPI document:
 
@@ -57,7 +75,7 @@ Create a minimal `.cli.json` pointing at an OpenAPI document:
 Inspect the catalog — no daemon, no upstream calls:
 
 ```bash
-./bin/ocli --embedded --config ./.cli.json catalog list --format pretty
+ocli --embedded --config ./.cli.json catalog list --format pretty
 ```
 
 This prints the normalized catalog: service aliases, tools, and generated command names derived from your OpenAPI document. Nothing contacts any upstream service.
@@ -65,14 +83,14 @@ This prints the normalized catalog: service aliases, tools, and generated comman
 Inspect a specific tool before executing it:
 
 ```bash
-./bin/ocli --embedded --config ./.cli.json tool schema tickets:listTickets --format pretty
-./bin/ocli --embedded --config ./.cli.json explain tickets:listTickets --format pretty
+ocli --embedded --config ./.cli.json tool schema tickets:listTickets --format pretty
+ocli --embedded --config ./.cli.json explain tickets:listTickets --format pretty
 ```
 
 Preview the generated command tree:
 
 ```bash
-./bin/ocli --embedded --config ./.cli.json helpdesk tickets --help
+ocli --embedded --config ./.cli.json helpdesk tickets --help
 ```
 
 For a complete walkthrough including a sample OpenAPI document, see the [quickstart](https://open-cli.dev/docs/getting-started/quickstart).
@@ -90,10 +108,10 @@ For a complete walkthrough including a sample OpenAPI document, see the [quickst
 **Starting a local daemon:**
 
 ```bash
-./bin/oclird --config ./.cli.json --addr 127.0.0.1:8765
+oclird --config ./.cli.json --addr 127.0.0.1:8765
 
 # In another shell:
-./bin/ocli --runtime http://127.0.0.1:8765 --config ./.cli.json catalog list --format pretty
+ocli --runtime http://127.0.0.1:8765 --config ./.cli.json catalog list --format pretty
 ```
 
 **Config-driven selection** — avoid flags by declaring mode in `.cli.json`:
