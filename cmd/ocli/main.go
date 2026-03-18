@@ -16,6 +16,7 @@ import (
 	"time"
 
 	authpkg "github.com/StevenBuglione/open-cli/cmd/ocli/internal/auth"
+	cfgpkg "github.com/StevenBuglione/open-cli/cmd/ocli/internal/config"
 	runtimepkg "github.com/StevenBuglione/open-cli/cmd/ocli/internal/runtime"
 	"github.com/StevenBuglione/open-cli/internal/version"
 	"github.com/StevenBuglione/open-cli/pkg/catalog"
@@ -26,26 +27,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-type CommandOptions struct {
-	RuntimeURL        string
-	RuntimeDeployment string
-	RuntimeToken      string
-	RuntimeAuth       *runtimepkg.TokenSession
-	ConfigPath        string
-	Mode              string
-	AgentProfile      string
-	Format            string
-	Approval          bool
-	InstanceID        string
-	SessionID         string
-	HeartbeatEnabled  bool
-	ConfigFingerprint string
-	StateDir          string
-	Embedded          bool
-	Stdin             io.Reader
-	Stdout            io.Writer
-	Stderr            io.Writer
-}
+type CommandOptions = cfgpkg.Options
 
 type runtimeCatalogResponse = runtimepkg.CatalogResponse
 
@@ -65,8 +47,6 @@ type runtimeHTTPError = runtimepkg.HTTPError
 func newRuntimeTokenSession(token runtimeSessionToken, refresh func(context.Context) (runtimeSessionToken, error)) *runtimeTokenSession {
 	return runtimepkg.NewTokenSession(token, refresh)
 }
-
-const defaultRuntimeURL = "http://127.0.0.1:8765"
 
 var managedRuntimeStarter = startManagedRuntime
 var terminalSessionIdentityProvider = detectTerminalSessionIdentity
@@ -432,54 +412,7 @@ func writeOutput(out io.Writer, format string, value any) error {
 }
 
 func bootstrapFromArgs(args []string) CommandOptions {
-	options := CommandOptions{
-		Stdout: os.Stdout,
-		Stderr: os.Stderr,
-	}
-	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "--runtime":
-			if i+1 < len(args) {
-				options.RuntimeURL = args[i+1]
-				i++
-			}
-		case "--config":
-			if i+1 < len(args) {
-				options.ConfigPath = args[i+1]
-				i++
-			}
-		case "--mode":
-			if i+1 < len(args) {
-				options.Mode = args[i+1]
-				i++
-			}
-		case "--agent-profile":
-			if i+1 < len(args) {
-				options.AgentProfile = args[i+1]
-				i++
-			}
-		case "--format":
-			if i+1 < len(args) {
-				options.Format = args[i+1]
-				i++
-			}
-		case "--approval":
-			options.Approval = true
-		case "--instance-id":
-			if i+1 < len(args) {
-				options.InstanceID = args[i+1]
-				i++
-			}
-		case "--state-dir":
-			if i+1 < len(args) {
-				options.StateDir = args[i+1]
-				i++
-			}
-		case "--embedded":
-			options.Embedded = true
-		}
-	}
-	return options
+	return cfgpkg.BootstrapFromArgs(args)
 }
 
 func findTool(tools []catalog.Tool, id string) *catalog.Tool {
@@ -501,101 +434,16 @@ func sortedServiceAliases(services []catalog.Service) []string {
 }
 
 func resolveCommandOptions(options CommandOptions) (CommandOptions, error) {
-	var cachedRuntimeCfg *configpkg.RuntimeConfig
-	cachedRuntimeCfgLoaded := false
-	loadCachedRuntimeConfig := func() (*configpkg.RuntimeConfig, bool) {
-		if cachedRuntimeCfgLoaded {
-			return cachedRuntimeCfg, cachedRuntimeCfg != nil
-		}
-		cachedRuntimeCfg, cachedRuntimeCfgLoaded = loadRuntimeConfig(options)
-		return cachedRuntimeCfg, cachedRuntimeCfg != nil
-	}
-	if options.InstanceID == "" {
-		options.InstanceID = os.Getenv("OCLI_INSTANCE_ID")
-	}
-	if options.StateDir == "" {
-		options.StateDir = os.Getenv("OCLI_STATE_DIR")
-	}
-	if !options.Embedded {
-		options.Embedded = envBool("OCLI_EMBEDDED")
-	}
-	if options.Embedded {
-		options.RuntimeDeployment = "embedded"
-		return options, nil
-	}
-	if options.RuntimeDeployment == "" {
-		options.RuntimeDeployment = resolveRuntimeDeployment(options)
-	}
-	if options.RuntimeDeployment == "embedded" {
-		options.Embedded = true
-		return options, nil
-	}
-	if options.RuntimeDeployment == "local" && options.InstanceID == "" {
-		if runtimeCfg, ok := loadCachedRuntimeConfig(); ok && runtimeCfg.Local != nil {
-			options.InstanceID = resolveLocalRuntimeInstanceID(options, *runtimeCfg.Local)
-		}
-	}
-	if options.RuntimeDeployment == "local" && options.SessionID == "" {
-		if runtimeCfg, ok := loadCachedRuntimeConfig(); ok && runtimeCfg.Local != nil {
-			options.SessionID = resolveLocalSessionID(options, *runtimeCfg.Local)
-		}
-		if options.SessionID == "" {
-			options.SessionID = options.InstanceID
-		}
-	}
-	if options.Embedded {
-		return options, nil
-	}
-	if options.RuntimeURL == "" {
-		options.RuntimeURL = os.Getenv("OCLI_RUNTIME_URL")
-	}
-	if options.RuntimeURL == "" && options.RuntimeDeployment == "remote" {
-		if runtimeCfg, ok := loadCachedRuntimeConfig(); ok && runtimeCfg.Remote != nil && runtimeCfg.Remote.URL != "" {
-			options.RuntimeURL = runtimeCfg.Remote.URL
-		}
-	}
-	if options.RuntimeToken == "" && options.RuntimeDeployment == "remote" {
-		if runtimeCfg, ok := loadCachedRuntimeConfig(); ok && runtimeCfg.Remote != nil && runtimeCfg.Remote.OAuth != nil {
-			paths, pathsErr := resolveInstancePaths(options)
-			if pathsErr != nil {
-				return options, pathsErr
-			}
-			token, session, err := authpkg.ResolveToken(authpkg.TokenResolveOptions{
-				RuntimeURL: options.RuntimeURL,
-				StateDir:   paths.StateDir,
-			}, *runtimeCfg.Remote.OAuth)
-			if err != nil {
-				return options, err
-			}
-			options.RuntimeToken = token
-			options.RuntimeAuth = session
-		}
-	}
-	if options.RuntimeURL == "" {
-		if runtimeURL, ok, err := resolveRuntimeURLFromInstance(options); err != nil {
-			return options, err
-		} else if ok {
-			options.RuntimeURL = runtimeURL
-		}
-	}
-	if options.RuntimeURL == "" && options.RuntimeDeployment == "local" {
-		runtimeURL, err := managedRuntimeStarter(options)
-		if err != nil {
-			return options, err
-		}
-		options.RuntimeURL = runtimeURL
-	}
-	if options.RuntimeURL == "" {
-		options.RuntimeURL = defaultRuntimeURL
-	}
-	if options.RuntimeDeployment == "local" && options.RuntimeURL != "" {
-		handshaken, err := localSessionHandshake(options)
-		if err != nil {
-			return options, err
-		}
-		options = handshaken
-	}
-	return options, nil
+	return cfgpkg.ResolveCommandOptions(options, cfgpkg.ResolveHooks{
+		LoadRuntimeConfig:         loadRuntimeConfig,
+		ResolveRuntimeDeployment:  resolveRuntimeDeployment,
+		ResolveLocalInstanceID:    resolveLocalRuntimeInstanceID,
+		ResolveLocalSessionID:     resolveLocalSessionID,
+		ResolveInstancePaths:      resolveInstancePaths,
+		ResolveRuntimeURLFromInst: resolveRuntimeURLFromInstance,
+		StartManagedRuntime:       managedRuntimeStarter,
+		LocalSessionHandshake:     localSessionHandshake,
+	})
 }
 
 func resolveRuntimeDeployment(options CommandOptions) string {
@@ -889,6 +737,5 @@ func shouldSendLocalHeartbeat(cmd *cobra.Command) bool {
 }
 
 func envBool(name string) bool {
-	value := strings.TrimSpace(strings.ToLower(os.Getenv(name)))
-	return value == "1" || value == "true" || value == "yes" || value == "on"
+	return cfgpkg.EnvBool(name)
 }
