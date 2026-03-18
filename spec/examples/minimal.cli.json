@@ -1,0 +1,17 @@
+{
+  "cli": "1.0.0",
+  "mode": {
+    "default": "discover"
+  },
+  "sources": {
+    "myapi": {
+      "type": "openapi",
+      "uri": "./my-api.openapi.yaml"
+    }
+  },
+  "services": {
+    "myapi": {
+      "source": "myapi"
+    }
+  }
+}
