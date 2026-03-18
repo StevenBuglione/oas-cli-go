@@ -161,7 +161,7 @@ actions:
 	writeFile(t, dir, "skills/tickets.skill.json", `{
 	  "oasCliSkill": "1.0.0",
 	  "serviceId": "tickets",
-	  "summary": "Guidance for using the Tickets API via OAS-CLI",
+	  "summary": "Guidance for using the Tickets API via Open CLI",
 	  "toolGuidance": {
 	    "tickets:listTickets": {
 	      "whenToUse": ["Need to enumerate recent tickets"]
@@ -699,7 +699,7 @@ actions:
 	writeFile(t, dir, "skills/tickets.skill.json", `{
 	  "oasCliSkill": "1.0.0",
 	  "serviceId": "tickets",
-	  "summary": "Guidance for using the Tickets API via OAS-CLI",
+	  "summary": "Guidance for using the Tickets API via Open CLI",
 	  "toolGuidance": {
 	    "tickets:createTicket": {
 	      "whenToUse": ["Need to file a new ticket"],

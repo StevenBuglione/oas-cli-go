@@ -70,7 +70,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: product-test-fleet-artifacts
-          path: /tmp/oascli-fleet
+          path: /tmp/open-cli-fleet
           if-no-files-found: error
 
   product-test-fleet-mcp-remote:
@@ -91,7 +91,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: product-test-fleet-mcp-remote-artifacts
-          path: /tmp/oascli-fleet
+          path: /tmp/open-cli-fleet
           if-no-files-found: error
 
   product-test-website-review:

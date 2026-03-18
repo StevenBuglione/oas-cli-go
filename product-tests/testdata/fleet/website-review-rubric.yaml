@@ -9,11 +9,11 @@ sections:
           - /docs/getting-started/choose-your-path
           - /docs/getting-started/quickstart
       - id: mental-model
-        description: The site explains oascli versus oasclird early.
+        description: The site explains ocli versus oclird early.
         path: website/docs/getting-started/intro.md
         expectText:
-          - "`oascli`"
-          - "`oasclird`"
+          - "`ocli`"
+          - "`oclird`"
   - id: depth
     title: Progressive depth
     criteria:

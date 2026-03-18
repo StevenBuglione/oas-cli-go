@@ -2,7 +2,7 @@
 
 This runbook describes one concrete way to prove the brokered runtime auth contract with **Microsoft Entra ID as the upstream identity provider** and **Authentik as the reference broker**.
 
-This document is intentionally **descriptive, not normative**. `oascli` and `oasclird` only require a broker that satisfies the runtime auth contract. Authentik + Entra is the official worked example in this repository.
+This document is intentionally **descriptive, not normative**. `ocli` and `oclird` only require a broker that satisfies the runtime auth contract. Authentik + Entra is the official worked example in this repository.
 
 ## Required operator inputs
 
@@ -13,17 +13,17 @@ Before starting, gather these values:
 - Entra redirect URI(s)
 - Entra group and/or claim values that will drive runtime-scope mapping
 - Authentik issuer URL
-- runtime audience value (for this reference proof, `oasclird`)
+- runtime audience value (for this reference proof, `oclird`)
 - test user identity that can sign in through Entra
 
 ## Contract boundaries
 
 The runtime contract stays the same regardless of the upstream identity provider:
 
-- `oascli` discovers runtime auth requirements from `/v1/runtime/info`
-- `oascli` reads browser metadata from `/v1/auth/browser-config`
+- `ocli` discovers runtime auth requirements from `/v1/runtime/info`
+- `ocli` reads browser metadata from `/v1/auth/browser-config`
 - the broker issues a runtime token with the required claims
-- `oasclird` validates the bearer token with `oidc_jwks`
+- `oclird` validates the bearer token with `oidc_jwks`
 - authorization is enforced from normalized runtime scopes such as `bundle:*`, `profile:*`, and `tool:*`
 
 Entra federation changes **how Authentik authenticates the user**, not what the runtime expects on the wire.
@@ -68,26 +68,26 @@ Inside Authentik:
 4. Configure Authentik to request the user identity and group/role claims you need for runtime authorization.
 5. Verify that Authentik can successfully redirect to Entra and complete the upstream callback.
 
-This upstream is only the first half of the chain. `oascli` will still talk to the **Authentik** runtime application, not directly to Entra.
+This upstream is only the first half of the chain. `ocli` will still talk to the **Authentik** runtime application, not directly to Entra.
 
 ## 3. Configure the Authentik runtime application/provider
 
-Create or update the Authentik application/provider that will mint runtime tokens consumed by `oascli`.
+Create or update the Authentik application/provider that will mint runtime tokens consumed by `ocli`.
 
 Use these settings as the reference baseline:
 
 1. Create an Authentik OAuth2/OpenID provider for the runtime.
-2. Link it to an Authentik application that `oascli` will target.
+2. Link it to an Authentik application that `ocli` will target.
 3. Configure a browser redirect URI such as `http://127.0.0.1:8787/callback`.
 4. Configure a signing key so the provider publishes a JWKS.
-5. Keep the issuer stable; `oasclird` validates it exactly.
+5. Keep the issuer stable; `oclird` validates it exactly.
 
 For the workload and browser proof paths, the provider must emit a runtime-compatible `scope` claim. The validated Authentik pattern is to define scope mappings that derive the emitted `scope` claim from `token.scope`.
 
 Example Authentik scope-mapping expression:
 
 ```python
-audience = "oasclird"
+audience = "oclird"
 return {
     "scope": " ".join(token.scope),
     "aud": audience,
@@ -97,7 +97,7 @@ return {
 If you need separate staging values for negative tests, you can branch on a requested scope:
 
 ```python
-audience = "wrong-audience" if "profile:wrong-audience" in token.scope else "oasclird"
+audience = "wrong-audience" if "profile:wrong-audience" in token.scope else "oclird"
 return {
     "scope": " ".join(token.scope),
     "aud": audience,
@@ -144,15 +144,15 @@ For workload proof, render `runtime.oauth-client.cli.json.tmpl` with the confide
   "server": {
     "auth": {
       "validationProfile": "oidc_jwks",
-      "issuer": "https://auth.example.com/application/o/oascli-runtime-workload/",
-      "jwksURL": "https://auth.example.com/application/o/oascli-runtime-workload/jwks/",
-      "audience": "oasclird"
+      "issuer": "https://auth.example.com/application/o/ocli-runtime-workload/",
+      "jwksURL": "https://auth.example.com/application/o/ocli-runtime-workload/jwks/",
+      "audience": "oclird"
     }
   },
   "remote": {
     "oauth": {
       "mode": "oauthClient",
-      "audience": "oasclird",
+      "audience": "oclird",
       "scopes": ["bundle:tickets", "tool:tickets:listTickets"],
       "client": {
         "tokenURL": "https://auth.example.com/application/o/token/",
@@ -168,12 +168,12 @@ For workload proof, render `runtime.oauth-client.cli.json.tmpl` with the confide
 
 The end-to-end browser proof should follow this exact sequence:
 
-1. `oascli` reads `/v1/runtime/info`
-2. `oascli` reads `/v1/auth/browser-config`
+1. `ocli` reads `/v1/runtime/info`
+2. `ocli` reads `/v1/auth/browser-config`
 3. the browser redirects to Authentik
 4. Authentik federates to Entra
 5. Authentik issues the runtime token
-6. `oasclird` validates the token and enforces scopes
+6. `oclird` validates the token and enforces scopes
 
 If any step is skipped or replaced with manual token injection, the browser proof is incomplete.
 
@@ -182,7 +182,7 @@ If any step is skipped or replaced with manual token injection, the browser proo
 Run this sequence against the real deployment:
 
 1. Start the runtime and confirm `/v1/runtime/info` advertises `oidc_jwks`.
-2. Run `oascli --config runtime.cli.json catalog list --format json`.
+2. Run `ocli --config runtime.cli.json catalog list --format json`.
 3. Complete the Authentik -> Entra browser login flow.
 4. Save the filtered catalog output.
 5. Execute one allowed tool and save the output.
