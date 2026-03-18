@@ -2,14 +2,21 @@
 
 "use strict";
 
+const fs = require("fs");
 const { execFileSync } = require("child_process");
 const path = require("path");
 
 const ext = process.platform === "win32" ? ".exe" : "";
 const bin = path.join(__dirname, "ocli" + ext);
 
+if (!fs.existsSync(bin)) {
+  console.error(`open-cli: binary not found at ${bin}`);
+  console.error(`open-cli: run "npm install -g @sbuglione/open-cli" to reinstall`);
+  process.exit(1);
+}
+
 try {
-  const result = execFileSync(bin, process.argv.slice(2), {
+  execFileSync(bin, process.argv.slice(2), {
     stdio: "inherit",
     windowsHide: true,
   });
@@ -17,7 +24,11 @@ try {
   if (e.status !== null) {
     process.exit(e.status);
   }
-  console.error("open-cli: failed to run ocli —", e.message);
-  console.error("open-cli: try reinstalling with: npm install -g @sbuglione/open-cli");
+  if (e.code === "EACCES") {
+    console.error(`open-cli: permission denied on ${bin}`);
+    console.error(`open-cli: try: chmod +x ${bin}`);
+  } else {
+    console.error(`open-cli: failed to execute ${bin}: ${e.message}`);
+  }
   process.exit(1);
 }
