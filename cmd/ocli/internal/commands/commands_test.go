@@ -616,8 +616,8 @@ func TestInitCommandRemoteURLFallsBackToFirstHostLabel(t *testing.T) {
 	defer proxy.Close()
 
 	stdout, homeDir, err := runInitCommandSubprocess(t, "http://www.billing.example.invalid/openapi.json", map[string]string{
-		"HTTP_PROXY":  proxy.URL,
 		"http_proxy":  proxy.URL,
+		"HTTP_PROXY":  "",
 		"ALL_PROXY":   "",
 		"all_proxy":   "",
 		"HTTPS_PROXY": "",
@@ -654,7 +654,7 @@ func TestInitCommandRemoteURLHonorsStandardHTTPProxyCGIGuard(t *testing.T) {
 
 	stdout, _, err := runInitCommandSubprocess(t, "http://www.billing.example.invalid/openapi.json", map[string]string{
 		"HTTP_PROXY":     proxy.URL,
-		"http_proxy":     proxy.URL,
+		"http_proxy":     "",
 		"ALL_PROXY":      "",
 		"all_proxy":      "",
 		"HTTPS_PROXY":    "",
@@ -668,6 +668,9 @@ func TestInitCommandRemoteURLHonorsStandardHTTPProxyCGIGuard(t *testing.T) {
 	}
 	if proxyHits.Load() != 0 {
 		t.Fatalf("expected CGI guard to bypass proxy, got %d proxy requests", proxyHits.Load())
+	}
+	if !strings.Contains(stdout, "Cannot fetch spec") {
+		t.Fatalf("expected fetch failure output, got: %s", stdout)
 	}
 }
 

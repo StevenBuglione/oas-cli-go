@@ -357,11 +357,19 @@ func deriveServiceNameFromTitle(title string) string {
 		return ""
 	}
 
-	for len(tokens) > 0 && isBoilerplateToken(tokens[0]) {
-		tokens = tokens[1:]
-	}
-	for len(tokens) > 0 && isBoilerplateToken(tokens[len(tokens)-1]) {
-		tokens = tokens[:len(tokens)-1]
+	for {
+		trimmed := false
+		for len(tokens) > 0 && isBoilerplateToken(tokens[0]) {
+			tokens = tokens[1:]
+			trimmed = true
+		}
+		for len(tokens) > 0 && isBoilerplateToken(tokens[len(tokens)-1]) {
+			tokens = tokens[:len(tokens)-1]
+			trimmed = true
+		}
+		if !trimmed {
+			break
+		}
 	}
 
 	name := sanitizeServiceName(strings.Join(tokens, "-"))
