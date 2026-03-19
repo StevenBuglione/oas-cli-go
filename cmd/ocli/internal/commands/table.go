@@ -24,6 +24,19 @@ func IsTerminal(w io.Writer) bool {
 	return fi.Mode()&os.ModeCharDevice != 0
 }
 
+// IsTerminalReader checks if an io.Reader is connected to a terminal.
+func IsTerminalReader(r io.Reader) bool {
+	f, ok := r.(*os.File)
+	if !ok {
+		return false
+	}
+	fi, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	return fi.Mode()&os.ModeCharDevice != 0
+}
+
 // WriteTable renders value as a human-readable table.
 func WriteTable(out io.Writer, value any) error {
 	w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)

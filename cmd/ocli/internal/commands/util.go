@@ -39,7 +39,10 @@ func WriteOutput(out io.Writer, format string, value any) error {
 	case "table":
 		return WriteTable(out, value)
 	default:
-		return fmt.Errorf("unsupported format %q", format)
+		return NewUserError(
+			fmt.Sprintf("unsupported format %q", format),
+			"The --format flag only accepts: json, yaml, pretty, table",
+			"Use --format json or --format table")
 	}
 }
 
@@ -64,16 +67,25 @@ func CommandSummary(tool catalog.Tool) string {
 // LoadBody resolves a body reference: empty string → nil, "-" → stdin,
 // "@path" → file, anything else → literal bytes.
 func LoadBody(bodyRef string, stdin io.Reader) ([]byte, error) {
+	var body []byte
+	var err error
 	switch {
 	case bodyRef == "":
 		return nil, nil
 	case bodyRef == "-":
-		return io.ReadAll(stdin)
+		body, err = io.ReadAll(stdin)
 	case strings.HasPrefix(bodyRef, "@"):
-		return os.ReadFile(strings.TrimPrefix(bodyRef, "@"))
+		body, err = os.ReadFile(strings.TrimPrefix(bodyRef, "@"))
 	default:
-		return []byte(bodyRef), nil
+		body = []byte(bodyRef)
 	}
+	if err != nil {
+		return nil, err
+	}
+	if len(body) > 0 && !json.Valid(body) {
+		return nil, NewBodyError("The provided body is not valid JSON")
+	}
+	return body, nil
 }
 
 // SortedServiceAliases returns the service aliases in alphabetical order.
@@ -84,4 +96,67 @@ func SortedServiceAliases(services []catalog.Service) []string {
 	}
 	sort.Strings(aliases)
 	return aliases
+}
+
+// FilterTools returns tools matching the given criteria. Empty filter values match all.
+func FilterTools(tools []catalog.Tool, service, group, safety string) []catalog.Tool {
+	var result []catalog.Tool
+	for _, tool := range tools {
+		if service != "" && tool.ServiceID != service {
+			continue
+		}
+		if group != "" && tool.Group != group {
+			continue
+		}
+		if safety != "" {
+			switch safety {
+			case "read-only":
+				if !tool.Safety.ReadOnly {
+					continue
+				}
+			case "destructive":
+				if !tool.Safety.Destructive {
+					continue
+				}
+			case "requires-approval":
+				if !tool.Safety.RequiresApproval {
+					continue
+				}
+			case "idempotent":
+				if !tool.Safety.Idempotent {
+					continue
+				}
+			}
+		}
+		result = append(result, tool)
+	}
+	return result
+}
+
+// SearchTools returns tools where pattern appears in ID, Command, Summary, or Description (case-insensitive).
+func SearchTools(tools []catalog.Tool, pattern string) []catalog.Tool {
+	lower := strings.ToLower(pattern)
+	var result []catalog.Tool
+	for _, tool := range tools {
+		if strings.Contains(strings.ToLower(tool.ID), lower) ||
+			strings.Contains(strings.ToLower(tool.Command), lower) ||
+			strings.Contains(strings.ToLower(tool.Summary), lower) ||
+			strings.Contains(strings.ToLower(tool.Description), lower) {
+			result = append(result, tool)
+		}
+	}
+	return result
+}
+
+// readConfigFile reads and parses a .cli.json file into a generic map.
+func readConfigFile(path string) (map[string]any, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil, err
+	}
+	return raw, nil
 }

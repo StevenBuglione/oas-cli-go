@@ -22,3 +22,22 @@ func FormatError(err error, cause, suggestion string) *UserError {
 func NewUserError(msg, cause, suggestion string) *UserError {
 	return &UserError{Err: msg, Cause: cause, Suggestion: suggestion}
 }
+
+// NewAuthError creates a user error for authentication failures.
+func NewAuthError(cause, suggestion string) *UserError {
+	return NewUserError("Authentication failed", cause, suggestion)
+}
+
+// NewBodyError creates a user error for invalid JSON body input.
+func NewBodyError(cause string) *UserError {
+	return NewUserError("Invalid request body",
+		cause,
+		"Body must be valid JSON. Use --body '{\"key\":\"value\"}' or --body @file.json")
+}
+
+// NewMCPError creates a user error for MCP transport failures.
+func NewMCPError(cause string) *UserError {
+	return NewUserError("MCP server error",
+		cause,
+		"Check that the MCP server is running and the transport config is correct")
+}
