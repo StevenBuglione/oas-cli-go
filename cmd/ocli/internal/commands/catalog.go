@@ -46,21 +46,44 @@ func NewExplainCommand(options cfgpkg.Options, response runtimepkg.CatalogRespon
 	return &cobra.Command{
 		Use:   "explain <tool-id>",
 		Args:  cobra.ExactArgs(1),
-		Short: "Show guidance for a tool",
+		Short: "Show detailed information about a tool",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			tool := FindTool(response.Catalog.Tools, args[0])
 			if tool == nil {
-				return fmt.Errorf("tool %s not found", args[0])
+				return FormatError(
+					fmt.Errorf("tool %q not found in catalog", args[0]),
+					"The tool ID may be misspelled or filtered by curation rules",
+					"Run 'ocli catalog list' to see available tools")
 			}
-			if tool.Guidance == nil {
-				return WriteOutput(options.Stdout, options.Format, map[string]any{"toolId": tool.ID})
+			result := map[string]any{
+				"toolId":  tool.ID,
+				"summary": tool.Summary,
+				"method":  tool.Method,
+				"path":    tool.Path,
+				"service": tool.ServiceID,
+				"group":   tool.Group,
+				"command": tool.Command,
+				"safety":  tool.Safety,
 			}
-			return WriteOutput(options.Stdout, options.Format, map[string]any{
-				"toolId":    tool.ID,
-				"guidance":  tool.Guidance,
-				"summary":   tool.Summary,
-				"operation": tool.OperationID,
-			})
+			if tool.Description != "" {
+				result["description"] = tool.Description
+			}
+			if len(tool.PathParams) > 0 {
+				result["pathParams"] = tool.PathParams
+			}
+			if len(tool.Flags) > 0 {
+				result["parameters"] = tool.Flags
+			}
+			if tool.RequestBody != nil {
+				result["requestBody"] = tool.RequestBody
+			}
+			if tool.Guidance != nil {
+				result["guidance"] = tool.Guidance
+			}
+			if len(tool.Servers) > 0 {
+				result["servers"] = tool.Servers
+			}
+			return WriteOutput(options.Stdout, options.Format, result)
 		},
 	}
 }
