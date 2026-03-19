@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	authpkg "github.com/StevenBuglione/open-cli/cmd/ocli/internal/auth"
 	cfgpkg "github.com/StevenBuglione/open-cli/cmd/ocli/internal/config"
@@ -564,10 +565,15 @@ func TestInitCommandRemoteURLFallsBackToFirstHostLabel(t *testing.T) {
 		t.Fatalf("parse server url: %v", err)
 	}
 
-	originalTransport := http.DefaultTransport
-	http.DefaultTransport = rewriteTransport{base: originalTransport, target: targetURL}
+	originalClientFactory := newInitHTTPClient
+	newInitHTTPClient = func() *http.Client {
+		return &http.Client{
+			Timeout:   15 * time.Second,
+			Transport: rewriteTransport{base: http.DefaultTransport, target: targetURL},
+		}
+	}
 	t.Cleanup(func() {
-		http.DefaultTransport = originalTransport
+		newInitHTTPClient = originalClientFactory
 	})
 
 	stdout, cfg := runInitCommand(t, "http://www.billing.example.invalid/openapi.json")

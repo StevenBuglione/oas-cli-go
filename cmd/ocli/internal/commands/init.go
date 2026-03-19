@@ -126,6 +126,10 @@ func validateRemoteSpec(specURL string) error {
 	return nil
 }
 
+var newInitHTTPClient = func() *http.Client {
+	return &http.Client{Timeout: 15 * time.Second}
+}
+
 func buildOpenAPIConfig(source string, w io.Writer) (map[string]any, []string, string, error) {
 	isURL := isRemoteURL(source)
 
@@ -133,7 +137,7 @@ func buildOpenAPIConfig(source string, w io.Writer) (map[string]any, []string, s
 	var specHost string
 	if isURL {
 		fmt.Fprint(w, "Parsing spec... ")
-		client := &http.Client{Timeout: 15 * time.Second}
+		client := newInitHTTPClient()
 		resp, err := client.Get(source)
 		if err != nil {
 			return nil, nil, "", FormatError(err, fmt.Sprintf("Cannot fetch spec from %s", source), "Check the URL and ensure the spec is publicly reachable")
