@@ -106,10 +106,13 @@ git commit -m "feat: require daemon or remote runtime config"
 
 Add tests covering:
 - remote catalog ignores absent `config`
+- remote catalog allows matching `config`
 - remote catalog rejects mismatched `config`
 - remote execute ignores absent `configPath`
+- remote execute allows matching `configPath`
 - remote execute rejects mismatched `configPath`
 - remote workflow/refresh/audit/runtime-info endpoints ignore absent config selectors
+- remote workflow/refresh/audit/runtime-info endpoints allow matching config selectors
 - remote workflow/refresh/audit/runtime-info endpoints reject mismatched config selectors
 - status reports actual connected runtime mode and URL
 
@@ -190,6 +193,7 @@ Add tests covering:
 Add tests covering:
 - execution failures record `execution_error`
 - policy/authz denials record `authz_denial`
+- successful execution records `tool_execution` with `reasonCode: "allowed"`
 - empty audit API returns `[]`
 - required audit fields are present
 - denial reasons and execution-error reasons follow the event contract
@@ -228,7 +232,8 @@ Expected: PASS
 git add pkg/openapi/load.go pkg/catalog/build.go \
   cmd/ocli/internal/commands/init.go cmd/ocli/internal/commands/dryrun.go \
   cmd/ocli/internal/commands/dynamic.go internal/runtime/server.go \
-  pkg/audit/store.go cmd/ocli/main_test.go \
+  pkg/audit/store.go pkg/openapi/*_test.go pkg/catalog/*_test.go \
+  cmd/ocli/main_test.go \
   cmd/ocli/internal/commands/commands_test.go \
   product-tests/tests/capability_refresh_audit_test.go
 git commit -m "fix: harden execution preview and audit semantics"
