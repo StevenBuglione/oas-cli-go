@@ -5,12 +5,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	authpkg "github.com/StevenBuglione/open-cli/cmd/ocli/internal/auth"
 	cfgpkg "github.com/StevenBuglione/open-cli/cmd/ocli/internal/config"
@@ -140,18 +138,6 @@ func assertInitConfigName(t *testing.T, cfg map[string]any, want string) {
 	if got := serviceEntry["alias"]; got != want {
 		t.Fatalf("expected service %q alias %q, got %#v", want, want, got)
 	}
-}
-
-type rewriteTransport struct {
-	base   http.RoundTripper
-	target *url.URL
-}
-
-func (transport rewriteTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	cloned := req.Clone(req.Context())
-	cloned.URL.Scheme = transport.target.Scheme
-	cloned.URL.Host = transport.target.Host
-	return transport.base.RoundTrip(cloned)
 }
 
 func testCatalogResponse() runtimepkg.CatalogResponse {
@@ -532,6 +518,25 @@ func TestDeriveServiceNameFallsBackToServiceWhenFirstHostLabelIsGeneric(t *testi
 	}
 }
 
+func TestDeriveServiceNameRejectsVersionOnlyNames(t *testing.T) {
+	doc := &openapi3.T{
+		Info: &openapi3.Info{
+			Title: "OpenAPI 3.0",
+		},
+	}
+
+	for _, source := range []string{
+		"/tmp/v1.json",
+		"/tmp/1.json",
+		"/tmp/1-0.json",
+		"https://v1.example.com/openapi.json",
+	} {
+		if got := deriveServiceName(source, doc); got != "service" {
+			t.Fatalf("expected service fallback for %q, got %q", source, got)
+		}
+	}
+}
+
 func TestInitCommandFallsBackToServiceForLocalFiles(t *testing.T) {
 	specPath := filepath.Join(t.TempDir(), "api-1.yaml")
 	if err := os.WriteFile(specPath, []byte(`{
@@ -550,7 +555,7 @@ func TestInitCommandFallsBackToServiceForLocalFiles(t *testing.T) {
 }
 
 func TestInitCommandRemoteURLFallsBackToFirstHostLabel(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{
   "openapi": "3.0.3",
@@ -558,23 +563,16 @@ func TestInitCommandRemoteURLFallsBackToFirstHostLabel(t *testing.T) {
   "paths": {}
 }`))
 	}))
-	defer server.Close()
+	defer proxy.Close()
 
-	targetURL, err := url.Parse(server.URL)
-	if err != nil {
-		t.Fatalf("parse server url: %v", err)
-	}
-
-	originalClientFactory := newInitHTTPClient
-	newInitHTTPClient = func() *http.Client {
-		return &http.Client{
-			Timeout:   15 * time.Second,
-			Transport: rewriteTransport{base: http.DefaultTransport, target: targetURL},
-		}
-	}
-	t.Cleanup(func() {
-		newInitHTTPClient = originalClientFactory
-	})
+	t.Setenv("HTTP_PROXY", proxy.URL)
+	t.Setenv("http_proxy", proxy.URL)
+	t.Setenv("ALL_PROXY", "")
+	t.Setenv("all_proxy", "")
+	t.Setenv("HTTPS_PROXY", "")
+	t.Setenv("https_proxy", "")
+	t.Setenv("NO_PROXY", "")
+	t.Setenv("no_proxy", "")
 
 	stdout, cfg := runInitCommand(t, "http://www.billing.example.invalid/openapi.json")
 	if !strings.Contains(stdout, "ocli billing --help") {

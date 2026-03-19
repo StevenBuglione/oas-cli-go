@@ -126,10 +126,6 @@ func validateRemoteSpec(specURL string) error {
 	return nil
 }
 
-var newInitHTTPClient = func() *http.Client {
-	return &http.Client{Timeout: 15 * time.Second}
-}
-
 func buildOpenAPIConfig(source string, w io.Writer) (map[string]any, []string, string, error) {
 	isURL := isRemoteURL(source)
 
@@ -137,7 +133,7 @@ func buildOpenAPIConfig(source string, w io.Writer) (map[string]any, []string, s
 	var specHost string
 	if isURL {
 		fmt.Fprint(w, "Parsing spec... ")
-		client := newInitHTTPClient()
+		client := initHTTPClient()
 		resp, err := client.Get(source)
 		if err != nil {
 			return nil, nil, "", FormatError(err, fmt.Sprintf("Cannot fetch spec from %s", source), "Check the URL and ensure the spec is publicly reachable")
@@ -349,7 +345,7 @@ func deriveServiceNameFromBasename(source string) string {
 	}
 	base = trimSpecSuffix(base)
 	name := sanitizeServiceName(base)
-	if name == "" || isGenericServiceName(name) {
+	if isInvalidServiceName(name) {
 		return ""
 	}
 	return name
@@ -369,7 +365,7 @@ func deriveServiceNameFromTitle(title string) string {
 	}
 
 	name := sanitizeServiceName(strings.Join(tokens, "-"))
-	if name == "" || isGenericServiceName(name) {
+	if isInvalidServiceName(name) {
 		return ""
 	}
 	return name
@@ -392,7 +388,7 @@ func deriveServiceNameFromHost(source string) string {
 	}
 
 	name := sanitizeServiceName(parts[0])
-	if name == "" || isGenericServiceName(name) {
+	if isInvalidServiceName(name) {
 		return ""
 	}
 	return name
@@ -433,6 +429,65 @@ func sanitizeServiceName(raw string) string {
 	return strings.Trim(string(clean), "-")
 }
 
+func initHTTPClient() *http.Client {
+	transport, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		return &http.Client{Timeout: 15 * time.Second}
+	}
+	clone := transport.Clone()
+	clone.Proxy = proxyFromEnvironment
+	return &http.Client{Timeout: 15 * time.Second, Transport: clone}
+}
+
+func proxyFromEnvironment(req *http.Request) (*url.URL, error) {
+	proxyValue := firstEnvValue(proxyEnvKeys(req.URL.Scheme))
+	if proxyValue == "" {
+		return nil, nil
+	}
+	if shouldBypassProxy(req.URL.Hostname(), firstEnvValue([]string{"NO_PROXY", "no_proxy"})) {
+		return nil, nil
+	}
+	return url.Parse(proxyValue)
+}
+
+func proxyEnvKeys(scheme string) []string {
+	if strings.EqualFold(scheme, "https") {
+		return []string{"HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"}
+	}
+	return []string{"HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"}
+}
+
+func firstEnvValue(keys []string) string {
+	for _, key := range keys {
+		if value := strings.TrimSpace(os.Getenv(key)); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func shouldBypassProxy(host, noProxy string) bool {
+	host = strings.ToLower(strings.TrimSpace(host))
+	if host == "" || strings.TrimSpace(noProxy) == "" {
+		return false
+	}
+
+	for _, rawRule := range strings.Split(noProxy, ",") {
+		rule := strings.ToLower(strings.TrimSpace(rawRule))
+		if rule == "" {
+			continue
+		}
+		if rule == "*" {
+			return true
+		}
+		rule = strings.TrimPrefix(rule, ".")
+		if host == rule || strings.HasSuffix(host, "."+rule) {
+			return true
+		}
+	}
+	return false
+}
+
 func serviceNameEnvPrefix(name string) string {
 	return strings.ToUpper(strings.ReplaceAll(name, "-", "_"))
 }
@@ -471,4 +526,21 @@ func isGenericServiceName(name string) bool {
 	default:
 		return false
 	}
+}
+
+func isInvalidServiceName(name string) bool {
+	return name == "" || isGenericServiceName(name) || isVersionOnlyServiceName(name)
+}
+
+func isVersionOnlyServiceName(name string) bool {
+	tokens := strings.Split(name, "-")
+	if len(tokens) == 0 {
+		return false
+	}
+	for _, token := range tokens {
+		if !versionTokenPattern.MatchString(token) {
+			return false
+		}
+	}
+	return true
 }
