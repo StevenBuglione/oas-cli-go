@@ -537,6 +537,13 @@ func TestDeriveServiceNameRejectsVersionOnlyNames(t *testing.T) {
 	}
 }
 
+func TestDeriveServiceNameFromTitleTrimsBoilerplateUntilStable(t *testing.T) {
+	got := deriveServiceNameFromTitle("Swagger Petstore - OpenAPI 3.0")
+	if got != "petstore" {
+		t.Fatalf("expected petstore, got %q", got)
+	}
+}
+
 func TestInitCommandFallsBackToServiceForLocalFiles(t *testing.T) {
 	specPath := filepath.Join(t.TempDir(), "api-1.yaml")
 	if err := os.WriteFile(specPath, []byte(`{
@@ -579,6 +586,31 @@ func TestInitCommandRemoteURLFallsBackToFirstHostLabel(t *testing.T) {
 		t.Fatalf("expected billing next step, got: %s", stdout)
 	}
 	assertInitConfigName(t, cfg, "billing")
+}
+
+func TestInitCommandAuthHintsPrefixDigitLeadingEnvVarNames(t *testing.T) {
+	specPath := filepath.Join(t.TempDir(), "3-billing.yaml")
+	if err := os.WriteFile(specPath, []byte(`{
+  "openapi": "3.0.3",
+  "info": {"title": "OpenAPI 3.0", "version": "1.0.0"},
+  "paths": {},
+  "components": {
+    "securitySchemes": {
+      "apiKeyAuth": {"type": "apiKey", "in": "header", "name": "X-API-Key"},
+      "bearerAuth": {"type": "http", "scheme": "bearer"}
+    }
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("write spec: %v", err)
+	}
+
+	stdout, _ := runInitCommand(t, specPath)
+	if !strings.Contains(stdout, "OCLI_3_BILLING_API_KEY") {
+		t.Fatalf("expected OCLI_3_BILLING_API_KEY auth hint, got: %s", stdout)
+	}
+	if !strings.Contains(stdout, "OCLI_3_BILLING_TOKEN") {
+		t.Fatalf("expected OCLI_3_BILLING_TOKEN auth hint, got: %s", stdout)
+	}
 }
 
 func TestInitCommandAuthHintsUseShellSafeEnvVarNames(t *testing.T) {

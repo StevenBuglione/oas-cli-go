@@ -489,7 +489,15 @@ func shouldBypassProxy(host, noProxy string) bool {
 }
 
 func serviceNameEnvPrefix(name string) string {
-	return strings.ToUpper(strings.ReplaceAll(name, "-", "_"))
+	prefix := strings.ToUpper(strings.ReplaceAll(name, "-", "_"))
+	if prefix == "" {
+		return "OCLI"
+	}
+	first := prefix[0]
+	if first >= 'A' && first <= 'Z' {
+		return prefix
+	}
+	return "OCLI_" + prefix
 }
 
 func titleTokens(title string) []string {
