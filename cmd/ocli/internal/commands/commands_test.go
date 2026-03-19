@@ -79,6 +79,57 @@ func (client fakeRuntimeClient) SessionClose() (map[string]any, error) {
 	return map[string]any{}, nil
 }
 
+type statusJSONReport struct {
+	Runtime struct {
+		Available bool    `json:"available"`
+		Mode      string  `json:"mode"`
+		Version   *string `json:"version"`
+	} `json:"runtime"`
+	Config struct {
+		ActivePath *string `json:"activePath"`
+	} `json:"config"`
+	Sources struct {
+		TotalActive int            `json:"totalActive"`
+		ByType      map[string]int `json:"byType"`
+	} `json:"sources"`
+	Auth struct {
+		Mode                   string   `json:"mode"`
+		Required               *bool    `json:"required"`
+		Audience               *string  `json:"audience"`
+		Scopes                 []string `json:"scopes"`
+		BrowserLoginConfigured *bool    `json:"browserLoginConfigured"`
+	} `json:"auth"`
+	Approval struct {
+		HasApprovalGatedTools *bool  `json:"hasApprovalGatedTools"`
+		Status                string `json:"status"`
+	} `json:"approval"`
+	ScopePaths struct {
+		Managed *string `json:"managed"`
+		User    *string `json:"user"`
+		Project *string `json:"project"`
+		Local   *string `json:"local"`
+	} `json:"scopePaths"`
+}
+
+type authJSONReport struct {
+	Posture string `json:"posture"`
+	Runtime struct {
+		Available bool    `json:"available"`
+		Mode      string  `json:"mode"`
+		Posture   string  `json:"posture"`
+		Version   *string `json:"version"`
+	} `json:"runtime"`
+	Config struct {
+		ActivePath *string `json:"activePath"`
+		Posture    string  `json:"posture"`
+	} `json:"config"`
+	Services []struct {
+		Name       string `json:"name"`
+		AuthType   string `json:"authType"`
+		Configured string `json:"configured"`
+	} `json:"services"`
+}
+
 func testOptions(stdout, stderr *bytes.Buffer) cfgpkg.Options {
 	return cfgpkg.Options{
 		Stdout: stdout,
@@ -407,6 +458,354 @@ func TestStatusCommandShowsRuntimeAndConfig(t *testing.T) {
 	}
 }
 
+func TestStatusCommandStructuredIncludesSecuritySummary(t *testing.T) {
+	root := t.TempDir()
+	homeDir := filepath.Join(root, "home")
+	projectDir := filepath.Join(root, "project")
+	userDir := filepath.Join(homeDir, ".config", "oas-cli")
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatalf("mkdir project: %v", err)
+	}
+	if err := os.MkdirAll(userDir, 0o755); err != nil {
+		t.Fatalf("mkdir user config: %v", err)
+	}
+	t.Setenv("HOME", homeDir)
+
+	projectPath := filepath.Join(projectDir, ".cli.json")
+	if err := os.WriteFile(projectPath, []byte(`{
+  "cli": "1.0.0",
+  "mode": {"default": "discover"},
+  "runtime": {
+    "mode": "remote",
+    "remote": {
+      "url": "https://runtime.example.invalid",
+      "oauth": {
+        "mode": "browserLogin",
+        "audience": "api://demo",
+        "scopes": ["openid", "profile"]
+      }
+    }
+  },
+  "sources": {
+    "openapi": {"type": "openapi", "uri": "https://example.com/openapi.json", "enabled": true},
+    "mcp": {"type": "mcp", "enabled": true}
+  },
+  "services": {
+    "openapi": {"source": "openapi"},
+    "mcp": {"source": "mcp"}
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("write project config: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, ".cli.local.json"), []byte(`{"sources":{}}`), 0o644); err != nil {
+		t.Fatalf("write local config: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(userDir, ".cli.json"), []byte(`{"sources":{}}`), 0o644); err != nil {
+		t.Fatalf("write user config: %v", err)
+	}
+	origWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd: %v", err)
+	}
+	if err := os.Chdir(projectDir); err != nil {
+		t.Fatalf("Chdir: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(origWD)
+	})
+
+	var stdout bytes.Buffer
+	options := testOptions(&stdout, &stdout)
+	options.Format = "json"
+	options.ConfigPath = projectPath
+	options.RuntimeDeployment = "remote"
+	options.RuntimeURL = "https://runtime.example.invalid"
+	cmd := NewStatusCommand(options, fakeRuntimeClient{
+		runtimeInfoFn: func() (map[string]any, error) {
+			return map[string]any{
+				"version": "1.2.3",
+				"auth": map[string]any{
+					"required": true,
+					"audience": "api://demo",
+					"scopes":   []any{"openid", "profile"},
+					"browserLogin": map[string]any{
+						"configured": true,
+					},
+				},
+			}, nil
+		},
+		fetchCatalogFn: func(runtimepkg.CatalogFetchOptions) (runtimepkg.CatalogResponse, error) {
+			return testCatalogResponse(), nil
+		},
+	}, false)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+
+	var got statusJSONReport
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal output: %v", err)
+	}
+	if !got.Runtime.Available {
+		t.Fatal("expected runtime to be available")
+	}
+	if got.Runtime.Mode != "remote" {
+		t.Fatalf("expected remote runtime mode, got %q", got.Runtime.Mode)
+	}
+	if got.Runtime.Version == nil || *got.Runtime.Version != "1.2.3" {
+		t.Fatalf("expected runtime version 1.2.3, got %#v", got.Runtime.Version)
+	}
+	if got.Config.ActivePath == nil || *got.Config.ActivePath != projectPath {
+		t.Fatalf("expected active path %q, got %#v", projectPath, got.Config.ActivePath)
+	}
+	if got.Sources.TotalActive != 2 || got.Sources.ByType["openapi"] != 1 || got.Sources.ByType["mcp"] != 1 {
+		t.Fatalf("unexpected sources summary: %#v", got.Sources)
+	}
+	if got.Auth.Mode != "browserLogin" {
+		t.Fatalf("expected browserLogin auth mode, got %q", got.Auth.Mode)
+	}
+	if got.Auth.Required == nil || !*got.Auth.Required {
+		t.Fatalf("expected auth.required=true, got %#v", got.Auth.Required)
+	}
+	if got.Auth.Audience == nil || *got.Auth.Audience != "api://demo" {
+		t.Fatalf("expected auth audience api://demo, got %#v", got.Auth.Audience)
+	}
+	if len(got.Auth.Scopes) != 2 || got.Auth.Scopes[0] != "openid" || got.Auth.Scopes[1] != "profile" {
+		t.Fatalf("unexpected auth scopes: %#v", got.Auth.Scopes)
+	}
+	if got.Auth.BrowserLoginConfigured == nil || !*got.Auth.BrowserLoginConfigured {
+		t.Fatalf("expected browserLoginConfigured=true, got %#v", got.Auth.BrowserLoginConfigured)
+	}
+	if got.Approval.HasApprovalGatedTools == nil || !*got.Approval.HasApprovalGatedTools {
+		t.Fatalf("expected approval-gated tools, got %#v", got.Approval.HasApprovalGatedTools)
+	}
+	if got.Approval.Status != "required" {
+		t.Fatalf("expected approval status required, got %q", got.Approval.Status)
+	}
+	if got.ScopePaths.User == nil || *got.ScopePaths.User != filepath.Join(userDir, ".cli.json") {
+		t.Fatalf("expected user scope path, got %#v", got.ScopePaths.User)
+	}
+	if got.ScopePaths.Project == nil || *got.ScopePaths.Project != projectPath {
+		t.Fatalf("expected project scope path, got %#v", got.ScopePaths.Project)
+	}
+	if got.ScopePaths.Local == nil || *got.ScopePaths.Local != filepath.Join(projectDir, ".cli.local.json") {
+		t.Fatalf("expected local scope path, got %#v", got.ScopePaths.Local)
+	}
+}
+
+func TestStatusCommandStructuredDegradesPartialAuthMetadata(t *testing.T) {
+	root := t.TempDir()
+	projectDir := filepath.Join(root, "project")
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatalf("mkdir project: %v", err)
+	}
+	origWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd: %v", err)
+	}
+	if err := os.Chdir(projectDir); err != nil {
+		t.Fatalf("Chdir: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(origWD)
+	})
+
+	projectPath := filepath.Join(projectDir, ".cli.json")
+	if err := os.WriteFile(projectPath, []byte(`{
+  "cli": "1.0.0",
+  "mode": {"default": "discover"},
+  "sources": {
+    "openapi": {"type": "openapi", "uri": "https://example.com/openapi.json", "enabled": true}
+  },
+  "services": {
+    "openapi": {"source": "openapi"}
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("write project config: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, ".cli.local.json"), []byte(`{"sources":{}}`), 0o644); err != nil {
+		t.Fatalf("write local config: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	options := testOptions(&stdout, &stdout)
+	options.Format = "json"
+	options.ConfigPath = projectPath
+	options.RuntimeDeployment = "remote"
+	options.RuntimeURL = "https://runtime.example.invalid"
+	cmd := NewStatusCommand(options, fakeRuntimeClient{
+		runtimeInfoFn: func() (map[string]any, error) {
+			return map[string]any{
+				"auth": map[string]any{
+					"required": true,
+				},
+			}, nil
+		},
+		fetchCatalogFn: func(runtimepkg.CatalogFetchOptions) (runtimepkg.CatalogResponse, error) {
+			return runtimepkg.CatalogResponse{
+				Catalog: catalog.NormalizedCatalog{
+					Services: []catalog.Service{{ID: "openapi", Alias: "openapi", SourceID: "openapi", Title: "OpenAPI"}},
+					Tools: []catalog.Tool{
+						{
+							ID:        "openapi:listItems",
+							ServiceID: "openapi",
+							Group:     "items",
+							Command:   "list-items",
+							Method:    http.MethodGet,
+							Summary:   "List items",
+							Safety:    catalog.Safety{ReadOnly: true, Idempotent: true},
+						},
+					},
+				},
+				View: catalog.EffectiveView{
+					Name: "discover",
+					Mode: "discover",
+					Tools: []catalog.Tool{{
+						ID:        "openapi:listItems",
+						ServiceID: "openapi",
+						Group:     "items",
+						Command:   "list-items",
+						Method:    http.MethodGet,
+						Summary:   "List items",
+						Safety:    catalog.Safety{ReadOnly: true, Idempotent: true},
+					}},
+				},
+			}, nil
+		},
+	}, false)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+
+	var got statusJSONReport
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal output: %v", err)
+	}
+	if got.Auth.Mode != "unknown" {
+		t.Fatalf("expected unknown auth mode, got %q", got.Auth.Mode)
+	}
+	if got.Auth.Required == nil || !*got.Auth.Required {
+		t.Fatalf("expected auth.required=true, got %#v", got.Auth.Required)
+	}
+	if got.Auth.Audience != nil {
+		t.Fatalf("expected auth audience to be null, got %#v", got.Auth.Audience)
+	}
+	if len(got.Auth.Scopes) != 0 {
+		t.Fatalf("expected empty auth scopes, got %#v", got.Auth.Scopes)
+	}
+	if got.Auth.BrowserLoginConfigured != nil {
+		t.Fatalf("expected browserLoginConfigured to be null, got %#v", got.Auth.BrowserLoginConfigured)
+	}
+	if got.Approval.HasApprovalGatedTools == nil || *got.Approval.HasApprovalGatedTools {
+		t.Fatalf("expected no approval-gated tools, got %#v", got.Approval.HasApprovalGatedTools)
+	}
+	if got.Approval.Status != "not_required" {
+		t.Fatalf("expected approval status not_required, got %q", got.Approval.Status)
+	}
+}
+
+func TestStatusCommandRuntimeUnavailableStillReportsConfig(t *testing.T) {
+	root := t.TempDir()
+	projectDir := filepath.Join(root, "project")
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatalf("mkdir project: %v", err)
+	}
+	origWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd: %v", err)
+	}
+	if err := os.Chdir(projectDir); err != nil {
+		t.Fatalf("Chdir: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(origWD)
+	})
+
+	projectPath := filepath.Join(projectDir, ".cli.json")
+	if err := os.WriteFile(projectPath, []byte(`{
+  "cli": "1.0.0",
+  "mode": {"default": "discover"},
+  "sources": {
+    "openapi": {"type": "openapi", "uri": "https://example.com/openapi.json", "enabled": true}
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("write project config: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	options := testOptions(&stdout, &stdout)
+	options.Format = "json"
+	options.ConfigPath = projectPath
+	cmd := NewStatusCommand(options, fakeRuntimeClient{}, true)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+
+	var got statusJSONReport
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal output: %v", err)
+	}
+	if got.Runtime.Available {
+		t.Fatal("expected runtime to be unavailable")
+	}
+	if got.Runtime.Mode != "unknown" {
+		t.Fatalf("expected unknown runtime mode, got %q", got.Runtime.Mode)
+	}
+	if got.Config.ActivePath == nil || *got.Config.ActivePath != projectPath {
+		t.Fatalf("expected active path %q, got %#v", projectPath, got.Config.ActivePath)
+	}
+	if got.Sources.TotalActive != 1 || got.Sources.ByType["openapi"] != 1 {
+		t.Fatalf("unexpected sources summary: %#v", got.Sources)
+	}
+	if got.Approval.HasApprovalGatedTools != nil {
+		t.Fatalf("expected approval summary to be null without catalog context, got %#v", got.Approval.HasApprovalGatedTools)
+	}
+	if got.Approval.Status != "unknown" {
+		t.Fatalf("expected approval status unknown, got %q", got.Approval.Status)
+	}
+}
+
+func TestStatusCommandTerminalIncludesCompactSummaries(t *testing.T) {
+	projectDir := t.TempDir()
+	projectPath := filepath.Join(projectDir, ".cli.json")
+	if err := os.WriteFile(projectPath, []byte(`{
+  "cli": "1.0.0",
+  "mode": {"default": "discover"},
+  "sources": {
+    "openapi": {"type": "openapi", "uri": "https://example.com/openapi.json", "enabled": true}
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("write project config: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	options := testOptions(&stdout, &stdout)
+	options.Format = "table"
+	options.ConfigPath = projectPath
+	cmd := NewStatusCommand(options, fakeRuntimeClient{
+		runtimeInfoFn: func() (map[string]any, error) {
+			return map[string]any{
+				"version": "1.2.3",
+				"auth": map[string]any{
+					"required": true,
+				},
+			}, nil
+		},
+		fetchCatalogFn: func(runtimepkg.CatalogFetchOptions) (runtimepkg.CatalogResponse, error) {
+			return runtimepkg.CatalogResponse{}, nil
+		},
+	}, false)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	output := stdout.String()
+	for _, want := range []string{"Runtime:", "Config:", "Sources:", "Auth:", "Scope paths:"} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("expected %q in status output, got: %s", want, output)
+		}
+	}
+}
+
 func TestConfigCommandsRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	origWD, err := os.Getwd()
@@ -482,6 +881,141 @@ func TestAuthStatusShowsConfiguredSecret(t *testing.T) {
 	if !strings.Contains(stdout.String(), "demo") || !strings.Contains(stdout.String(), "demo.oauth") {
 		t.Fatalf("unexpected auth status output: %s", stdout.String())
 	}
+}
+
+func TestAuthStatusReportsPostureAcrossRuntimeAndConfigEvidence(t *testing.T) {
+	root := t.TempDir()
+	projectDir := filepath.Join(root, "project")
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatalf("mkdir project: %v", err)
+	}
+	projectPath := filepath.Join(projectDir, ".cli.json")
+	if err := os.WriteFile(projectPath, []byte(`{
+  "cli": "1.0.0",
+  "mode": {"default": "discover"},
+  "runtime": {
+    "mode": "remote",
+    "remote": {
+      "url": "https://runtime.example.invalid",
+      "oauth": {
+        "mode": "browserLogin",
+        "audience": "api://demo",
+        "scopes": ["openid"]
+      }
+    }
+  },
+  "sources": {
+    "demoSource": {"type": "openapi", "enabled": true}
+  },
+  "services": {
+    "demo": {"source": "demoSource", "alias": "demo"}
+  },
+  "secrets": {
+    "demo.oauth": {"type": "oauth2"}
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("write project config: %v", err)
+	}
+
+	t.Run("runtime session", func(t *testing.T) {
+		var stdout bytes.Buffer
+		options := testOptions(&stdout, &stdout)
+		options.Format = "json"
+		options.ConfigPath = projectPath
+		options.RuntimeDeployment = "remote"
+		options.RuntimeURL = "https://runtime.example.invalid"
+		cmd := NewAuthCommand(options, fakeRuntimeClient{
+			runtimeInfoFn: func() (map[string]any, error) {
+				return map[string]any{
+					"auth": map[string]any{
+						"required": true,
+					},
+				}, nil
+			},
+		}, false)
+		cmd.SetArgs([]string{"status"})
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("auth status failed: %v", err)
+		}
+
+		var got authJSONReport
+		if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+			t.Fatalf("unmarshal output: %v", err)
+		}
+		if got.Posture != "runtimeSession" {
+			t.Fatalf("expected runtimeSession posture, got %q", got.Posture)
+		}
+		if !got.Runtime.Available {
+			t.Fatal("expected runtime to be available")
+		}
+		if got.Runtime.Posture != "runtimeSession" {
+			t.Fatalf("expected runtime posture runtimeSession, got %q", got.Runtime.Posture)
+		}
+		if got.Config.Posture != "configOnly" {
+			t.Fatalf("expected config posture configOnly, got %q", got.Config.Posture)
+		}
+		if got.Config.ActivePath == nil || *got.Config.ActivePath != projectPath {
+			t.Fatalf("expected active path %q, got %#v", projectPath, got.Config.ActivePath)
+		}
+		if len(got.Services) != 1 || got.Services[0].Name != "demo" {
+			t.Fatalf("expected demo service status, got %#v", got.Services)
+		}
+	})
+
+	t.Run("config only", func(t *testing.T) {
+		var stdout bytes.Buffer
+		options := testOptions(&stdout, &stdout)
+		options.Format = "json"
+		options.ConfigPath = projectPath
+		cmd := NewAuthCommand(options, fakeRuntimeClient{}, true)
+		cmd.SetArgs([]string{"status"})
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("auth status failed: %v", err)
+		}
+
+		var got authJSONReport
+		if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+			t.Fatalf("unmarshal output: %v", err)
+		}
+		if got.Posture != "configOnly" {
+			t.Fatalf("expected configOnly posture, got %q", got.Posture)
+		}
+		if got.Runtime.Available {
+			t.Fatal("expected runtime to be unavailable")
+		}
+		if got.Config.Posture != "configOnly" {
+			t.Fatalf("expected configOnly config posture, got %q", got.Config.Posture)
+		}
+		if len(got.Services) != 1 || got.Services[0].Name != "demo" {
+			t.Fatalf("expected demo service status, got %#v", got.Services)
+		}
+	})
+
+	t.Run("unknown", func(t *testing.T) {
+		var stdout bytes.Buffer
+		options := testOptions(&stdout, &stdout)
+		options.Format = "json"
+		options.ConfigPath = filepath.Join(root, "missing.json")
+		cmd := NewAuthCommand(options, fakeRuntimeClient{}, true)
+		cmd.SetArgs([]string{"status"})
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("auth status failed: %v", err)
+		}
+
+		var got authJSONReport
+		if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+			t.Fatalf("unmarshal output: %v", err)
+		}
+		if got.Posture != "unknown" {
+			t.Fatalf("expected unknown posture, got %q", got.Posture)
+		}
+		if got.Config.Posture != "unknown" {
+			t.Fatalf("expected unknown config posture, got %q", got.Config.Posture)
+		}
+		if len(got.Services) != 0 {
+			t.Fatalf("expected no services, got %#v", got.Services)
+		}
+	})
 }
 
 func TestAuthLoginUsesBrowserMetadata(t *testing.T) {
