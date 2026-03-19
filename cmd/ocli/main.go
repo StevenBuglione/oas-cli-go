@@ -15,6 +15,7 @@ import (
 	authpkg "github.com/StevenBuglione/open-cli/cmd/ocli/internal/auth"
 	cmdspkg "github.com/StevenBuglione/open-cli/cmd/ocli/internal/commands"
 	cfgpkg "github.com/StevenBuglione/open-cli/cmd/ocli/internal/config"
+	demopkg "github.com/StevenBuglione/open-cli/cmd/ocli/internal/demo"
 	runtimepkg "github.com/StevenBuglione/open-cli/cmd/ocli/internal/runtime"
 	"github.com/StevenBuglione/open-cli/internal/version"
 	"github.com/StevenBuglione/open-cli/pkg/catalog"
@@ -63,6 +64,14 @@ func main() {
 		}
 	}
 	options := bootstrapFromArgs(os.Args[1:])
+	if options.Demo {
+		var err error
+		options, err = setupDemoConfig(options)
+		if err != nil {
+			_, _ = fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+	}
 	command, err := NewRootCommand(options, os.Args[1:])
 	if err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, err)
@@ -413,4 +422,40 @@ func shouldSendLocalHeartbeat(cmd *cobra.Command) bool {
 
 func envBool(name string) bool {
 	return cfgpkg.EnvBool(name)
+}
+
+func setupDemoConfig(options CommandOptions) (CommandOptions, error) {
+	dir, err := os.MkdirTemp("", "ocli-demo-*")
+	if err != nil {
+		return options, fmt.Errorf("demo: create temp dir: %w", err)
+	}
+	specFile := filepath.Join(dir, "testapi.openapi.yaml")
+	if err := os.WriteFile(specFile, demopkg.Spec, 0o644); err != nil {
+		return options, fmt.Errorf("demo: write spec: %w", err)
+	}
+	configContent := fmt.Sprintf(`{
+  "cli": "1.0.0",
+  "mode": { "default": "discover" },
+  "sources": {
+    "demoSource": {
+      "type": "openapi",
+      "uri": %q,
+      "enabled": true
+    }
+  },
+  "services": {
+    "demo": {
+      "source": "demoSource",
+      "alias": "demo"
+    }
+  }
+}
+`, specFile)
+	configFile := filepath.Join(dir, ".cli.json")
+	if err := os.WriteFile(configFile, []byte(configContent), 0o644); err != nil {
+		return options, fmt.Errorf("demo: write config: %w", err)
+	}
+	options.ConfigPath = configFile
+	options.Embedded = true
+	return options, nil
 }

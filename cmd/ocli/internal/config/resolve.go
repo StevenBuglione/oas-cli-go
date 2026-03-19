@@ -28,6 +28,7 @@ type Options struct {
 	ConfigFingerprint string
 	StateDir          string
 	Embedded          bool
+	Demo              bool
 	Stdin             io.Reader
 	Stdout            io.Writer
 	Stderr            io.Writer
@@ -103,6 +104,8 @@ func BootstrapFromArgs(args []string) Options {
 			}
 		case "--embedded":
 			options.Embedded = true
+		case "--demo":
+			options.Demo = true
 		}
 	}
 	return options
