@@ -135,6 +135,14 @@ func NewRootCommand(options cfgpkg.Options, args []string, hooks RootHooks) (*co
 	root.PersistentFlags().BoolVar(&options.Embedded, "embedded", options.Embedded, "Use the embedded runtime instead of an external daemon")
 	root.PersistentFlags().BoolVar(&options.Demo, "demo", options.Demo, "Use the built-in demo API")
 
+	// Hide advanced flags to keep default help clean.
+	root.PersistentFlags().MarkHidden("agent-profile")
+	root.PersistentFlags().MarkHidden("instance-id")
+	root.PersistentFlags().MarkHidden("state-dir")
+	root.PersistentFlags().MarkHidden("approval")
+	root.PersistentFlags().MarkHidden("mode")
+	root.PersistentFlags().MarkHidden("runtime")
+
 	if !runtimeUnavailable {
 		root.AddCommand(NewCatalogCommand(options, response))
 		root.AddCommand(NewToolCommand(options, response))
