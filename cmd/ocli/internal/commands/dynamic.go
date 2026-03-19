@@ -85,7 +85,9 @@ func AddDynamicToolCommands(root *cobra.Command, options cfgpkg.Options, client 
 					Approval:     options.Approval,
 				})
 				if err != nil {
-					return err
+					return FormatError(err,
+						fmt.Sprintf("Failed to execute tool %s", toolCopy.ID),
+						"Check that the target API server is running and reachable")
 				}
 				if len(result.Body) > 0 && options.Format == "json" {
 					_, err = options.Stdout.Write(append(result.Body, '\n'))

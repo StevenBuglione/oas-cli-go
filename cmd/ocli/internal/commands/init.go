@@ -27,7 +27,9 @@ func NewInitCommand() *cobra.Command {
 			isURL := isRemoteURL(source)
 			if isURL {
 				if err := validateRemoteSpec(source); err != nil {
-					return fmt.Errorf("Error: Cannot fetch spec from %s\n\nCause: %v\n\nSuggestion: Check the URL and ensure the spec is publicly reachable", source, err)
+					return FormatError(err,
+						fmt.Sprintf("Cannot fetch spec from %s", source),
+						"Check the URL and ensure the spec is publicly reachable")
 				}
 			} else {
 				abs, err := filepath.Abs(source)
@@ -35,7 +37,9 @@ func NewInitCommand() *cobra.Command {
 					return err
 				}
 				if _, err := os.Stat(abs); err != nil {
-					return fmt.Errorf("Error: File not found: %s\n\nCause: %v\n\nSuggestion: Check the path and try again", source, err)
+					return FormatError(err,
+						fmt.Sprintf("File not found: %s", source),
+						"Check the path and try again")
 				}
 			}
 
@@ -78,7 +82,10 @@ func NewInitCommand() *cobra.Command {
 			}
 
 			if _, err := os.Stat(outPath); err == nil {
-				return fmt.Errorf("Error: %s already exists\n\nCause: A configuration file is already present\n\nSuggestion: Remove or rename the existing file, then try again", outPath)
+				return NewUserError(
+					fmt.Sprintf("%s already exists", outPath),
+					"A configuration file is already present",
+					"Remove or rename the existing file, then try again")
 			}
 
 			if err := os.WriteFile(outPath, append(data, '\n'), 0o644); err != nil {

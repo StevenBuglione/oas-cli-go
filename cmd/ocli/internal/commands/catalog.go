@@ -34,7 +34,10 @@ func NewToolCommand(options cfgpkg.Options, response runtimepkg.CatalogResponse)
 		RunE: func(cmd *cobra.Command, args []string) error {
 			tool := FindTool(response.Catalog.Tools, args[0])
 			if tool == nil {
-				return fmt.Errorf("tool %s not found", args[0])
+				return FormatError(
+					fmt.Errorf("tool %q not found in catalog", args[0]),
+					"The tool ID may be misspelled or filtered by curation rules",
+					"Run 'ocli catalog list' to see available tools")
 			}
 			return WriteOutput(options.Stdout, options.Format, tool)
 		},
