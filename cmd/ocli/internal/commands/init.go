@@ -41,7 +41,7 @@ func NewInitCommand() *cobra.Command {
 					return err
 				}
 				dir := filepath.Join(home, ".config", "oas-cli")
-				if err != nil {
+				if err := os.MkdirAll(dir, 0o755); err != nil {
 					return err
 				}
 				outPath = filepath.Join(dir, ".cli.json")
@@ -208,7 +208,7 @@ func buildOpenAPIConfig(source string, w io.Writer) (map[string]any, []string, e
 	}
 
 	var authHints []string
-	if doc.Components.SecuritySchemes != nil {
+	if doc.Components != nil && doc.Components.SecuritySchemes != nil {
 		for schemeName, schemeRef := range doc.Components.SecuritySchemes {
 			if schemeRef.Value == nil {
 				continue

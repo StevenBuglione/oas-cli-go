@@ -404,3 +404,31 @@ func TestInitCommandSupportsMCP(t *testing.T) {
 		t.Fatalf("expected mcp source in config: %s", string(data))
 	}
 }
+
+func TestInitCommandGlobalCreatesConfigDir(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+
+	specPath := filepath.Join(dir, "spec.json")
+	if err := os.WriteFile(specPath, []byte(`{
+  "openapi": "3.0.3",
+  "info": {"title": "Demo", "version": "1.0.0"},
+  "paths": {}
+}`), 0o644); err != nil {
+		t.Fatalf("write spec: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	cmd := NewInitCommand()
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stdout)
+	cmd.SetArgs([]string{"--global", specPath})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("init --global failed: %v", err)
+	}
+
+	configPath := filepath.Join(dir, ".config", "oas-cli", ".cli.json")
+	if _, err := os.Stat(configPath); err != nil {
+		t.Fatalf("expected global config at %s: %v", configPath, err)
+	}
+}
