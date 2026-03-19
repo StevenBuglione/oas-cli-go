@@ -95,8 +95,8 @@ func NewInitCommand() *cobra.Command {
 			w := cmd.OutOrStdout()
 			fmt.Fprintf(w, "Created %s\n\n", outPath)
 			fmt.Fprintln(w, "Next steps:")
-			fmt.Fprintln(w, "  ocli --embedded catalog list   List available tools")
-			fmt.Fprintf(w, "  ocli --embedded %s <group> <command>   Run a tool\n", name)
+			fmt.Fprintln(w, "  ocli catalog list              List available tools")
+			fmt.Fprintf(w, "  ocli %s <group> <command>   Run a tool\n", name)
 			return nil
 		},
 	}
