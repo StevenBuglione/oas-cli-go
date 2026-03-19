@@ -425,9 +425,13 @@ func envBool(name string) bool {
 }
 
 func setupDemoConfig(options CommandOptions) (CommandOptions, error) {
-	dir, err := os.MkdirTemp("", "ocli-demo-*")
+	cacheDir, err := os.UserCacheDir()
 	if err != nil {
-		return options, fmt.Errorf("demo: create temp dir: %w", err)
+		cacheDir = os.TempDir()
+	}
+	dir := filepath.Join(cacheDir, "ocli", "demo")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return options, fmt.Errorf("demo: create dir: %w", err)
 	}
 	specFile := filepath.Join(dir, "testapi.openapi.yaml")
 	if err := os.WriteFile(specFile, demopkg.Spec, 0o644); err != nil {
