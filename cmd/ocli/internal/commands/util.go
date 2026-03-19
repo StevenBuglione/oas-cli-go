@@ -36,6 +36,8 @@ func WriteOutput(out io.Writer, format string, value any) error {
 		}
 		_, err = out.Write(append(data, '\n'))
 		return err
+	case "table":
+		return WriteTable(out, value)
 	default:
 		return fmt.Errorf("unsupported format %q", format)
 	}

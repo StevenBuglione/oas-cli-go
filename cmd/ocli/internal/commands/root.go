@@ -44,7 +44,11 @@ func NewRootCommand(options cfgpkg.Options, args []string, hooks RootHooks) (*co
 		return nil, err
 	}
 	if options.Format == "" {
-		options.Format = "json"
+		if IsTerminal(options.Stdout) {
+			options.Format = "table"
+		} else {
+			options.Format = "json"
+		}
 	}
 	if options.Stdout == nil {
 		options.Stdout = os.Stdout
