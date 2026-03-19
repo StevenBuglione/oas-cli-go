@@ -8,7 +8,9 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -55,6 +57,7 @@ func NewInitCommand() *cobra.Command {
 
 			var cfg map[string]any
 			var authHints []string
+			var name string
 			var err error
 			switch sourceType {
 			case "mcp":
@@ -62,8 +65,9 @@ func NewInitCommand() *cobra.Command {
 					return err
 				}
 				cfg = buildMCPConfig(source, transport, mcpCommand, mcpArgs, mcpURL)
+				name = source
 			default:
-				cfg, authHints, err = buildOpenAPIConfig(source, w)
+				cfg, authHints, name, err = buildOpenAPIConfig(source, w)
 				if err != nil {
 					return err
 				}
@@ -78,10 +82,6 @@ func NewInitCommand() *cobra.Command {
 			}
 
 			fmt.Fprintf(w, "\nCreated %s\n", outPath)
-			name := deriveServiceName(source)
-			if sourceType == "mcp" {
-				name = source
-			}
 			fmt.Fprintln(w)
 			fmt.Fprintln(w, "Next steps:")
 			fmt.Fprintln(w, "  ocli catalog list              List available tools")
@@ -126,9 +126,8 @@ func validateRemoteSpec(specURL string) error {
 	return nil
 }
 
-func buildOpenAPIConfig(source string, w io.Writer) (map[string]any, []string, error) {
+func buildOpenAPIConfig(source string, w io.Writer) (map[string]any, []string, string, error) {
 	isURL := isRemoteURL(source)
-	name := deriveServiceName(source)
 
 	var specData []byte
 	var specHost string
@@ -137,15 +136,15 @@ func buildOpenAPIConfig(source string, w io.Writer) (map[string]any, []string, e
 		client := &http.Client{Timeout: 15 * time.Second}
 		resp, err := client.Get(source)
 		if err != nil {
-			return nil, nil, FormatError(err, fmt.Sprintf("Cannot fetch spec from %s", source), "Check the URL and ensure the spec is publicly reachable")
+			return nil, nil, "", FormatError(err, fmt.Sprintf("Cannot fetch spec from %s", source), "Check the URL and ensure the spec is publicly reachable")
 		}
 		defer resp.Body.Close()
 		if resp.StatusCode >= 400 {
-			return nil, nil, FormatError(fmt.Errorf("server returned HTTP %d", resp.StatusCode), fmt.Sprintf("Cannot fetch spec from %s", source), "Check the URL and ensure the spec is publicly reachable")
+			return nil, nil, "", FormatError(fmt.Errorf("server returned HTTP %d", resp.StatusCode), fmt.Sprintf("Cannot fetch spec from %s", source), "Check the URL and ensure the spec is publicly reachable")
 		}
 		specData, err = io.ReadAll(resp.Body)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, "", err
 		}
 		if parsed, err := url.Parse(source); err == nil {
 			specHost = parsed.Scheme + "://" + parsed.Host
@@ -153,14 +152,14 @@ func buildOpenAPIConfig(source string, w io.Writer) (map[string]any, []string, e
 	} else {
 		abs, err := filepath.Abs(source)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, "", err
 		}
 		if _, err := os.Stat(abs); err != nil {
-			return nil, nil, FormatError(err, fmt.Sprintf("File not found: %s", source), "Check the path and try again")
+			return nil, nil, "", FormatError(err, fmt.Sprintf("File not found: %s", source), "Check the path and try again")
 		}
 		specData, err = os.ReadFile(abs)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, "", err
 		}
 		fmt.Fprint(w, "Parsing spec... ")
 	}
@@ -170,13 +169,15 @@ func buildOpenAPIConfig(source string, w io.Writer) (map[string]any, []string, e
 	doc, err := loader.LoadFromData(specData)
 	if err != nil {
 		fmt.Fprintln(w, "x")
-		return nil, nil, FormatError(err, "Failed to parse OpenAPI spec", "Ensure the file is a valid OpenAPI 3.x document")
+		return nil, nil, "", FormatError(err, "Failed to parse OpenAPI spec", "Ensure the file is a valid OpenAPI 3.x document")
 	}
 	if err := doc.Validate(context.Background(), openapi3.DisableExamplesValidation()); err != nil {
 		fmt.Fprintln(w, "x")
-		return nil, nil, FormatError(err, "OpenAPI spec validation failed", "Check the spec for structural issues")
+		return nil, nil, "", FormatError(err, "OpenAPI spec validation failed", "Check the spec for structural issues")
 	}
 	fmt.Fprintf(w, "ok OpenAPI %s\n", doc.OpenAPI)
+
+	name := deriveServiceName(source, doc)
 
 	toolCount := 0
 	groupSet := map[string]bool{}
@@ -254,7 +255,7 @@ func buildOpenAPIConfig(source string, w io.Writer) (map[string]any, []string, e
 			},
 		},
 	}
-	return cfg, authHints, nil
+	return cfg, authHints, name, nil
 }
 
 func buildMCPConfig(name, transport, command, args, mcpURL string) map[string]any {
@@ -304,29 +305,151 @@ func validateMCPFlags(transport, command, mcpURL string) error {
 	return nil
 }
 
-func deriveServiceName(source string) string {
-	base := filepath.Base(source)
-	// Strip common extensions
-	for _, ext := range []string{".openapi.yaml", ".openapi.json", ".yaml", ".yml", ".json"} {
-		if strings.HasSuffix(strings.ToLower(base), ext) {
-			base = base[:len(base)-len(ext)]
-			break
+var versionTokenPattern = regexp.MustCompile(`^(?:v)?\d+(?:\.\d+)*$`)
+
+func deriveServiceName(source string, doc *openapi3.T) string {
+	if name := deriveServiceNameFromBasename(source); name != "" {
+		return name
+	}
+
+	if doc != nil && doc.Info != nil {
+		if name := deriveServiceNameFromTitle(doc.Info.Title); name != "" {
+			return name
 		}
 	}
-	// Clean: lowercase, replace non-alphanumeric with hyphens
-	name := strings.ToLower(base)
+
+	if isRemoteURL(source) {
+		if name := deriveServiceNameFromHost(source); name != "" {
+			return name
+		}
+	}
+
+	return "service"
+}
+
+func deriveServiceNameFromBasename(source string) string {
+	base := source
+	if isRemoteURL(source) {
+		parsed, err := url.Parse(source)
+		if err != nil {
+			return ""
+		}
+		segment := strings.TrimRight(parsed.Path, "/")
+		if segment == "" {
+			return ""
+		}
+		base = path.Base(segment)
+	} else {
+		base = filepath.Base(source)
+	}
+	base = trimSpecSuffix(base)
+	name := sanitizeServiceName(base)
+	if name == "" || isGenericServiceName(name) {
+		return ""
+	}
+	return name
+}
+
+func deriveServiceNameFromTitle(title string) string {
+	tokens := titleTokens(title)
+	if len(tokens) == 0 {
+		return ""
+	}
+
+	for len(tokens) > 0 && isBoilerplateToken(tokens[0]) {
+		tokens = tokens[1:]
+	}
+	for len(tokens) > 0 && isBoilerplateToken(tokens[len(tokens)-1]) {
+		tokens = tokens[:len(tokens)-1]
+	}
+
+	name := sanitizeServiceName(strings.Join(tokens, "-"))
+	if name == "" || isGenericServiceName(name) {
+		return ""
+	}
+	return name
+}
+
+func deriveServiceNameFromHost(source string) string {
+	parsed, err := url.Parse(source)
+	if err != nil {
+		return ""
+	}
+
+	host := parsed.Hostname()
+	if host == "" {
+		return ""
+	}
+	host = strings.TrimPrefix(strings.ToLower(host), "www.")
+	parts := strings.Split(host, ".")
+	if len(parts) == 0 {
+		return ""
+	}
+
+	name := sanitizeServiceName(parts[0])
+	if name == "" || isGenericServiceName(name) {
+		return ""
+	}
+	return name
+}
+
+func trimSpecSuffix(base string) string {
+	lower := strings.ToLower(base)
+	for _, ext := range []string{
+		".openapi.yaml",
+		".openapi.yml",
+		".openapi.json",
+		".swagger.json",
+		".swagger.yaml",
+		".yaml",
+		".yml",
+		".json",
+	} {
+		if strings.HasSuffix(lower, ext) {
+			return base[:len(base)-len(ext)]
+		}
+	}
+	return base
+}
+
+func sanitizeServiceName(raw string) string {
+	raw = strings.ToLower(raw)
 	var clean []byte
-	for i := 0; i < len(name); i++ {
-		c := name[i]
+	for i := 0; i < len(raw); i++ {
+		c := raw[i]
 		if (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') {
 			clean = append(clean, c)
-		} else if len(clean) > 0 && clean[len(clean)-1] != '-' {
+			continue
+		}
+		if len(clean) > 0 && clean[len(clean)-1] != '-' {
 			clean = append(clean, '-')
 		}
 	}
-	result := strings.Trim(string(clean), "-")
-	if result == "" {
-		return "api"
+	return strings.Trim(string(clean), "-")
+}
+
+func titleTokens(title string) []string {
+	matches := regexp.MustCompile(`[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*`).FindAllString(title, -1)
+	if len(matches) == 0 {
+		return nil
 	}
-	return result
+	return matches
+}
+
+func isBoilerplateToken(token string) bool {
+	lower := strings.ToLower(token)
+	switch lower {
+	case "swagger", "openapi", "api":
+		return true
+	}
+	return versionTokenPattern.MatchString(lower)
+}
+
+func isGenericServiceName(name string) bool {
+	switch name {
+	case "openapi", "swagger", "api", "spec", "index":
+		return true
+	default:
+		return false
+	}
 }

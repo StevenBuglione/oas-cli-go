@@ -3,8 +3,10 @@ package commands
 import (
 	"bytes"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -83,6 +85,78 @@ func testOptions(stdout, stderr *bytes.Buffer) cfgpkg.Options {
 		Stdin:  strings.NewReader(""),
 		Format: "json",
 	}
+}
+
+func runInitCommand(t *testing.T, source string) (string, map[string]any) {
+	t.Helper()
+
+	dir := t.TempDir()
+	origWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd: %v", err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("Chdir: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(origWD)
+	})
+
+	var stdout bytes.Buffer
+	cmd := NewInitCommand()
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stdout)
+	cmd.SetArgs([]string{source})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("init failed: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, ".cli.json"))
+	if err != nil {
+		t.Fatalf("read created config: %v", err)
+	}
+	var cfg map[string]any
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		t.Fatalf("unmarshal config: %v", err)
+	}
+	return stdout.String(), cfg
+}
+
+func assertInitConfigName(t *testing.T, cfg map[string]any, want string) {
+	t.Helper()
+
+	services, ok := cfg["services"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected services map, got %#v", cfg["services"])
+	}
+	if _, ok := services[want]; !ok {
+		t.Fatalf("expected service %q in config, got %#v", want, services)
+	}
+
+	sources, ok := cfg["sources"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected sources map, got %#v", cfg["sources"])
+	}
+	if _, ok := sources[want+"Source"]; !ok {
+		t.Fatalf("expected source %q in config, got %#v", want+"Source", sources)
+	}
+}
+
+func newLocalhostSpecURL(t *testing.T, specBody []byte) string {
+	t.Helper()
+
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(specBody)
+	}))
+	t.Cleanup(backend.Close)
+
+	targetURL, err := url.Parse(backend.URL)
+	if err != nil {
+		t.Fatalf("parse backend URL: %v", err)
+	}
+	targetURL.Host = net.JoinHostPort("localhost", targetURL.Port())
+	return targetURL.String() + "/openapi.json"
 }
 
 func testCatalogResponse() runtimepkg.CatalogResponse {
@@ -431,4 +505,53 @@ func TestInitCommandGlobalCreatesConfigDir(t *testing.T) {
 	if _, err := os.Stat(configPath); err != nil {
 		t.Fatalf("expected global config at %s: %v", configPath, err)
 	}
+}
+
+func TestInitCommandDerivesNameFromGenericBasenameAndTitle(t *testing.T) {
+	specPath := filepath.Join(t.TempDir(), "openapi.json")
+	if err := os.WriteFile(specPath, []byte(`{
+  "openapi": "3.0.3",
+  "info": {"title": "Billing Service", "version": "1.0.0"},
+  "paths": {}
+}`), 0o644); err != nil {
+		t.Fatalf("write spec: %v", err)
+	}
+
+	stdout, cfg := runInitCommand(t, specPath)
+	if !strings.Contains(stdout, "ocli billing-service --help") {
+		t.Fatalf("expected billing-service next step, got: %s", stdout)
+	}
+	assertInitConfigName(t, cfg, "billing-service")
+}
+
+func TestInitCommandFallsBackToHostWhenTitleIsGeneric(t *testing.T) {
+	specBody := []byte(`{
+  "openapi": "3.0.3",
+  "info": {"title": "OpenAPI 3.0", "version": "1.0.0"},
+  "paths": {}
+}`)
+	sourceURL := newLocalhostSpecURL(t, specBody)
+
+	stdout, cfg := runInitCommand(t, sourceURL)
+	if !strings.Contains(stdout, "ocli localhost --help") {
+		t.Fatalf("expected localhost next step, got: %s", stdout)
+	}
+	assertInitConfigName(t, cfg, "localhost")
+}
+
+func TestInitCommandFallsBackToServiceForLocalFiles(t *testing.T) {
+	specPath := filepath.Join(t.TempDir(), "api.json")
+	if err := os.WriteFile(specPath, []byte(`{
+  "openapi": "3.0.3",
+  "info": {"title": "OpenAPI 3.0", "version": "1.0.0"},
+  "paths": {}
+}`), 0o644); err != nil {
+		t.Fatalf("write spec: %v", err)
+	}
+
+	stdout, cfg := runInitCommand(t, specPath)
+	if !strings.Contains(stdout, "ocli service --help") {
+		t.Fatalf("expected service next step, got: %s", stdout)
+	}
+	assertInitConfigName(t, cfg, "service")
 }
