@@ -23,11 +23,31 @@ This work is limited to the CLI layer under `cmd/ocli/internal/commands/` and ex
 
 Priority order:
 
-1. Explicit, cleaned path basename when it is meaningful.
-2. OpenAPI `info.title` when the URL basename is generic (`openapi`, `swagger`, `api`, `spec`, `index`).
-3. Existing fallback sanitization.
+1. Clean the source path basename:
+   - Ignore query string and fragment
+   - Use the last non-empty path segment
+   - Strip common spec suffixes: `.openapi.yaml`, `.openapi.yml`, `.openapi.json`, `.swagger.json`, `.swagger.yaml`, `.yaml`, `.yml`, `.json`
+   - Normalize to lowercase kebab-case via the existing sanitization rules
+2. Treat the cleaned basename as generic when it resolves to one of:
+   - `openapi`
+   - `swagger`
+   - `api`
+   - `spec`
+   - `index`
+3. If the basename is non-generic, use it.
+4. Otherwise, derive from OpenAPI `info.title`:
+   - Normalize to lowercase kebab-case with the same sanitization rules
+   - Reject it if it is empty or still generic
+5. Otherwise, fall back to the existing sanitized basename logic.
 
 The derived name must remain stable, lowercase, and shell-friendly. Generic filenames like `openapi.json` should no longer produce `ocli openapi ...` unless the spec title is also generic.
+
+Examples:
+
+- `https://petstore3.swagger.io/api/v3/openapi.json` + title `Swagger Petstore - OpenAPI 3.0` => `petstore`
+- `https://example.com/specs/payments-api.yaml` => `payments-api`
+- `/tmp/openapi.json` + title `Billing Service` => `billing-service`
+- `/tmp/api.json` + missing/empty title => `api`
 
 ### 2. Security-Focused `status`
 
@@ -46,6 +66,27 @@ It should report:
 
 The output must remain compact in terminal mode and machine-readable in JSON/YAML/pretty mode.
 
+Terminal-mode contract:
+
+- Always print:
+  - runtime summary line
+  - config summary line
+  - source summary line when config is available
+- Print auth summary only when runtime info exposes auth metadata
+- Print approval summary only when catalog context is available
+- Never fail just because optional runtime auth fields are missing; print `unknown` rather than erroring
+
+Structured-mode contract:
+
+- Return a single object with stable top-level keys:
+  - `runtime`
+  - `config`
+  - `sources`
+  - `auth`
+  - `approval`
+  - `scopePaths`
+- Missing context must be represented explicitly with null/empty/`unknown` values rather than omitted ad hoc
+
 ### 3. Tool Preflight / Security Introspection
 
 Users need a way to answer “what will happen if I run this?” without actually running the tool.
@@ -58,7 +99,29 @@ Instead of inventing a new top-level command, extend `explain` with a preflight/
 - The current runtime mode
 - Whether the runtime is available
 
+Terminal-mode contract:
+
+- Keep the existing explain summary fields
+- Add explicit security lines/fields for:
+  - auth requirements
+  - approval requirement
+  - runtime mode
+  - runtime availability
+
+Structured-mode contract:
+
+- Add stable keys:
+  - `auth`
+  - `approvalRequired`
+  - `runtime`
+  - `runtimeAvailable`
+
 This keeps the UX discoverable: `catalog` finds tools, `search` narrows them, `explain` tells you operational and security details.
+
+Degraded behavior:
+
+- If runtime is unavailable, `runtimeAvailable` must be `false` and approval resolution must be best-effort from available config/catalog context.
+- If policy context cannot be resolved, explain must say approval is `unknown` rather than claiming `false`.
 
 ### 4. Stronger Remote OAuth Story in CLI Output
 
@@ -107,7 +170,13 @@ Verification must include:
   - `ocli --demo status`
   - `ocli --demo search create`
   - `ocli --demo explain <tool-id>`
-  - `ocli init <real OpenAPI URL>`
+  - `ocli init <fixture spec path>`
+
+Deterministic verification requirements:
+
+- Add fixture-backed tests for `init` naming, including a generic URL basename with a meaningful `info.title`
+- Live CLI checks must include explicit assertions on output, not just command success
+- Do not rely on a public external URL for primary verification; external URLs may be used only as optional smoke checks after local verification passes
 
 ## Risks
 
