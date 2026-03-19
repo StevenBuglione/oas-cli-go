@@ -39,7 +39,9 @@ Priority order:
    - Normalize to lowercase kebab-case with the same sanitization rules
    - Reject it if it is empty or still generic
 5. Otherwise, if the source is a URL, derive from the host:
-   - Use the registrable host label when practical (`petstore3.swagger.io` -> `petstore3`)
+   - Parse the hostname
+   - Drop a leading `www`
+   - Use the first remaining DNS label (`petstore3.swagger.io` -> `petstore3`)
    - Normalize to lowercase kebab-case
    - Reject it if it is empty or still generic
 6. Otherwise, fall back to `service`.
@@ -51,7 +53,7 @@ Examples:
 - `https://petstore3.swagger.io/api/v3/openapi.json` + title `Swagger Petstore - OpenAPI 3.0` => `petstore`
 - `https://example.com/specs/payments-api.yaml` => `payments-api`
 - `/tmp/openapi.json` + title `Billing Service` => `billing-service`
-- `/tmp/api.json` + missing/empty title => `api`
+- `/tmp/api.json` + missing/empty title => `service`
 
 ### 2. Security-Focused `status`
 
@@ -112,13 +114,13 @@ Structured `status` shape:
   },
   "auth": {
     "mode": "string|unknown",
-    "required": true,
+    "required": "true|false|unknown",
     "audience": "string|null",
     "scopes": ["..."],
-    "browserLoginConfigured": true
+    "browserLoginConfigured": "true|false|unknown"
   },
   "approval": {
-    "hasApprovalGatedTools": true,
+    "hasApprovalGatedTools": "true|false|unknown",
     "status": "required|not_required|unknown"
   },
   "scopePaths": {
@@ -163,7 +165,14 @@ Structured `explain` additions:
 
 ```json
 {
-  "auth": [],
+  "auth": [
+    {
+      "name": "string",
+      "type": "string",
+      "scheme": "string|null",
+      "scopes": ["..."]
+    }
+  ],
   "approvalRequired": true,
   "approvalStatus": "required|not_required|unknown",
   "runtime": {
@@ -193,6 +202,13 @@ Changes:
   - `unknown`
 - `explain` should show auth alternatives and approval posture clearly in terminal and structured output.
 
+`auth status` source of truth:
+
+- If runtime is available and exposes active auth/session posture, prefer runtime-backed posture.
+- If runtime is unavailable but config exists, report `configOnly`.
+- If neither runtime nor config provides enough information, report `unknown`.
+- If runtime metadata conflicts with config, show both, but runtime-backed session posture wins for the top-level status summary.
+
 This makes the security model legible without reading config files or source code.
 
 ## Files
@@ -205,6 +221,8 @@ This makes the security model legible without reading config files or source cod
   Add runtime auth and approval posture reporting.
 - `cmd/ocli/internal/commands/catalog.go`
   Extend `explain` output with security/preflight fields.
+- `cmd/ocli/internal/commands/auth.go`
+  Extend `auth status` with config-only versus runtime-session posture.
 - `cmd/ocli/internal/commands/table.go`
   Add human-readable table rendering for richer `status` / `explain` payloads if needed.
 - `cmd/ocli/internal/commands/commands_test.go`
