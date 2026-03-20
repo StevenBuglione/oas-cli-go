@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"strings"
 
 	cfgpkg "github.com/StevenBuglione/open-cli/cmd/ocli/internal/config"
 	runtimepkg "github.com/StevenBuglione/open-cli/cmd/ocli/internal/runtime"
@@ -45,14 +46,17 @@ func NewCatalogCommand(options cfgpkg.Options, response runtimepkg.CatalogRespon
 func NewToolCommand(options cfgpkg.Options, response runtimepkg.CatalogResponse) *cobra.Command {
 	command := &cobra.Command{Use: "tool", Short: "Tool schema and metadata"}
 	command.AddCommand(&cobra.Command{
-		Use:   "schema <tool-id>",
-		Args:  cobra.ExactArgs(1),
+		Use:   "schema <tool-id-or-command-form...>",
+		Args:  cobra.MinimumNArgs(1),
 		Short: "Render machine-readable tool schema",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			tool := FindTool(response.Catalog.Tools, args[0])
+			tool, err := ResolveToolReference(response.Catalog.Services, response.Catalog.Tools, args)
+			if err != nil {
+				return err
+			}
 			if tool == nil {
 				return FormatError(
-					fmt.Errorf("tool %q not found in catalog", args[0]),
+					fmt.Errorf("tool %q not found in catalog", strings.Join(args, " ")),
 					"The tool ID may be misspelled or filtered by curation rules",
 					"Run 'ocli catalog list' to see available tools")
 			}
@@ -65,14 +69,17 @@ func NewToolCommand(options cfgpkg.Options, response runtimepkg.CatalogResponse)
 // NewExplainCommand returns the "explain" sub-command.
 func NewExplainCommand(options cfgpkg.Options, response runtimepkg.CatalogResponse) *cobra.Command {
 	return &cobra.Command{
-		Use:   "explain <tool-id>",
-		Args:  cobra.ExactArgs(1),
+		Use:   "explain <tool-id-or-command-form...>",
+		Args:  cobra.MinimumNArgs(1),
 		Short: "Show detailed information about a tool",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			tool := FindTool(response.Catalog.Tools, args[0])
+			tool, err := ResolveToolReference(response.Catalog.Services, response.Catalog.Tools, args)
+			if err != nil {
+				return err
+			}
 			if tool == nil {
 				return FormatError(
-					fmt.Errorf("tool %q not found in catalog", args[0]),
+					fmt.Errorf("tool %q not found in catalog", strings.Join(args, " ")),
 					"The tool ID may be misspelled or filtered by curation rules",
 					"Run 'ocli catalog list' to see available tools")
 			}

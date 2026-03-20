@@ -759,6 +759,57 @@ func TestExplainCommandPreservesAuthAlternatives(t *testing.T) {
 	}
 }
 
+func TestExplainCommandResolvesCommandFormReference(t *testing.T) {
+	var stdout bytes.Buffer
+	options := testOptions(&stdout, &stdout)
+	cmd := NewExplainCommand(options, testExplainResponse())
+	cmd.SetArgs([]string{"demo", "admin", "delete-item"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+
+	var payload struct {
+		ToolID string `json:"toolId"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal output: %v", err)
+	}
+	if payload.ToolID != "demo:deleteItem" {
+		t.Fatalf("expected command-form explain to resolve demo:deleteItem, got %#v", payload)
+	}
+}
+
+func TestExplainCommandRejectsAmbiguousCommandFormReference(t *testing.T) {
+	response := runtimepkg.CatalogResponse{
+		Catalog: catalog.NormalizedCatalog{
+			Services: []catalog.Service{{ID: "demo", Alias: "demo"}},
+			Tools: []catalog.Tool{
+				{ID: "demo:listItems", ServiceID: "demo", Group: "items", Command: "list"},
+				{ID: "demo:listUsers", ServiceID: "demo", Group: "users", Command: "list"},
+			},
+		},
+		View: catalog.EffectiveView{
+			Name: "discover",
+			Mode: "discover",
+			Tools: []catalog.Tool{
+				{ID: "demo:listItems", ServiceID: "demo", Group: "items", Command: "list"},
+				{ID: "demo:listUsers", ServiceID: "demo", Group: "users", Command: "list"},
+			},
+		},
+	}
+	var stdout bytes.Buffer
+	options := testOptions(&stdout, &stdout)
+	cmd := NewExplainCommand(options, response)
+	cmd.SetArgs([]string{"demo", "list"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected ambiguous command-form explain to fail")
+	}
+	if !strings.Contains(err.Error(), "ambiguous") {
+		t.Fatalf("expected ambiguous reference error, got %v", err)
+	}
+}
+
 func TestStatusCommandShowsRuntimeAndConfig(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, ".cli.json")
@@ -787,6 +838,25 @@ func TestStatusCommandShowsRuntimeAndConfig(t *testing.T) {
 	output := stdout.String()
 	if !strings.Contains(output, "Runtime:  ") || !strings.Contains(output, "Config:") || !strings.Contains(output, "Sources:") {
 		t.Fatalf("unexpected status output: %s", output)
+	}
+}
+
+func TestToolSchemaResolvesCommandFormReference(t *testing.T) {
+	response := testCatalogResponse()
+	var stdout bytes.Buffer
+	options := testOptions(&stdout, &stdout)
+	cmd := NewToolCommand(options, response)
+	cmd.SetArgs([]string{"schema", "demo", "items", "list-items"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+
+	var payload catalog.Tool
+	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal output: %v", err)
+	}
+	if payload.ID != "demo:listItems" {
+		t.Fatalf("expected command-form tool schema to resolve demo:listItems, got %#v", payload)
 	}
 }
 
@@ -1628,6 +1698,211 @@ func TestDynamicCommandDryRun(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "GET https://api.example.com/items/42?tag=blue") {
 		t.Fatalf("unexpected dry-run output: %s", stdout.String())
+	}
+	for _, want := range []string{"Auth: not_required", "Approval: not_required"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("expected %q in dry-run output: %s", want, stdout.String())
+		}
+	}
+}
+
+func TestDynamicCommandDryRunShowsUnresolvedBaseAndSecurityPosture(t *testing.T) {
+	tool := catalog.Tool{
+		ID:        "demo:createItem",
+		ServiceID: "demo",
+		Method:    http.MethodPost,
+		Path:      "/items/{id}",
+		Command:   "create-item",
+		PathParams: []catalog.Parameter{
+			{Name: "id", OriginalName: "id", Required: true},
+		},
+		Auth: []catalog.AuthRequirement{{
+			Name:   "oauth2",
+			Type:   "oauth2",
+			Scheme: "bearer",
+		}},
+		Safety: catalog.Safety{RequiresApproval: true},
+	}
+	root := &cobra.Command{Use: "ocli"}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	options := testOptions(&stdout, &stderr)
+	options.Stdout = &stdout
+	options.Stderr = &stderr
+	root.SetIn(strings.NewReader(""))
+	root.SetOut(options.Stdout)
+	root.SetErr(options.Stderr)
+	AddDynamicToolCommands(root, options, fakeRuntimeClient{
+		executeFn: func(request runtimepkg.ExecuteRequest) (runtimepkg.ExecuteResponse, error) {
+			t.Fatal("dry-run must not execute the runtime tool")
+			return runtimepkg.ExecuteResponse{}, nil
+		},
+	}, []catalog.Service{{ID: "demo", Alias: "demo"}}, []catalog.Tool{tool})
+
+	root.SetArgs([]string{"demo", "create-item", "42", "--dry-run"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("dry-run execute failed: %v", err)
+	}
+	for _, want := range []string{
+		"POST <base-unresolved>/items/42",
+		"Base: unresolved",
+		"Auth: required",
+		"Approval: required",
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("expected %q in dry-run output: %s", want, stdout.String())
+		}
+	}
+}
+
+func TestDynamicCommandDryRunPreviewsMCPWithoutExecuting(t *testing.T) {
+	tool := catalog.Tool{
+		ID:        "files:readFile",
+		ServiceID: "files",
+		Method:    http.MethodPost,
+		Path:      "/read-file",
+		Group:     "files",
+		Command:   "read-file",
+		Backend: &catalog.ToolBackend{
+			Kind:     "mcp",
+			ToolName: "read_file",
+		},
+	}
+	root := &cobra.Command{Use: "ocli"}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	options := testOptions(&stdout, &stderr)
+	options.Stdout = &stdout
+	options.Stderr = &stderr
+	root.SetIn(strings.NewReader(""))
+	root.SetOut(options.Stdout)
+	root.SetErr(options.Stderr)
+	AddDynamicToolCommands(root, options, fakeRuntimeClient{
+		executeFn: func(request runtimepkg.ExecuteRequest) (runtimepkg.ExecuteResponse, error) {
+			t.Fatal("dry-run must not execute MCP tools")
+			return runtimepkg.ExecuteResponse{}, nil
+		},
+	}, []catalog.Service{{ID: "files", Alias: "files"}}, []catalog.Tool{tool})
+
+	root.SetArgs([]string{"files", "read-file", "--body", `{"path":"/tmp/demo.txt"}`, "--dry-run"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("dry-run execute failed: %v", err)
+	}
+	for _, want := range []string{
+		"MCP read_file",
+		"Auth: not_required",
+		"Approval: not_required",
+		`{"path":"/tmp/demo.txt"}`,
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("expected %q in dry-run output: %s", want, stdout.String())
+		}
+	}
+}
+
+func TestDynamicCommandBuildsMCPBodyFromScalarFlags(t *testing.T) {
+	tool := catalog.Tool{
+		ID:        "files:readFile",
+		ServiceID: "files",
+		Group:     "files",
+		Method:    http.MethodPost,
+		Path:      "/read-file",
+		Command:   "read-file",
+		RequestBody: &catalog.RequestBody{
+			ContentTypes: []catalog.RequestBodyContent{{
+				MediaType: "application/json",
+				Schema: map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"path":      map[string]any{"type": "string"},
+						"recursive": map[string]any{"type": "boolean"},
+						"limit":     map[string]any{"type": "integer"},
+						"filters": map[string]any{
+							"type": "object",
+						},
+					},
+				},
+			}},
+		},
+		Backend: &catalog.ToolBackend{
+			Kind:     "mcp",
+			ToolName: "read_file",
+		},
+	}
+	root := &cobra.Command{Use: "ocli"}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	options := testOptions(&stdout, &stderr)
+	options.Stdout = &stdout
+	options.Stderr = &stderr
+	root.SetIn(strings.NewReader(""))
+	root.SetOut(options.Stdout)
+	root.SetErr(options.Stderr)
+
+	var captured runtimepkg.ExecuteRequest
+	AddDynamicToolCommands(root, options, fakeRuntimeClient{
+		executeFn: func(request runtimepkg.ExecuteRequest) (runtimepkg.ExecuteResponse, error) {
+			captured = request
+			return runtimepkg.ExecuteResponse{StatusCode: 200, Body: json.RawMessage(`{"ok":true}`)}, nil
+		},
+	}, []catalog.Service{{ID: "files", Alias: "files"}}, []catalog.Tool{tool})
+
+	root.SetArgs([]string{"files", "read-file", "--path", "/tmp/demo.txt", "--recursive", "true", "--limit", "3"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if string(captured.Body) != `{"limit":3,"path":"/tmp/demo.txt","recursive":true}` {
+		t.Fatalf("expected MCP body from scalar flags, got %s", string(captured.Body))
+	}
+}
+
+func TestDynamicCommandRejectsBodyWhenMCPScalarFlagsAlsoProvided(t *testing.T) {
+	tool := catalog.Tool{
+		ID:        "files:readFile",
+		ServiceID: "files",
+		Group:     "files",
+		Method:    http.MethodPost,
+		Path:      "/read-file",
+		Command:   "read-file",
+		RequestBody: &catalog.RequestBody{
+			ContentTypes: []catalog.RequestBodyContent{{
+				MediaType: "application/json",
+				Schema: map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"path": map[string]any{"type": "string"},
+					},
+				},
+			}},
+		},
+		Backend: &catalog.ToolBackend{
+			Kind:     "mcp",
+			ToolName: "read_file",
+		},
+	}
+	root := &cobra.Command{Use: "ocli"}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	options := testOptions(&stdout, &stderr)
+	options.Stdout = &stdout
+	options.Stderr = &stderr
+	root.SetIn(strings.NewReader(""))
+	root.SetOut(options.Stdout)
+	root.SetErr(options.Stderr)
+	AddDynamicToolCommands(root, options, fakeRuntimeClient{
+		executeFn: func(request runtimepkg.ExecuteRequest) (runtimepkg.ExecuteResponse, error) {
+			t.Fatal("body/flag collision must fail before execution")
+			return runtimepkg.ExecuteResponse{}, nil
+		},
+	}, []catalog.Service{{ID: "files", Alias: "files"}}, []catalog.Tool{tool})
+
+	root.SetArgs([]string{"files", "read-file", "--path", "/tmp/demo.txt", "--body", `{"path":"/tmp/other.txt"}`})
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("expected MCP body/flag collision to fail")
+	}
+	if !strings.Contains(err.Error(), "cannot combine") {
+		t.Fatalf("expected collision error, got %v", err)
 	}
 }
 

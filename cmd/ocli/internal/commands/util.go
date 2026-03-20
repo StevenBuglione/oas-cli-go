@@ -56,6 +56,84 @@ func FindTool(tools []catalog.Tool, id string) *catalog.Tool {
 	return nil
 }
 
+// ResolveToolReference accepts either a canonical tool ID (demo:listItems) or
+// a command-form reference (demo items list-items / demo list-items).
+func ResolveToolReference(services []catalog.Service, tools []catalog.Tool, ref []string) (*catalog.Tool, error) {
+	if len(ref) == 0 {
+		return nil, nil
+	}
+	if len(ref) == 1 {
+		if tool := FindTool(tools, ref[0]); tool != nil {
+			return tool, nil
+		}
+	}
+
+	serviceNames := map[string][]string{}
+	for _, service := range services {
+		names := []string{service.ID}
+		if strings.TrimSpace(service.Alias) != "" && service.Alias != service.ID {
+			names = append(names, service.Alias)
+		}
+		serviceNames[service.ID] = names
+	}
+
+	var matches []*catalog.Tool
+	for idx := range tools {
+		tool := &tools[idx]
+		names := serviceNames[tool.ServiceID]
+		if len(names) == 0 {
+			names = []string{tool.ServiceID}
+		}
+		for _, serviceName := range names {
+			for _, candidate := range toolCommandForms(serviceName, *tool) {
+				if stringSlicesEqual(candidate, ref) {
+					matches = append(matches, tool)
+					goto nextTool
+				}
+			}
+		}
+	nextTool:
+	}
+
+	switch len(matches) {
+	case 0:
+		return nil, nil
+	case 1:
+		return matches[0], nil
+	default:
+		ids := make([]string, 0, len(matches))
+		for _, match := range matches {
+			ids = append(ids, match.ID)
+		}
+		sort.Strings(ids)
+		return nil, fmt.Errorf("command reference %q is ambiguous; matches: %s", strings.Join(ref, " "), strings.Join(ids, ", "))
+	}
+}
+
+func toolCommandForms(serviceName string, tool catalog.Tool) [][]string {
+	forms := [][]string{}
+	if tool.Command == "" || serviceName == "" {
+		return forms
+	}
+	forms = append(forms, []string{serviceName, tool.Command})
+	if tool.Group != "" {
+		forms = append(forms, []string{serviceName, tool.Group, tool.Command})
+	}
+	return forms
+}
+
+func stringSlicesEqual(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for idx := range left {
+		if left[idx] != right[idx] {
+			return false
+		}
+	}
+	return true
+}
+
 // CommandSummary returns a short description suitable for cobra.Command.Short.
 func CommandSummary(tool catalog.Tool) string {
 	if tool.Description != "" {

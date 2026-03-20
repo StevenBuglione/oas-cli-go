@@ -228,6 +228,11 @@ func TestCapabilityAuditSuccessfulExecution(t *testing.T) {
 			t.Errorf("eventType = %v, want tool_execution", found["eventType"])
 		}
 	})
+	t.Run("reason_code_is_allowed", func(t *testing.T) {
+		if found["reasonCode"] != "allowed" {
+			t.Errorf("reasonCode = %v, want allowed", found["reasonCode"])
+		}
+	})
 	t.Run("timestamp_present", func(t *testing.T) {
 		if found["timestamp"] == "" || found["timestamp"] == nil {
 			t.Errorf("timestamp missing in audit event: %v", found)
@@ -364,5 +369,62 @@ func TestCapabilityAuditMultipleExecutions(t *testing.T) {
 		if !seen[toolID] {
 			t.Errorf("no audit event found for %s; seen: %v", toolID, seen)
 		}
+	}
+}
+
+func TestCapabilityAuditExecutionErrorsAreClassifiedSeparately(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}))
+	deadURL := server.URL
+	server.Close()
+
+	dir := t.TempDir()
+	openapiPath := writeFile(t, dir, "broken.openapi.yaml", restOpenAPIYAML(deadURL))
+	configPath := writeFile(t, dir, ".cli.json", restCLIConfig(openapiPath))
+
+	srv := runtime.NewServer(runtime.Options{
+		AuditPath: filepath.Join(dir, "audit.log"),
+		CacheDir:  filepath.Join(dir, "cache"),
+	})
+	runtimeSrv := httptest.NewServer(srv.Handler())
+	t.Cleanup(runtimeSrv.Close)
+
+	body, _ := json.Marshal(map[string]any{
+		"configPath": configPath,
+		"toolId":     "testapi:listItems",
+	})
+	resp, err := http.Post(runtimeSrv.URL+"/v1/tools/execute", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("execute listItems: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadGateway {
+		t.Fatalf("expected 502 for execution failure, got %d", resp.StatusCode)
+	}
+
+	events := listAuditEvents(t, runtimeSrv.URL)
+	if len(events) == 0 {
+		t.Fatal("expected an audit event after execution failure")
+	}
+
+	var found map[string]any
+	for _, ev := range events {
+		m, _ := ev.(map[string]any)
+		if m["toolId"] == "testapi:listItems" {
+			found = m
+		}
+	}
+	if found == nil {
+		t.Fatalf("no audit event for testapi:listItems; events: %v", events)
+	}
+	if found["eventType"] != "execution_error" {
+		t.Fatalf("eventType = %v, want execution_error", found["eventType"])
+	}
+	if found["reasonCode"] != "execution_error" {
+		t.Fatalf("reasonCode = %v, want execution_error", found["reasonCode"])
+	}
+	if found["decision"] != "error" {
+		t.Fatalf("decision = %v, want error", found["decision"])
 	}
 }

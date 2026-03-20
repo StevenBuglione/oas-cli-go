@@ -2387,6 +2387,28 @@ func TestServerSessionCloseClearsOAuthCache(t *testing.T) {
 	}
 }
 
+func TestServerAuditEventsReturnsEmptyArrayWhenNoEventsRecorded(t *testing.T) {
+	server := runtime.NewServer(runtime.Options{AuditPath: filepath.Join(t.TempDir(), "audit.log")})
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+
+	resp, err := http.Get(httpServer.URL + "/v1/audit/events")
+	if err != nil {
+		t.Fatalf("audit events request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 audit response, got %d", resp.StatusCode)
+	}
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read audit body: %v", err)
+	}
+	if strings.TrimSpace(string(data)) != "[]" {
+		t.Fatalf("expected empty audit list to serialize as [], got %q", strings.TrimSpace(string(data)))
+	}
+}
+
 func TestServerReturnsRuntimeInfoHandshakeWithoutBearerTokenWhenRemoteAuthEnabled(t *testing.T) {
 	dir := t.TempDir()
 	configPath := writeRuntimeFile(t, dir, ".cli.json", `{

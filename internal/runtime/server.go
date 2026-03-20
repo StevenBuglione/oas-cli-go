@@ -1191,8 +1191,13 @@ func selectView(cfg config.Config, ntc *catalog.NormalizedCatalog, mode, agentPr
 
 func (server *Server) recordEvent(tool catalog.Tool, agentProfile string, decision policy.Decision, statusCode, retryCount int, latency time.Duration) {
 	eventType := "tool_execution"
-	if !decision.Allowed {
+	decisionValue := "allowed"
+	if decision.ReasonCode == "execution_error" {
+		eventType = "execution_error"
+		decisionValue = "error"
+	} else if !decision.Allowed {
 		eventType = "authz_denial"
+		decisionValue = "denied"
 	}
 	_ = server.auditStore.Append(audit.Event{
 		Timestamp:     time.Now().UTC(),
@@ -1201,7 +1206,7 @@ func (server *Server) recordEvent(tool catalog.Tool, agentProfile string, decisi
 		ToolID:        tool.ID,
 		ServiceID:     tool.ServiceID,
 		TargetBaseURL: first(tool.Servers),
-		Decision:      map[bool]string{true: "allowed", false: "denied"}[decision.Allowed],
+		Decision:      decisionValue,
 		ReasonCode:    decision.ReasonCode,
 		Method:        tool.Method,
 		Path:          tool.Path,

@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/StevenBuglione/open-cli/pkg/cache"
@@ -67,6 +68,9 @@ func LoadDocument(ctx context.Context, baseDir, ref string, overlays []string, f
 	loader.IsExternalRefsAllowed = true
 	document, err := loader.LoadFromData(data)
 	if err != nil {
+		return nil, err
+	}
+	if err := normalizeDocumentServers(document, resolveReference(baseDir, ref)); err != nil {
 		return nil, err
 	}
 	if err := document.Validate(ctx); err != nil {
@@ -178,4 +182,94 @@ func normalize(value any) any {
 	default:
 		return typed
 	}
+}
+
+var serverVariablePattern = regexp.MustCompile(`\{([^{}]+)\}`)
+
+func normalizeDocumentServers(document *openapi3.T, sourceRef string) error {
+	baseURL, remote := remoteBaseURL(sourceRef)
+	if remote && len(document.Servers) == 0 {
+		document.Servers = openapi3.Servers{
+			&openapi3.Server{URL: (&url.URL{Scheme: baseURL.Scheme, Host: baseURL.Host}).String()},
+		}
+	}
+	if err := normalizeServerList(document.Servers, baseURL); err != nil {
+		return err
+	}
+	if document.Paths == nil {
+		return nil
+	}
+	for _, item := range document.Paths.Map() {
+		if item == nil {
+			continue
+		}
+		if err := normalizeServerList(item.Servers, baseURL); err != nil {
+			return err
+		}
+		for _, operation := range []*openapi3.Operation{item.Get, item.Post, item.Put, item.Patch, item.Delete, item.Head, item.Options} {
+			if operation == nil {
+				continue
+			}
+			if operation.Servers != nil {
+				if err := normalizeServerList(*operation.Servers, baseURL); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func remoteBaseURL(sourceRef string) (*url.URL, bool) {
+	parsed, err := url.Parse(sourceRef)
+	if err != nil {
+		return nil, false
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return nil, false
+	}
+	return parsed, true
+}
+
+func normalizeServerList(servers openapi3.Servers, baseURL *url.URL) error {
+	for _, server := range servers {
+		if server == nil {
+			continue
+		}
+		normalized, err := normalizeServerURL(server, baseURL)
+		if err != nil {
+			return err
+		}
+		server.URL = normalized
+	}
+	return nil
+}
+
+func normalizeServerURL(server *openapi3.Server, baseURL *url.URL) (string, error) {
+	expanded, err := expandServerURL(server.URL, server.Variables)
+	if err != nil {
+		return "", err
+	}
+	parsed, err := url.Parse(expanded)
+	if err != nil {
+		return "", err
+	}
+	if parsed.IsAbs() || baseURL == nil {
+		return parsed.String(), nil
+	}
+	return baseURL.ResolveReference(parsed).String(), nil
+}
+
+func expandServerURL(raw string, variables map[string]*openapi3.ServerVariable) (string, error) {
+	matches := serverVariablePattern.FindAllStringSubmatch(raw, -1)
+	expanded := raw
+	for _, match := range matches {
+		name := match[1]
+		variable, ok := variables[name]
+		if !ok || variable == nil || strings.TrimSpace(variable.Default) == "" {
+			return "", fmt.Errorf("server variable %q must define a default", name)
+		}
+		expanded = strings.ReplaceAll(expanded, match[0], variable.Default)
+	}
+	return expanded, nil
 }

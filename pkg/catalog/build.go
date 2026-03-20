@@ -423,7 +423,7 @@ func buildTools(service Service, document *openapi3.T, guidance map[string]Guida
 				Output:           operationStructExtension[OutputHints](entry.op, "x-cli-output"),
 				Pagination:       operationStructExtension[PaginationHints](entry.op, "x-cli-pagination"),
 				Retry:            operationStructExtension[RetryHints](entry.op, "x-cli-retry"),
-				Servers:          service.Servers,
+				Servers:          effectiveToolServers(service.Servers, item, entry.op),
 				Backend:          backend,
 			}
 			if currentGuidance, ok := guidance[tool.ID]; ok {
@@ -763,9 +763,34 @@ func extractOAuthFlows(scheme *openapi3.SecurityScheme) []OAuthFlow {
 func extractServers(document *openapi3.T) []string {
 	var servers []string
 	for _, server := range document.Servers {
+		if server == nil || strings.TrimSpace(server.URL) == "" {
+			continue
+		}
 		servers = append(servers, server.URL)
 	}
 	return servers
+}
+
+func effectiveToolServers(documentServers []string, item *openapi3.PathItem, operation *openapi3.Operation) []string {
+	switch {
+	case operation != nil && operation.Servers != nil && len(*operation.Servers) > 0:
+		return serverURLs(*operation.Servers)
+	case item != nil && len(item.Servers) > 0:
+		return serverURLs(item.Servers)
+	default:
+		return append([]string(nil), documentServers...)
+	}
+}
+
+func serverURLs(servers openapi3.Servers) []string {
+	values := make([]string, 0, len(servers))
+	for _, server := range servers {
+		if server == nil || strings.TrimSpace(server.URL) == "" {
+			continue
+		}
+		values = append(values, server.URL)
+	}
+	return values
 }
 
 func extractParameters(pathParameters, operationParameters openapi3.Parameters) ([]Parameter, []Parameter) {

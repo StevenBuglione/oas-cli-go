@@ -68,7 +68,7 @@ func (store *FileStore) List() ([]Event, error) {
 
 	file, err := os.Open(store.path)
 	if os.IsNotExist(err) {
-		return nil, nil
+		return []Event{}, nil
 	}
 	if err != nil {
 		return nil, err
