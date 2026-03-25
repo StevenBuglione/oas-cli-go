@@ -1363,6 +1363,7 @@ func TestRootCommandUsesOAuthClientRemoteRuntimeBearerToken(t *testing.T) {
 	}))
 	defer authServer.Close()
 
+	var configPath string
 	runtimeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/v1/runtime/info":
@@ -1386,8 +1387,8 @@ func TestRootCommandUsesOAuthClientRemoteRuntimeBearerToken(t *testing.T) {
 			if got := r.Header.Get("Authorization"); got != "Bearer oauth-client-token" {
 				t.Fatalf("expected runtime bearer token from oauth client flow, got %q", got)
 			}
-			if got := r.URL.Query().Get("config"); got != "" {
-				t.Fatalf("expected no config query for remote catalog fetch, got %q", got)
+			if got := r.URL.Query().Get("config"); got != configPath {
+				t.Fatalf("expected remote catalog request to include config path %q, got %q", configPath, got)
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"catalog": map[string]any{
@@ -1407,7 +1408,7 @@ func TestRootCommandUsesOAuthClientRemoteRuntimeBearerToken(t *testing.T) {
 	defer runtimeServer.Close()
 
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, ".cli.json")
+	configPath = filepath.Join(dir, ".cli.json")
 	if err := os.WriteFile(configPath, []byte(fmt.Sprintf(`{
 	  "cli": "1.0.0",
 	  "mode": { "default": "discover" },
@@ -1479,6 +1480,7 @@ func TestRootCommandUsesDelegatedOAuthClientRemoteRuntimeBearerToken(t *testing.
 	}))
 	defer authServer.Close()
 
+	var configPath string
 	runtimeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/v1/runtime/info":
@@ -1502,8 +1504,8 @@ func TestRootCommandUsesDelegatedOAuthClientRemoteRuntimeBearerToken(t *testing.
 			if got := r.Header.Get("Authorization"); got != "Bearer delegated-child-token" {
 				t.Fatalf("expected delegated runtime bearer token, got %q", got)
 			}
-			if got := r.URL.Query().Get("config"); got != "" {
-				t.Fatalf("expected no config query for remote catalog fetch, got %q", got)
+			if got := r.URL.Query().Get("config"); got != configPath {
+				t.Fatalf("expected remote catalog request to include config path %q, got %q", configPath, got)
 			}
 			if got := r.URL.Query().Get("agentProfile"); got != "triage" {
 				t.Fatalf("expected agentProfile query to be preserved, got %q", got)
@@ -1526,7 +1528,7 @@ func TestRootCommandUsesDelegatedOAuthClientRemoteRuntimeBearerToken(t *testing.
 	defer runtimeServer.Close()
 
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, ".cli.json")
+	configPath = filepath.Join(dir, ".cli.json")
 	if err := os.WriteFile(configPath, []byte(fmt.Sprintf(`{
 	  "cli": "1.0.0",
 	  "mode": { "default": "discover" },
@@ -1617,6 +1619,7 @@ func TestHTTPRuntimeClientRefreshesExpiredOAuthClientTokenOnce(t *testing.T) {
 	defer authServer.Close()
 
 	var seenAuth []string
+	var configPath string
 	runtimeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		seenAuth = append(seenAuth, r.Header.Get("Authorization"))
 		switch r.URL.Path {
@@ -1638,6 +1641,9 @@ func TestHTTPRuntimeClientRefreshesExpiredOAuthClientTokenOnce(t *testing.T) {
 				},
 			})
 		case "/v1/catalog/effective":
+			if got := r.URL.Query().Get("config"); got != configPath {
+				t.Fatalf("expected remote catalog request to include config path %q, got %q", configPath, got)
+			}
 			if got := r.Header.Get("Authorization"); got == "Bearer oauth-client-token-1" && len(seenAuth) > 1 {
 				http.Error(w, "authn_failed", http.StatusUnauthorized)
 				return
@@ -1660,7 +1666,7 @@ func TestHTTPRuntimeClientRefreshesExpiredOAuthClientTokenOnce(t *testing.T) {
 	defer runtimeServer.Close()
 
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, ".cli.json")
+	configPath = filepath.Join(dir, ".cli.json")
 	if err := os.WriteFile(configPath, []byte(fmt.Sprintf(`{
 	  "cli": "1.0.0",
 	  "mode": { "default": "discover" },
@@ -1794,7 +1800,8 @@ func TestHTTPRuntimeClientRefreshesAfterAuthnFailedOnNextRequest(t *testing.T) {
 	defer runtimeServer.Close()
 
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, ".cli.json")
+	var configPath string
+	configPath = filepath.Join(dir, ".cli.json")
 	if err := os.WriteFile(configPath, []byte(fmt.Sprintf(`{
 	  "cli": "1.0.0",
 	  "mode": { "default": "discover" },
@@ -1921,6 +1928,9 @@ func TestRootCommandUsesRemoteBrowserLoginBearerToken(t *testing.T) {
 		case "/v1/auth/browser-config":
 			t.Fatalf("expected browser login metadata endpoint from runtime info, not default path")
 		case "/v1/catalog/effective":
+			if got := r.URL.Query().Get("config"); got != configPath {
+				t.Fatalf("expected remote catalog request to include config path %q, got %q", configPath, got)
+			}
 			if got := r.Header.Get("Authorization"); got != "Bearer browser-login-token" {
 				t.Fatalf("expected browser login bearer token, got %q", got)
 			}

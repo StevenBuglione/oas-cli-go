@@ -47,7 +47,7 @@ type resolvedRuntimeToken struct {
 func ResolveToken(opts TokenResolveOptions, oauth configpkg.RemoteOAuthConfig) (string, *runtimepkg.TokenSession, error) {
 	var runtimeHandshake embeddedruntime.HandshakeInfo
 	if opts.RuntimeURL != "" && (oauth.Mode == "oauthClient" || oauth.Mode == "browserLogin") {
-		info, err := FetchHandshake(opts.RuntimeURL, opts.ConfigPath)
+		info, err := FetchHandshake(opts.RuntimeURL, "")
 		if err != nil {
 			return "", nil, err
 		}
@@ -120,7 +120,7 @@ func resolvePrimaryToken(ctx context.Context, opts TokenResolveOptions, oauth co
 				browserConfigEndpoint = endpoint
 			}
 		}
-		metadata, err := FetchBrowserLoginMetadata(opts.RuntimeURL, browserConfigEndpoint, opts.ConfigPath)
+		metadata, err := FetchBrowserLoginMetadata(opts.RuntimeURL, browserConfigEndpoint, "")
 		if err != nil {
 			return resolvedRuntimeToken{}, err
 		}

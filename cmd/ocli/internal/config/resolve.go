@@ -195,9 +195,7 @@ func ResolveCommandOptions(options Options, hooks ResolveHooks) (Options, error)
 			options.SessionID = options.InstanceID
 		}
 	}
-	if options.RuntimeDeployment != "remote" {
-		options.RuntimeRequestConfigPath = options.ConfigPath
-	}
+	options.RuntimeRequestConfigPath = options.ConfigPath
 	if options.Embedded {
 		return options, nil
 	}
