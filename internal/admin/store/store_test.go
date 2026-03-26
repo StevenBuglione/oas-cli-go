@@ -25,7 +25,7 @@ t.Fatalf("failed to init schema: %v", err)
 return store
 }
 
-func TestStoreCreatesSourceBundleAndAssignment(t *testing.T) {
+func TestStoreCreatesSource(t *testing.T) {
 store := NewTestStore(t)
 sourceID, err := store.CreateSource(context.Background(), domain.CreateSourceInput{
 Kind:        "openapi",
