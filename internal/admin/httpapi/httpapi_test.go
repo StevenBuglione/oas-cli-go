@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestRouterRegistersAdminHealthAndMe(t *testing.T) {
+func TestRouterRegistersAdminMe(t *testing.T) {
 	router := RegisterRoutes(http.NewServeMux(), StubDependencies())
 	server := httptest.NewServer(router)
 	defer server.Close()
