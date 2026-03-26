@@ -74,3 +74,89 @@ func TestStoreCreateSourceReturnsEmptyIDOnError(t *testing.T) {
 		t.Fatalf("expected empty source id on error, got %q", sourceID)
 	}
 }
+
+func TestStoreGetSource(t *testing.T) {
+	store := NewTestStore(t)
+	sourceID, err := store.CreateSource(context.Background(), domain.CreateSourceInput{
+		Kind:        "openapi",
+		DisplayName: "GitHub API",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	source, err := store.GetSource(context.Background(), sourceID)
+	if err != nil {
+		t.Fatalf("expected to get source: %v", err)
+	}
+	if source.ID != sourceID {
+		t.Errorf("expected ID %q, got %q", sourceID, source.ID)
+	}
+	if source.Kind != "openapi" {
+		t.Errorf("expected kind %q, got %q", "openapi", source.Kind)
+	}
+	if source.DisplayName != "GitHub API" {
+		t.Errorf("expected display name %q, got %q", "GitHub API", source.DisplayName)
+	}
+	if source.Status != "draft" {
+		t.Errorf("expected status %q, got %q", "draft", source.Status)
+	}
+}
+
+func TestStoreGetSourceNotFound(t *testing.T) {
+	store := NewTestStore(t)
+	_, err := store.GetSource(context.Background(), "src_nonexistent")
+	if err != sql.ErrNoRows {
+		t.Fatalf("expected sql.ErrNoRows, got %v", err)
+	}
+}
+
+func TestStoreListSources(t *testing.T) {
+	store := NewTestStore(t)
+	_, err := store.CreateSource(context.Background(), domain.CreateSourceInput{
+		Kind:        "openapi",
+		DisplayName: "GitHub API",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = store.CreateSource(context.Background(), domain.CreateSourceInput{
+		Kind:        "mcp",
+		DisplayName: "Slack MCP",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sources, err := store.ListSources(context.Background())
+	if err != nil {
+		t.Fatalf("expected to list sources: %v", err)
+	}
+	if len(sources) != 2 {
+		t.Fatalf("expected 2 sources, got %d", len(sources))
+	}
+}
+
+func TestStoreUpdateSourceStatus(t *testing.T) {
+	store := NewTestStore(t)
+	sourceID, err := store.CreateSource(context.Background(), domain.CreateSourceInput{
+		Kind:        "openapi",
+		DisplayName: "GitHub API",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = store.UpdateSourceStatus(context.Background(), sourceID, "validated")
+	if err != nil {
+		t.Fatalf("expected to update source status: %v", err)
+	}
+
+	source, err := store.GetSource(context.Background(), sourceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if source.Status != "validated" {
+		t.Errorf("expected status %q, got %q", "validated", source.Status)
+	}
+}
