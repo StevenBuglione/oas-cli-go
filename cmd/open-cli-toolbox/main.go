@@ -89,7 +89,7 @@ func main() {
 	if err := instance.WriteRuntimeInfo(paths.RuntimePath, info); err != nil {
 		log.Fatal(err)
 	}
-	
+
 	rootMux := http.NewServeMux()
 	rootMux.Handle("/v1/admin/", httpapi.RegisterRoutes(http.NewServeMux(), httpapi.NewDependencies()))
 	rootMux.Handle("/", server.Handler())
