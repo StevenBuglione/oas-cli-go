@@ -45,8 +45,9 @@ type rawLocalRuntimeConfig struct {
 }
 
 type rawRemoteRuntimeConfig struct {
-	URL   *string               `json:"url,omitempty"`
-	OAuth *rawRemoteOAuthConfig `json:"oauth,omitempty"`
+	URL               *string               `json:"url,omitempty"`
+	RequestConfigPath *string               `json:"requestConfigPath,omitempty"`
+	OAuth             *rawRemoteOAuthConfig `json:"oauth,omitempty"`
 }
 
 type rawRemoteOAuthConfig struct {
@@ -248,6 +249,9 @@ func (cfg *Config) merge(scope Scope, raw rawConfig) {
 			}
 			if raw.Runtime.Remote.URL != nil {
 				remote.URL = *raw.Runtime.Remote.URL
+			}
+			if raw.Runtime.Remote.RequestConfigPath != nil {
+				remote.RequestConfigPath = *raw.Runtime.Remote.RequestConfigPath
 			}
 			if raw.Runtime.Remote.OAuth != nil {
 				oauth := remote.OAuth

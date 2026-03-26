@@ -389,6 +389,10 @@
               "type": "string",
               "minLength": 1
             },
+            "requestConfigPath": {
+              "type": "string",
+              "minLength": 1
+            },
             "oauth": {
               "$ref": "#/$defs/remoteOAuth"
             }

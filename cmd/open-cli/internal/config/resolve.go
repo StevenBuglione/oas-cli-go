@@ -177,6 +177,9 @@ func ResolveCommandOptions(options Options, hooks ResolveHooks) (Options, error)
 	}
 	options.RuntimeDeployment = "remote"
 	options.RuntimeRequestConfigPath = options.ConfigPath
+	if runtimeCfg, ok := loadCachedRuntimeConfig(); ok && runtimeCfg.Remote != nil && runtimeCfg.Remote.RequestConfigPath != "" {
+		options.RuntimeRequestConfigPath = runtimeCfg.Remote.RequestConfigPath
+	}
 	if options.RuntimeURL == "" {
 		options.RuntimeURL = os.Getenv("OPEN_CLI_RUNTIME_URL")
 	}

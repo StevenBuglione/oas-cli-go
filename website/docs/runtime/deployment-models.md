@@ -16,13 +16,13 @@ Best for:
 - contributor workflows
 - single-user debugging when you want the production contract without shared infra
 
-Command pattern:
+Recommended command pattern:
 
 ```bash
-open-cli-toolbox --config ./.cli.json --addr 127.0.0.1:8765
-
-# In another shell:
-open-cli --runtime http://127.0.0.1:8765 --config ./.cli.json catalog list --format pretty
+./examples/local-authentik/setup.sh
+./examples/local-authentik/up.sh
+source ./.open-cli-local/authentik/client.env
+open-cli --config ./.open-cli-local/authentik/client.cli.json catalog list --format pretty
 ```
 
 Characteristics:
@@ -30,6 +30,9 @@ Characteristics:
 - same HTTP contract as every other supported deployment
 - easy to inspect logs, cache, and audit files locally
 - no embedded mode or local-daemon mode hidden behind the CLI
+- bearer auth still enforced on localhost through `runtime.server.auth`
+- Authentik and `open-cli-toolbox` managed together through one Docker Compose stack
+- default test API included so the local stack can prove execution, not just auth
 
 ## 2. Shared remote runtime
 
@@ -81,11 +84,11 @@ If you need delegated sub-agent access in a remote deployment, keep that flow ou
 
 This is a deployment concern, not a finished CLI feature. The current docs intentionally describe the operator-owned broker pattern, not a dedicated `open-cli` delegation UX.
 
-This repo now ships one official worked example:
+This repo now ships one worked local OAuth example:
 
-- [Authentik reference proof](./authentik-reference)
+- [Authentik reference proof](./authentik-reference) for the full OAuth proof
 
-That page documents the broker-neutral contract, the automated `oauthClient` proof, and the manual Entra-federated browser proof.
+The Authentik page documents the broker-neutral contract, the automated `oauthClient` proof, and the manual Entra-federated browser proof.
 
 ## 4. Multiple isolated instances
 
@@ -127,7 +130,7 @@ In the remote-only model, `open-cli` does **not** promote or attach to runtimes 
 
 ## Security note for remote bindings
 
-`open-cli-toolbox` defaults to loopback when you pass no `--addr`, which is convenient for local evaluation. For shared or production use:
+`open-cli-toolbox` defaults to loopback when you pass no `--addr`, which is convenient for local evaluation. Even on loopback, prefer the authenticated Docker Compose bootstrap under `examples/local-authentik/`. For shared or production use:
 
 - enable `runtime.server.auth` so the runtime validates bearer tokens and filters the catalog by runtime scopes
 - keep network controls in place as a second boundary, such as a reverse proxy, firewall policy, or SSH tunnel

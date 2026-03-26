@@ -697,6 +697,7 @@ func TestLoadEffectiveLoadsRemoteRuntimeOAuthConfiguration(t *testing.T) {
 	    "mode": "remote",
 	    "remote": {
 	      "url": "https://runtime.example.com",
+	      "requestConfigPath": "/runtime/configs/prod.cli.json",
 	      "oauth": {
 	        "mode": "browserLogin",
 	        "audience": "open-cli-toolbox",
@@ -730,6 +731,9 @@ func TestLoadEffectiveLoadsRemoteRuntimeOAuthConfiguration(t *testing.T) {
 	}
 	if effective.Config.Runtime.Remote.URL != "https://runtime.example.com" {
 		t.Fatalf("expected remote url to load, got %q", effective.Config.Runtime.Remote.URL)
+	}
+	if effective.Config.Runtime.Remote.RequestConfigPath != "/runtime/configs/prod.cli.json" {
+		t.Fatalf("expected remote requestConfigPath to load, got %q", effective.Config.Runtime.Remote.RequestConfigPath)
 	}
 	if effective.Config.Runtime.Remote.OAuth == nil {
 		t.Fatalf("expected remote oauth config to load")

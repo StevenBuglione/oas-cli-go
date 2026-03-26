@@ -26,8 +26,9 @@ type LocalRuntimeConfig struct {
 }
 
 type RemoteRuntimeConfig struct {
-	URL   string             `json:"url,omitempty"`
-	OAuth *RemoteOAuthConfig `json:"oauth,omitempty"`
+	URL               string             `json:"url,omitempty"`
+	RequestConfigPath string             `json:"requestConfigPath,omitempty"`
+	OAuth             *RemoteOAuthConfig `json:"oauth,omitempty"`
 }
 
 type RemoteOAuthConfig struct {

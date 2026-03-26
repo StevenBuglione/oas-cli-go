@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-COMPOSE_FILE="$REPO_ROOT/product-tests/authentik/docker-compose.yml"
+COMPOSE_FILE="$SCRIPT_DIR/docker-compose.yaml"
 BOOTSTRAP_SCRIPT="$SCRIPT_DIR/bootstrap.py"
 
 LOCAL_AUTH_DIR="${OPEN_CLI_LOCAL_AUTH_DIR:-$REPO_ROOT/.open-cli-local/authentik}"
@@ -11,20 +11,9 @@ RUNTIME_CONFIG_PATH="${OPEN_CLI_RUNTIME_CONFIG_PATH:-${OPEN_CLI_DAEMON_CONFIG_PA
 CONFIG_PATH="${OPEN_CLI_LOCAL_CONFIG_PATH:-$LOCAL_AUTH_DIR/client.cli.json}"
 BROWSER_CONFIG_PATH="${OPEN_CLI_BROWSER_CONFIG_PATH:-$LOCAL_AUTH_DIR/browser.cli.json}"
 ENV_PATH="${OPEN_CLI_LOCAL_ENV_PATH:-$LOCAL_AUTH_DIR/client.env}"
-DOCKER_ENV_PATH="${OPEN_CLI_DOCKER_ENV_PATH:-$LOCAL_AUTH_DIR/docker.env}"
+DOCKER_ENV_PATH="${OPEN_CLI_DOCKER_ENV_PATH:-$LOCAL_AUTH_DIR/compose.env}"
 AUTHENTIK_BASE_URL="${AUTHENTIK_BASE_URL:-http://127.0.0.1:9100}"
-DEFAULT_RUNTIME_AUTHENTIK_BASE_URL="$(python3 - <<'PY' "$AUTHENTIK_BASE_URL"
-from urllib.parse import urlparse, urlunparse
-import sys
-
-parsed = urlparse(sys.argv[1])
-hostname = parsed.hostname or ""
-if hostname in {"127.0.0.1", "localhost"}:
-    netloc = parsed.netloc.replace(hostname, "host.docker.internal", 1)
-    parsed = parsed._replace(netloc=netloc)
-print(urlunparse(parsed))
-PY
-)"
+DEFAULT_RUNTIME_AUTHENTIK_BASE_URL="${OPEN_CLI_RUNTIME_AUTHENTIK_BASE_URL_DEFAULT:-http://server:9000}"
 RUNTIME_AUTHENTIK_BASE_URL="${OPEN_CLI_RUNTIME_AUTHENTIK_BASE_URL:-${OPEN_CLI_DAEMON_AUTHENTIK_BASE_URL:-$DEFAULT_RUNTIME_AUTHENTIK_BASE_URL}}"
 RUNTIME_URL="${OPEN_CLI_RUNTIME_URL:-http://127.0.0.1:8765}"
 RUNTIME_AUDIENCE="${OPEN_CLI_RUNTIME_AUDIENCE:-open-cli-toolbox}"
@@ -32,6 +21,7 @@ RUNTIME_SERVICE_ID="${OPEN_CLI_RUNTIME_SERVICE_ID:-testapi}"
 RUNTIME_EXTRA_SERVICE_IDS="${OPEN_CLI_RUNTIME_EXTRA_SERVICE_IDS:-}"
 RUNTIME_EXTRA_SCOPES="${OPEN_CLI_RUNTIME_EXTRA_SCOPES:-}"
 OPENAPI_URI="${OPEN_CLI_OPENAPI_URI:-./product-tests/testdata/openapi/testapi.openapi.yaml}"
+RUNTIME_OPENAPI_SERVER_URL="${OPEN_CLI_RUNTIME_OPENAPI_SERVER_URL:-http://testapi:8080}"
 AUTHENTIK_CLIENT_SLUG="${OPEN_CLI_AUTHENTIK_CLIENT_SLUG:-open-cli-runtime-local}"
 AUTHENTIK_PROVIDER_NAME="${OPEN_CLI_AUTHENTIK_PROVIDER_NAME:-open-cli Runtime Local Provider}"
 AUTHENTIK_APPLICATION_NAME="${OPEN_CLI_AUTHENTIK_APPLICATION_NAME:-open-cli Runtime Local}"
@@ -166,7 +156,7 @@ bootstrap_provider_json() {
 }
 
 echo "==> Starting Authentik reference stack..."
-docker_cmd compose -f "$COMPOSE_FILE" up -d >/dev/null
+docker_cmd compose -f "$COMPOSE_FILE" up -d postgresql redis server worker >/dev/null
 
 echo "==> Waiting for Authentik worker..."
 worker_id="$(wait_for_worker)" || {
@@ -225,7 +215,7 @@ path.write_text(
 path.chmod(0o600)
 PY
 
-python3 - <<'PY' "$RUNTIME_CONFIG_PATH" "$issuer" "$jwks_url" "$token_url" "$browser_authorization_url" "$browser_client_id" "$RUNTIME_AUDIENCE" "$RUNTIME_URL" "$RUNTIME_BUNDLE_SCOPE" "$RUNTIME_SERVICE_ID" "$OPENAPI_URI" "$REPO_ROOT" "$RUNTIME_EXTRA_SERVICE_IDS" "$BOOTSTRAP_EXTRA_SCOPES" "$RUNTIME_AUTHENTIK_BASE_URL"
+python3 - <<'PY' "$RUNTIME_CONFIG_PATH" "$issuer" "$jwks_url" "$token_url" "$browser_authorization_url" "$browser_client_id" "$RUNTIME_AUDIENCE" "$RUNTIME_URL" "$RUNTIME_BUNDLE_SCOPE" "$RUNTIME_SERVICE_ID" "$OPENAPI_URI" "$REPO_ROOT" "$RUNTIME_EXTRA_SERVICE_IDS" "$BOOTSTRAP_EXTRA_SCOPES" "$RUNTIME_AUTHENTIK_BASE_URL" "$LOCAL_AUTH_DIR" "$RUNTIME_OPENAPI_SERVER_URL"
 import json
 import os
 import pathlib
@@ -247,20 +237,34 @@ repo_root = pathlib.Path(sys.argv[12]).resolve()
 extra_service_ids = [item for item in sys.argv[13].replace(",", " ").split() if item]
 extra_scopes = [item for item in sys.argv[14].split() if item]
 runtime_authentik_base_url = sys.argv[15]
+local_auth_dir = pathlib.Path(sys.argv[16]).resolve()
+runtime_openapi_server_url = sys.argv[17]
+mounted_runtime_root = pathlib.Path("/config")
+mounted_runtime_config_path = mounted_runtime_root / path.name
+
+try:
+    mounted_runtime_root = pathlib.Path("/workspace") / local_auth_dir.relative_to(repo_root)
+    mounted_runtime_config_path = mounted_runtime_root / path.name
+except ValueError:
+    pass
 
 def remap_authentik_url(url: str) -> str:
     parsed = urlparse(url)
     base = urlparse(runtime_authentik_base_url)
     return urlunparse(parsed._replace(scheme=base.scheme, netloc=base.netloc))
 
-def rendered_uri(config_path: pathlib.Path, uri: str) -> str:
+def rendered_uri(source_id: str, uri: str) -> str:
     if "://" in uri:
         return uri
     source_path = pathlib.Path(uri)
     if not source_path.is_absolute():
         source_path = repo_root / source_path
     source_path = source_path.resolve()
-    return f"/workspace/{source_path.relative_to(repo_root).as_posix()}"
+    rendered_path = local_auth_dir / f"{source_id}.openapi.yaml"
+    rendered_text = source_path.read_text(encoding="utf-8")
+    rendered_text = rendered_text.replace("http://localhost:8080", runtime_openapi_server_url)
+    rendered_path.write_text(rendered_text, encoding="utf-8")
+    return str(mounted_runtime_root / rendered_path.name)
 
 def unique(items):
     seen = set()
@@ -280,7 +284,7 @@ for current_service_id in service_ids:
     current_source_id = f"{current_service_id}Source"
     sources[current_source_id] = {
         "type": "openapi",
-        "uri": rendered_uri(path, openapi_uri),
+        "uri": rendered_uri(current_source_id, openapi_uri),
         "enabled": True,
     }
     services[current_service_id] = {
@@ -306,6 +310,7 @@ config = {
         },
         "remote": {
             "url": runtime_url,
+            "requestConfigPath": str(mounted_runtime_config_path),
             "oauth": {
                 "mode": "oauthClient",
                 "audience": runtime_audience,
@@ -324,7 +329,21 @@ config = {
 path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
 PY
 
-python3 - <<'PY' "$CONFIG_PATH" "$token_url" "$RUNTIME_AUDIENCE" "$RUNTIME_URL" "$RUNTIME_BUNDLE_SCOPE" "$BOOTSTRAP_EXTRA_SCOPES"
+MOUNTED_RUNTIME_CONFIG_PATH="$(python3 - <<'PY' "$REPO_ROOT" "$LOCAL_AUTH_DIR" "$RUNTIME_CONFIG_PATH"
+import pathlib
+import sys
+
+repo_root = pathlib.Path(sys.argv[1]).resolve()
+local_auth_dir = pathlib.Path(sys.argv[2]).resolve()
+runtime_config_path = pathlib.Path(sys.argv[3]).resolve()
+try:
+    print((pathlib.Path("/workspace") / runtime_config_path.relative_to(repo_root)).as_posix())
+except ValueError:
+    print((pathlib.Path("/config") / runtime_config_path.relative_to(local_auth_dir)).as_posix())
+PY
+)"
+
+python3 - <<'PY' "$CONFIG_PATH" "$token_url" "$RUNTIME_AUDIENCE" "$RUNTIME_URL" "$RUNTIME_BUNDLE_SCOPE" "$BOOTSTRAP_EXTRA_SCOPES" "$MOUNTED_RUNTIME_CONFIG_PATH"
 import json
 import pathlib
 import sys
@@ -335,6 +354,7 @@ runtime_audience = sys.argv[3]
 runtime_url = sys.argv[4]
 bundle_scope = sys.argv[5]
 extra_scopes = [item for item in sys.argv[6].split() if item]
+request_config_path = sys.argv[7]
 
 def unique(items):
     seen = set()
@@ -353,6 +373,7 @@ config = {
         "mode": "remote",
         "remote": {
             "url": runtime_url,
+            "requestConfigPath": request_config_path,
             "oauth": {
                 "mode": "oauthClient",
                 "audience": runtime_audience,
@@ -369,7 +390,7 @@ config = {
 path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
 PY
 
-python3 - <<'PY' "$BROWSER_CONFIG_PATH" "$RUNTIME_AUDIENCE" "$RUNTIME_URL" "$RUNTIME_BUNDLE_SCOPE" "$BROWSER_CALLBACK_PORT" "$BOOTSTRAP_EXTRA_SCOPES"
+python3 - <<'PY' "$BROWSER_CONFIG_PATH" "$RUNTIME_AUDIENCE" "$RUNTIME_URL" "$RUNTIME_BUNDLE_SCOPE" "$BROWSER_CALLBACK_PORT" "$BOOTSTRAP_EXTRA_SCOPES" "$MOUNTED_RUNTIME_CONFIG_PATH"
 import json
 import pathlib
 import sys
@@ -380,6 +401,7 @@ runtime_url = sys.argv[3]
 bundle_scope = sys.argv[4]
 callback_port = int(sys.argv[5])
 extra_scopes = [item for item in sys.argv[6].split() if item]
+request_config_path = sys.argv[7]
 
 def unique(items):
     seen = set()
@@ -398,6 +420,7 @@ config = {
         "mode": "remote",
         "remote": {
             "url": runtime_url,
+            "requestConfigPath": request_config_path,
             "oauth": {
                 "mode": "browserLogin",
                 "audience": runtime_audience,
@@ -412,23 +435,36 @@ config = {
 path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
 PY
 
-python3 - <<'PY' "$DOCKER_ENV_PATH" "$LOCAL_AUTH_DIR" "$RUNTIME_CONFIG_PATH"
+python3 - <<'PY' "$DOCKER_ENV_PATH" "$LOCAL_AUTH_DIR" "$RUNTIME_CONFIG_PATH" "$AUTHENTIK_BASE_URL" "$RUNTIME_URL" "$REPO_ROOT"
 import pathlib
-import shlex
 import sys
+from urllib.parse import urlparse
 
 path = pathlib.Path(sys.argv[1])
 mounted_config_dir = pathlib.Path(sys.argv[2]).resolve()
 runtime_config_path = pathlib.Path(sys.argv[3]).resolve()
+authentik_base_url = urlparse(sys.argv[4])
+runtime_url = urlparse(sys.argv[5])
+repo_root = pathlib.Path(sys.argv[6]).resolve()
 try:
     relative_config_path = runtime_config_path.relative_to(mounted_config_dir)
 except ValueError as exc:
     raise SystemExit(f"runtime config path must live under {mounted_config_dir}: {runtime_config_path}") from exc
+
+mounted_runtime_root = pathlib.Path("/config")
+try:
+    mounted_runtime_root = pathlib.Path("/workspace") / mounted_config_dir.relative_to(repo_root)
+except ValueError:
+    pass
+
+values = {
+    "OPEN_CLI_TOOLBOX_CONFIG_DIR": str(mounted_config_dir),
+    "OPEN_CLI_TOOLBOX_CONFIG_PATH": str(mounted_runtime_root / relative_config_path),
+    "OPEN_CLI_TOOLBOX_PORT": str(runtime_url.port or 8765),
+    "AUTHENTIK_PORT_HTTP": str(authentik_base_url.port or 9100),
+}
 path.write_text(
-    "export OPEN_CLI_TOOLBOX_CONFIG_DIR={}\nexport OPEN_CLI_TOOLBOX_CONFIG_PATH={}\n".format(
-        shlex.quote(str(mounted_config_dir)),
-        shlex.quote(f"/config/{relative_config_path.as_posix()}"),
-    ),
+    "".join(f"{key}={value}\n" for key, value in values.items()),
     encoding="utf-8",
 )
 path.chmod(0o600)
@@ -438,15 +474,14 @@ echo "==> Wrote hosted runtime config: $RUNTIME_CONFIG_PATH"
 echo "==> Wrote workload client config: $CONFIG_PATH"
 echo "==> Wrote browser client config: $BROWSER_CONFIG_PATH"
 echo "==> Wrote client credential exports: $ENV_PATH"
-echo "==> Wrote Docker runtime exports: $DOCKER_ENV_PATH"
+echo "==> Wrote Docker Compose env file: $DOCKER_ENV_PATH"
 echo
 echo "Next steps:"
 echo "  source \"$ENV_PATH\""
-echo "  go run ./cmd/open-cli-toolbox --addr 127.0.0.1:8765 --config \"$RUNTIME_CONFIG_PATH\""
-echo "  source \"$DOCKER_ENV_PATH\" && docker compose up -d open-cli-toolbox"
-echo "  source \"$ENV_PATH\" && go run ./cmd/open-cli --config \"$CONFIG_PATH\" catalog list --format pretty"
+echo "  ./examples/local-authentik/up.sh"
+echo "  source \"$ENV_PATH\" && open-cli --config \"$CONFIG_PATH\" catalog list --format pretty"
 echo "  # browser client config written to: \"$BROWSER_CONFIG_PATH\""
-echo "  # hosted browser login still needs a browser-matched runtime auth config"
+echo "  # browser client config is exercised against the same compose stack"
 echo
-echo "Optional execution fixture:"
-echo "  cd product-tests && make services-up"
+echo "Stop the stack with:"
+echo "  ./examples/local-authentik/down.sh"

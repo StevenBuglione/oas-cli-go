@@ -1,6 +1,6 @@
 # Local Authentik Reference Setup
 
-This workflow is the repo's local proof for the hosted `open-cli-toolbox` runtime contract. It reuses the validated Authentik stack under `product-tests/authentik/` to prove that local `open-cli` can talk to a separately hosted runtime with runtime-enforced auth, scope filtering, and audit behavior.
+This workflow is the repo's default local proof for the hosted `open-cli-toolbox` runtime contract. It uses one Docker Compose stack to run Authentik, `open-cli-toolbox`, and the default test API so local `open-cli` talks to a separately hosted runtime with runtime-enforced auth, scope filtering, and real execution behavior.
 
 Unlike the previous repo layout, this flow keeps helper scripts under `examples/local-authentik/` and writes all generated local artifacts under `.open-cli-local/authentik/` so the repository root stays clean.
 
@@ -12,7 +12,8 @@ Running `./examples/local-authentik/setup.sh` renders:
 - `.open-cli-local/authentik/client.cli.json` for workload-style `oauthClient` auth from local `open-cli`
 - `.open-cli-local/authentik/browser.cli.json` for operator `browserLogin` auth from local `open-cli`
 - `.open-cli-local/authentik/client.env` for the confidential client credentials used by the workload flow
-- `.open-cli-local/authentik/docker.env` for Docker Compose overrides
+- `.open-cli-local/authentik/compose.env` for Docker Compose overrides
+- rendered runtime OpenAPI files for the containerized default API service
 
 ## Quick start
 
@@ -20,16 +21,9 @@ From the repo root:
 
 ```bash
 ./examples/local-authentik/setup.sh
+./examples/local-authentik/up.sh
 source ./.open-cli-local/authentik/client.env
-source ./.open-cli-local/authentik/docker.env
-docker compose up -d open-cli-toolbox
-```
-
-In a second shell:
-
-```bash
-source ./.open-cli-local/authentik/client.env
-go run ./cmd/open-cli --config ./.open-cli-local/authentik/client.cli.json catalog list --format pretty
+open-cli --config ./.open-cli-local/authentik/client.cli.json catalog list --format pretty
 ```
 
 ## Defaults
@@ -39,6 +33,19 @@ go run ./cmd/open-cli --config ./.open-cli-local/authentik/client.cli.json catal
 - Runtime audience: `open-cli-toolbox`
 - Generated runtime scope: `bundle:testapi`
 - OpenAPI source: `./product-tests/testdata/openapi/testapi.openapi.yaml`
+- Runtime upstream service URL inside Compose: `http://testapi:8080`
+
+## When to use this flow
+
+Use this flow when you want the supported local deployment story:
+
+- Docker Compose-managed local infrastructure only
+- authenticated `open-cli` access to a hosted `open-cli-toolbox`
+- default test API execution through the runtime
+- `oauthClient`
+- `browserLogin`
+- real OIDC discovery and JWKS behavior
+- broker-issued runtime tokens rather than ad-hoc local shortcuts
 
 ## Useful overrides
 
@@ -70,14 +77,6 @@ Other supported overrides include:
 
 ## Cleanup
 
-Stop the Authentik reference stack:
-
 ```bash
-cd product-tests && make authentik-down
-```
-
-Stop the test API stack if you started it:
-
-```bash
-cd product-tests && make services-down
+./examples/local-authentik/down.sh
 ```

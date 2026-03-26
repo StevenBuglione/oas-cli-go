@@ -120,6 +120,32 @@ func TestResolveCommandOptionsUsesEnvRuntimeURLBeforeConfig(t *testing.T) {
 	}
 }
 
+func TestResolveCommandOptionsUsesRemoteRequestConfigPathOverride(t *testing.T) {
+	options := Options{ConfigPath: writeResolvedConfig(t, `{
+  "cli": "1.0.0",
+  "mode": {"default": "discover"},
+  "runtime": {"mode": "remote", "remote": {"url": "https://config.example.com", "requestConfigPath": "/runtime/configs/shared.cli.json"}},
+  "sources": {"demo": {"type": "openapi", "uri": "https://example.com/openapi.json", "enabled": true}}
+}`), RuntimeDeployment: "remote"}
+	got, err := ResolveCommandOptions(options, ResolveHooks{
+		LoadRuntimeConfig: func(Options) (*configpkg.RuntimeConfig, bool) {
+			return &configpkg.RuntimeConfig{
+				Mode: "remote",
+				Remote: &configpkg.RemoteRuntimeConfig{
+					URL:               "https://config.example.com",
+					RequestConfigPath: "/runtime/configs/shared.cli.json",
+				},
+			}, true
+		},
+	})
+	if err != nil {
+		t.Fatalf("ResolveCommandOptions returned error: %v", err)
+	}
+	if got.RuntimeRequestConfigPath != "/runtime/configs/shared.cli.json" {
+		t.Fatalf("expected request config path override, got %q", got.RuntimeRequestConfigPath)
+	}
+}
+
 func TestResolveCommandOptionsFailsFastOnMissingRuntimeConfig(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, ".cli.json")

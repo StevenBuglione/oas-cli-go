@@ -42,6 +42,7 @@ See [HTTP API](./http-api) for request and response examples.
 `open-cli` always talks to `open-cli-toolbox` over HTTP.
 
 - For development, you can host `open-cli-toolbox` on loopback (`127.0.0.1:8765`).
+- For localhost evaluation, prefer the repo's Docker Compose Authentik bootstrap so loopback still enforces bearer auth.
 - For shared deployments, host it on infrastructure you control and point `open-cli` at the runtime URL.
 - `runtime.mode` must be `remote`; embedded and local-daemon modes are no longer supported.
 
@@ -81,7 +82,10 @@ When `runtime.server.auth` is enabled on `open-cli-toolbox`, the runtime becomes
 - `GET /v1/auth/browser-config` exposes the browser-login metadata plus the same scope and envelope diagnostics that remote clients need before starting an interactive sign-in flow
 - when a request is already authenticated, the runtime handshake echoes the resolved principal for diagnostics and operator troubleshooting
 
-The reference brokered deployment verified in product tests is documented in [Authentik reference proof](./authentik-reference).
+Local secured runtime example:
+
+- [`examples/local-authentik/`](../../../examples/local-authentik/README.md) for the Docker Compose Authentik + toolbox flow
+- [Authentik reference proof](./authentik-reference) for the full broker-backed OAuth proof
 
 ## If you are trying to…
 

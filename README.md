@@ -126,14 +126,20 @@ For a complete walkthrough including a sample OpenAPI document, see the [quickst
 
 `open-cli-toolbox` is the default reference runtime/server implementation.
 
-You can host it anywhere you control. The example below uses localhost to illustrate the split, but it is still the same remote runtime contract that production deployments expose:
+You can host it anywhere you control. Even for localhost evaluation, treat it as a hosted security boundary and enable runtime auth instead of using an unauthenticated shortcut.
 
 ```bash
-open-cli-toolbox --config ./.cli.json --addr 127.0.0.1:8765
-
-# In another shell:
-open-cli --runtime http://127.0.0.1:8765 --config ./.cli.json catalog list --format pretty
+./examples/local-authentik/setup.sh
+./examples/local-authentik/up.sh
+source ./.open-cli-local/authentik/client.env
+open-cli --config ./.open-cli-local/authentik/client.cli.json catalog list --format pretty
 ```
+
+That local Docker Compose flow keeps localhost simple while still enforcing:
+
+- `runtime.server.auth.validationProfile: "oidc_jwks"` on `open-cli-toolbox`
+- Authentik-issued runtime tokens
+- workload-style `oauthClient` auth from `open-cli`
 
 **Config-driven selection** — avoid flags by declaring the remote runtime in `.cli.json`:
 
@@ -150,7 +156,7 @@ open-cli --runtime http://127.0.0.1:8765 --config ./.cli.json catalog list --for
 
 Manual config can still be restrictive, but runtime reachability and tool exposure are resolved from the hosted runtime plus the token scopes it accepts.
 
-For the repo's local Authentik + Docker reference proof, see [`examples/local-authentik/`](examples/local-authentik/README.md).
+The repo's authenticated local runtime flow lives in [`examples/local-authentik/`](examples/local-authentik/README.md).
 
 ---
 
