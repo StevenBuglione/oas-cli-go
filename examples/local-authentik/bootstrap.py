@@ -19,7 +19,7 @@ from authentik.providers.oauth2.models import (
 )
 
 
-runtime_audience = os.getenv("OCLI_RUNTIME_AUDIENCE", "oclird")
+runtime_audience = os.getenv("OCLI_RUNTIME_AUDIENCE", "open-cli-toolbox")
 service_id = os.getenv("OCLI_RUNTIME_SERVICE_ID", "testapi")
 provider_name = os.getenv("OCLI_AUTHENTIK_PROVIDER_NAME", "ocli Runtime Local Provider")
 application_name = os.getenv("OCLI_AUTHENTIK_APPLICATION_NAME", "ocli Runtime Local")

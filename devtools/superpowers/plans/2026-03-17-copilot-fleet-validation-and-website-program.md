@@ -6,7 +6,7 @@ This plan document is restored so earlier references in the repository resolve a
 
 For execution tracking and current closure status, use:
 
-- `docs/superpowers/plans/2026-03-17-fleet-validation-gap-closure.md`
+- `devtools/superpowers/plans/2026-03-17-fleet-validation-gap-closure.md`
 
 The gap-closure plan supersedes this file as the day-to-day execution tracker.
 

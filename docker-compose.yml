@@ -78,11 +78,11 @@ services:
 
   open-cli-toolbox:
     build: .
-    command: ["--addr", "0.0.0.0:8765", "--config", "${OPEN_CLI_TOOLBOX_CONFIG_PATH:-/config/.cli.json}"]
+    command: ["--addr", "0.0.0.0:8765", "--config", "${OPEN_CLI_TOOLBOX_CONFIG_PATH:-/config/runtime.cli.json}"]
     ports:
       - "${OPEN_CLI_TOOLBOX_PORT:-8765}:8765"
     volumes:
-      - ./config:/config
+      - ${OPEN_CLI_TOOLBOX_CONFIG_DIR:-./.open-cli-local/authentik}:/config
       - ./:/workspace:ro
       - open_cli_toolbox_state:/state
     extra_hosts:

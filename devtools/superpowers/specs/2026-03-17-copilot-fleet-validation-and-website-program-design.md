@@ -6,7 +6,7 @@ This design document is restored to preserve the original program reference path
 
 For execution tracking and closure status, use:
 
-- `docs/superpowers/plans/2026-03-17-fleet-validation-gap-closure.md`
+- `devtools/superpowers/plans/2026-03-17-fleet-validation-gap-closure.md`
 
 That gap-closure tracker is the operational source of truth for what was implemented, what remains, and what was verified.
 

@@ -14,14 +14,14 @@
 
 - Create: `spec/` (import of the current `oas-cli-spec` repository)
 - Create: `conformance/` (import of the current `oas-cli-conformance` repository)
-- Create: `docs/superpowers/plans/2026-03-14-monorepo-consolidation.md`
+- Create: `devtools/superpowers/plans/2026-03-14-monorepo-consolidation.md`
 - Modify: `Makefile`
 - Modify: `README.md`
 - Modify: `.github/workflows/ci.yml`
 - Modify: `website/docs/development/repo-layout.md`
 - Modify: `website/docs/development/testing.md`
 - Modify: `website/docs/configuration/config-schema.md`
-- Modify: `docs/superpowers/specs/2026-03-14-mcp-native-oauth-design.md`
+- Modify: `devtools/superpowers/specs/2026-03-14-mcp-native-oauth-design.md`
 - Modify: session plan file `~/.copilot/session-state/7a79c9cc-b5c5-4668-8979-f3899a2d9a01/plan.md`
 
 ## Chunk 1: Import the companion repositories as subprojects
@@ -237,14 +237,14 @@ Expected: `workflow-ok`
 - Modify: `website/docs/development/repo-layout.md`
 - Modify: `website/docs/development/testing.md`
 - Modify: `website/docs/configuration/config-schema.md`
-- Modify: `docs/superpowers/specs/2026-03-14-mcp-native-oauth-design.md`
+- Modify: `devtools/superpowers/specs/2026-03-14-mcp-native-oauth-design.md`
 
 - [ ] **Step 1: Write the failing documentation assertions**
 
 Run:
 
 ```bash
-rg -n "cross-repository|oas-cli-spec|oas-cli-conformance" README.md website/docs docs/superpowers/specs
+rg -n "cross-repository|oas-cli-spec|oas-cli-conformance" README.md website/docs devtools/superpowers/specs
 ```
 
 Expected: existing references to the old split-repo model are found.
@@ -263,7 +263,7 @@ Make these changes:
 
 - [ ] **Step 4: Update design/spec artifacts**
 
-Edit `docs/superpowers/specs/2026-03-14-mcp-native-oauth-design.md` so it refers to the in-repo `spec/` and `conformance/` subprojects rather than separate repositories.
+Edit `devtools/superpowers/specs/2026-03-14-mcp-native-oauth-design.md` so it refers to the in-repo `spec/` and `conformance/` subprojects rather than separate repositories.
 
 - [ ] **Step 5: Build the docs site**
 
@@ -313,7 +313,7 @@ Expected: only intended files are modified and both imported trees show preserve
 Run:
 
 ```bash
-git add Makefile README.md .github/workflows/ci.yml website/docs docs/superpowers/specs spec conformance
+git add Makefile README.md .github/workflows/ci.yml website/docs devtools/superpowers/specs spec conformance
 git -c commit.gpgsign=false commit -m "feat: consolidate spec and conformance into monorepo
 
 Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"

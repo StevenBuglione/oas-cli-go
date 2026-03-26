@@ -1,6 +1,6 @@
 # open-cli
 
-**`ocli`** and **`open-cli-toolbox`** turn OpenAPI descriptions and MCP servers into a remote-only, policy-aware command surface. Discovery, auth resolution, policy enforcement, token-scoped tool exposure, and audit logging happen inside the hosted runtime boundary — not spread across callers.
+**`ocli`** is the core `open-cli` product: a remote-only, policy-aware client for turning OpenAPI descriptions and MCP servers into governed command surfaces. **`open-cli-toolbox`** is the reference hosted runtime/server implementation that `ocli` talks to, but it is installed separately and can be replaced by other server implementations that honor the same contract.
 
 This is the Go reference implementation of the [Open CLI specification](spec/).
 
@@ -10,17 +10,30 @@ This is the Go reference implementation of the [Open CLI specification](spec/).
 
 ## Installation
 
-### npm (recommended)
+### npm (recommended for the client)
 
 ```bash
 npm install -g @sbuglione/open-cli
 ```
 
-This installs both `ocli` and `open-cli-toolbox` globally. The package automatically downloads the correct binaries for your platform (macOS, Linux, Windows — x64 and arm64).
+This installs **`ocli` only**. The package automatically downloads the correct pre-built client binary for your platform (macOS, Linux, Windows — x64 and arm64).
 
-### Download a release binary
+### Install `open-cli-toolbox` separately
 
-Pre-built binaries for every platform are attached to each [GitHub Release](https://github.com/StevenBuglione/open-cli/releases). Download the archive for your OS/architecture, extract it, and place the binaries on your `PATH`.
+`open-cli-toolbox` is intentionally **not** bundled in the npm package. Install it separately from the same [GitHub Releases](https://github.com/StevenBuglione/open-cli/releases) page or run it via Docker from this repo.
+
+```bash
+docker pull ghcr.io/stevenbuglione/open-cli-toolbox:latest
+```
+
+### Download release binaries
+
+Each GitHub Release publishes separate archives for the two products:
+
+- `ocli_<version>_<os>_<arch>.tar.gz|zip`
+- `open-cli-toolbox_<version>_<os>_<arch>.tar.gz|zip`
+
+Download only the product you need, extract it, and place the binary on your `PATH`.
 
 ### Build from source
 
@@ -33,16 +46,14 @@ go install github.com/StevenBuglione/open-cli/cmd/open-cli-toolbox@latest
 
 ---
 
-## Two binaries, one remote-only model
+## Two products, one remote-only model
 
-The project ships two binaries with a deliberate split:
+| Product | Role | Install surface |
+|--------|------|-----------------|
+| `ocli` | Operator-facing client. Renders the effective catalog, exposes dynamic commands derived from your OpenAPI or MCP sources, and forwards execution requests to the hosted runtime. | npm, release binary, or source build |
+| `open-cli-toolbox` | Reference hosted runtime/server. Loads config, performs discovery, normalizes catalogs, resolves auth, enforces policy, executes upstream HTTP requests, and records audit events. | Release binary, Docker, or source build |
 
-| Binary | Role |
-|--------|------|
-| `ocli` | Operator-facing CLI. Renders the effective catalog, exposes dynamic commands derived from your OpenAPI or MCP sources, and forwards execution requests to the hosted runtime. |
-| `open-cli-toolbox` | Runtime server. Loads config, performs discovery, normalizes catalogs, resolves auth, enforces policy, executes upstream HTTP requests, and records audit events. |
-
-`ocli` always needs a remote runtime. `open-cli-toolbox` is that standalone server boundary: operators host it, secure it, and point `ocli` at it with `--runtime` or `runtime.remote.url`.
+`ocli` always needs a remote runtime. `open-cli-toolbox` is the default reference server for that hosted boundary: operators host it, secure it, and point `ocli` at it with `--runtime` or `runtime.remote.url`.
 
 ---
 
@@ -56,7 +67,7 @@ This creates a `.cli.json` configuration from your OpenAPI spec.
 
 ### Manual configuration
 
-**Prerequisites:** Install via npm (`npm install -g @sbuglione/open-cli`) or [download a release binary](https://github.com/StevenBuglione/open-cli/releases).
+**Prerequisites:** install `ocli`, then ensure you have a reachable hosted runtime such as `open-cli-toolbox`.
 
 Create a minimal `.cli.json` pointing at an OpenAPI document:
 
@@ -113,7 +124,7 @@ For a complete walkthrough including a sample OpenAPI document, see the [quickst
 
 ## Runtime deployment
 
-`open-cli-toolbox` is the only supported runtime deployment target.
+`open-cli-toolbox` is the default reference runtime/server implementation.
 
 You can host it anywhere you control. The example below uses localhost to illustrate the split, but it is still the same remote runtime contract that production deployments expose:
 
@@ -139,6 +150,8 @@ ocli --runtime http://127.0.0.1:8765 --config ./.cli.json catalog list --format 
 
 Manual config can still be restrictive, but runtime reachability and tool exposure are resolved from the hosted runtime plus the token scopes it accepts.
 
+For the repo's local Authentik + Docker reference proof, see [`examples/local-authentik/`](examples/local-authentik/README.md).
+
 ---
 
 ## Auth, policy, and audit
@@ -160,6 +173,7 @@ Remote client auth modes — `providedToken` (forward a bearer token from an env
 **Reference proof** — the repository ships an Authentik-based reference proof for both `oauthClient` and `browserLogin` runtime auth paths:
 
 - Repo assets: `examples/runtime-auth-broker/authentik/`
+- Local hosted-runtime proof: `examples/local-authentik/`
 - Docs: [Authentik reference proof](https://open-cli.dev/docs/runtime/authentik-reference)
 - Microsoft Entra is documented as an upstream federation target in that same proof
 
@@ -182,14 +196,16 @@ Remote client auth modes — `providedToken` (forward a bearer token from an env
 ## Repository layout
 
 ```
-cmd/ocli              CLI entrypoint and runtime client
-cmd/open-cli-toolbox  Hosted runtime entrypoint
-internal/runtime  Runtime HTTP API and wiring
-pkg/              Config, discovery, catalog, policy, execution, caching, audit, observability
-spec/             Normative Open CLI specification and JSON schemas (single source of truth)
-conformance/      Language-neutral conformance fixtures and expected outputs
-website/          Docusaurus site content, navigation, and landing page
-.github/          CI and Pages automation
+cmd/ocli                 CLI entrypoint and runtime client
+cmd/open-cli-toolbox     Reference hosted runtime entrypoint
+internal/runtime         Runtime HTTP API and wiring
+pkg/                     Shared config, discovery, catalog, policy, execution, audit, and observability code
+examples/                Reference deployments, broker examples, and local operator workflows
+spec/                    Normative Open CLI specification and JSON schemas
+conformance/             Language-neutral conformance fixtures and expected outputs
+product-tests/           End-to-end product validation lanes and fixtures
+website/                 Docusaurus site content, navigation, and landing page
+.github/                 CI, release, and Pages automation
 ```
 
 ---
@@ -217,7 +233,3 @@ make product-test-full   # current full-lane placeholder: smoke + service bring-
 ```bash
 cd website && npm ci && npm run build
 ```
-
-See [`product-tests/README.md`](product-tests/README.md) for the full list of product test targets.
-
-If you change behavior, update the owning Go package tests and the relevant docs page in the same commit.

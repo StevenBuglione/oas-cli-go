@@ -699,7 +699,7 @@ func TestLoadEffectiveLoadsRemoteRuntimeOAuthConfiguration(t *testing.T) {
 	      "url": "https://runtime.example.com",
 	      "oauth": {
 	        "mode": "browserLogin",
-	        "audience": "oclird",
+	        "audience": "open-cli-toolbox",
 	        "scopes": ["bundle:payments", "tool:users.get"],
 	        "browserLogin": {
 	          "callbackPort": 8123
@@ -752,7 +752,7 @@ func TestLoadEffectiveLoadsRemoteRuntimeOIDCJWKSConfiguration(t *testing.T) {
 	    "server": {
 	      "auth": {
 	        "validationProfile": "oidc_jwks",
-	        "audience": "oclird",
+	        "audience": "open-cli-toolbox",
 	        "issuer": "https://broker.example.com",
 	        "jwksURL": "https://broker.example.com/.well-known/jwks.json"
 	      }
@@ -782,7 +782,7 @@ func TestLoadEffectiveLoadsRemoteRuntimeOIDCJWKSConfiguration(t *testing.T) {
 
 	auth := *effective.Config.Runtime.Server.Auth
 	requireStringField(t, auth, "ValidationProfile", "oidc_jwks")
-	requireStringField(t, auth, "Audience", "oclird")
+	requireStringField(t, auth, "Audience", "open-cli-toolbox")
 	requireStringField(t, auth, "Issuer", "https://broker.example.com")
 	requireStringField(t, auth, "JWKSURL", "https://broker.example.com/.well-known/jwks.json")
 }
@@ -837,7 +837,7 @@ func TestLoadEffectiveHigherPrecedenceLegacyRuntimeAuthModeOverridesLowerValidat
 	    "server": {
 	      "auth": {
 	        "mode": "oauth2Introspection",
-	        "audience": "oclird",
+	        "audience": "open-cli-toolbox",
 	        "introspectionURL": "https://auth.example.com/oauth/introspect"
 	      }
 	    }
@@ -873,8 +873,8 @@ func TestLoadEffectiveHigherPrecedenceLegacyRuntimeAuthModeOverridesLowerValidat
 		t.Fatalf("expected legacy auth mode oauth2Introspection, got %q", auth.Mode)
 	}
 	requireStringField(t, auth, "ValidationProfile", "oauth2_introspection")
-	if auth.Audience != "oclird" {
-		t.Fatalf("expected audience oclird, got %q", auth.Audience)
+	if auth.Audience != "open-cli-toolbox" {
+		t.Fatalf("expected audience open-cli-toolbox, got %q", auth.Audience)
 	}
 	if auth.IntrospectionURL != "https://auth.example.com/oauth/introspect" {
 		t.Fatalf("expected introspection URL to be preserved, got %q", auth.IntrospectionURL)
@@ -888,7 +888,7 @@ func TestLoadEffectiveHigherPrecedenceValidationProfileDoesNotOverrideLegacyRunt
 	    "server": {
 	      "auth": {
 	        "mode": "oauth2Introspection",
-	        "audience": "oclird",
+	        "audience": "open-cli-toolbox",
 	        "introspectionURL": "https://auth.example.com/oauth/introspect"
 	      }
 	    }
@@ -936,8 +936,8 @@ func TestLoadEffectiveHigherPrecedenceValidationProfileDoesNotOverrideLegacyRunt
 		t.Fatalf("expected legacy auth mode oauth2Introspection, got %q", auth.Mode)
 	}
 	requireStringField(t, auth, "ValidationProfile", "oauth2_introspection")
-	if auth.Audience != "oclird" {
-		t.Fatalf("expected audience oclird, got %q", auth.Audience)
+	if auth.Audience != "open-cli-toolbox" {
+		t.Fatalf("expected audience open-cli-toolbox, got %q", auth.Audience)
 	}
 	if auth.IntrospectionURL != "https://auth.example.com/oauth/introspect" {
 		t.Fatalf("expected introspection URL to be preserved, got %q", auth.IntrospectionURL)
@@ -954,7 +954,7 @@ func TestLoadEffectivePreservesRemoteRuntimeOAuth2IntrospectionConfiguration(t *
 	    "server": {
 	      "auth": {
 	        "mode": "oauth2Introspection",
-	        "audience": "oclird",
+	        "audience": "open-cli-toolbox",
 	        "introspectionURL": "https://auth.example.com/oauth/introspect",
 	        "authorizationURL": "https://auth.example.com/oauth/authorize",
 	        "tokenURL": "https://auth.example.com/oauth/token",
@@ -991,8 +991,8 @@ func TestLoadEffectivePreservesRemoteRuntimeOAuth2IntrospectionConfiguration(t *
 		t.Fatalf("expected legacy auth mode oauth2Introspection, got %q", auth.Mode)
 	}
 	requireStringField(t, auth, "ValidationProfile", "oauth2_introspection")
-	if auth.Audience != "oclird" {
-		t.Fatalf("expected audience oclird, got %q", auth.Audience)
+	if auth.Audience != "open-cli-toolbox" {
+		t.Fatalf("expected audience open-cli-toolbox, got %q", auth.Audience)
 	}
 	if auth.IntrospectionURL != "https://auth.example.com/oauth/introspect" {
 		t.Fatalf("expected introspection URL to be preserved, got %q", auth.IntrospectionURL)

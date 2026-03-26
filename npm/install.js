@@ -9,7 +9,7 @@ const https = require("https");
 const { execSync, execFileSync } = require("child_process");
 
 const REPO = "StevenBuglione/open-cli";
-const BINARIES = ["ocli", "open-cli-toolbox"];
+const BINARIES = ["ocli"];
 const MAX_RETRIES = 3;
 const DEFAULT_TIMEOUT_S = 30;
 
@@ -59,9 +59,9 @@ function getPlatformArch() {
   return { platform, arch };
 }
 
-function getArchiveName(version, platform, arch) {
+function getArchiveName(binary, version, platform, arch) {
   const ext = platform === "windows" ? "zip" : "tar.gz";
-  return `open-cli_${version}_${platform}_${arch}.${ext}`;
+  return `${binary}_${version}_${platform}_${arch}.${ext}`;
 }
 
 function getDownloadUrl(version, archiveName) {
@@ -174,7 +174,7 @@ function verifyVersion(binDir, ext, platform, arch) {
     const out = execFileSync(path.join(binDir, "ocli" + ext), ["--version"], {
       timeout: 5000,
     }).toString().trim();
-    console.log(`open-cli: ✓ installed ocli and open-cli-toolbox (${out}, ${platform}-${arch})`);
+    console.log(`open-cli: ✓ installed ocli (${out}, ${platform}-${arch})`);
   } catch {
     console.error("open-cli: ⚠ binaries downloaded but --version check failed");
   }
@@ -183,7 +183,7 @@ function verifyVersion(binDir, ext, platform, arch) {
 async function main() {
   const version = getVersion();
   const { platform, arch } = getPlatformArch();
-  const archiveName = getArchiveName(version, platform, arch);
+  const archiveName = getArchiveName("ocli", version, platform, arch);
   const url = getDownloadUrl(version, archiveName);
   const binDir = path.join(__dirname, "bin");
   const ext = platform === "windows" ? ".exe" : "";
@@ -204,6 +204,7 @@ async function main() {
     await extractArchive(buffer, platform, binDir);
     validateBinaries(binDir, ext);
     verifyVersion(binDir, ext, platform, arch);
+    console.log("open-cli: install open-cli-toolbox separately from GitHub Releases or Docker if you need the reference runtime server");
     console.log("open-cli: run `ocli --help` to get started");
   } catch (err) {
     cleanup();

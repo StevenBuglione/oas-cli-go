@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.25.1, Cobra CLI, Node.js 16+, go:embed, npm postinstall
 
-**Spec:** `docs/superpowers/specs/2025-07-18-ux-overhaul-design.md`
+**Spec:** `devtools/superpowers/specs/2025-07-18-ux-overhaul-design.md`
 
 ---
 

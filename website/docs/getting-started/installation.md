@@ -4,34 +4,41 @@ title: Installation
 
 # Installation
 
-`open-cli` ships two binaries — `ocli` (the client) and `open-cli-toolbox` (the hosted runtime). The supported model is remote-only: `ocli` always talks to a reachable runtime.
+`open-cli` is a two-product repository: `ocli` is the client, and `open-cli-toolbox` is the reference hosted runtime. The supported model is remote-only: `ocli` always talks to a reachable runtime.
 
-## npm (Recommended)
+## npm (Recommended for the client)
 
 ```bash
 npm install -g @sbuglione/open-cli
 ```
 
-The package automatically downloads the correct pre-built binaries for your platform during `postinstall`. After installation, both `ocli` and `open-cli-toolbox` are available on your `PATH`.
+The npm package installs **`ocli` only**. During `postinstall`, it downloads the correct pre-built client binary for your platform.
+
+If you also want the reference hosted runtime, install `open-cli-toolbox` separately from the same GitHub Releases page or via Docker from this repo.
 
 ## Binary Download
 
-Pre-built binaries for every supported platform are attached to each [GitHub Release](https://github.com/StevenBuglione/open-cli/releases).
+Pre-built binaries for every supported platform are attached to each [GitHub Release](https://github.com/StevenBuglione/open-cli/releases). The release publishes separate archives for each product:
 
-1. Download the archive for your OS and architecture.
-2. Extract it (`tar xzf` on macOS/Linux, or unzip on Windows).
-3. Move `ocli` and `open-cli-toolbox` to a directory on your `PATH`.
+- `ocli_<version>_<os>_<arch>.tar.gz|zip`
+- `open-cli-toolbox_<version>_<os>_<arch>.tar.gz|zip`
+
+Install only the binary you need.
 
 **macOS / Linux:**
 
 ```bash
-tar xzf open-cli_<os>_<arch>.tar.gz
-sudo mv ocli open-cli-toolbox /usr/local/bin/
+tar xzf ocli_<version>_<os>_<arch>.tar.gz
+sudo mv ocli /usr/local/bin/
+
+# Optional: install the reference runtime separately
+tar xzf open-cli-toolbox_<version>_<os>_<arch>.tar.gz
+sudo mv open-cli-toolbox /usr/local/bin/
 ```
 
 **Windows:**
 
-Extract the `.zip` archive and add the folder containing `ocli.exe` and `open-cli-toolbox.exe` to your system `PATH`.
+Extract the `.zip` archive for the product you want and add the folder containing `ocli.exe` and/or `open-cli-toolbox.exe` to your system `PATH`.
 
 ## From Source
 
@@ -57,6 +64,11 @@ go build -o ./bin/open-cli-toolbox ./cmd/open-cli-toolbox
 
 ```bash
 ocli --version
+```
+
+If you also installed the reference runtime:
+
+```bash
 open-cli-toolbox --help
 ```
 
@@ -74,5 +86,6 @@ If those commands work, continue to [Quickstart](./quickstart).
 
 - **`npm install` fails behind a proxy** — set `HTTPS_PROXY` before installing. The postinstall script follows standard proxy environment variables.
 - **Permission denied on global install** — use `sudo npm install -g @sbuglione/open-cli` or configure npm to use a user-writable prefix (`npm config set prefix ~/.npm-global`).
-- **Binary not found after install** — ensure your npm global `bin` directory is on your `PATH` (`npm bin -g`).
+- **Client binary not found after install** — ensure your npm global `bin` directory is on your `PATH` (`npm bin -g`).
+- **Toolbox missing after npm install** — expected behavior; install `open-cli-toolbox` separately from GitHub Releases or Docker.
 - **Go build fails** — verify your Go version with `go version`; the minimum required is Go 1.25.1.

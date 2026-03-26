@@ -846,4 +846,4 @@ git commit -m "test: verify auth alternative resolution end to end"
 
 ## Execution Handoff
 
-Plan complete and saved to `docs/superpowers/plans/2026-03-15-auth-alternative-resolution.md`. Ready to execute?
+Plan complete and saved to `devtools/superpowers/plans/2026-03-15-auth-alternative-resolution.md`. Ready to execute?

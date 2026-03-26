@@ -703,8 +703,8 @@ git commit -m "test: add executable website review campaign"
 
 **Files:**
 - Modify or create whichever is appropriate:
-  - `docs/superpowers/specs/2026-03-17-copilot-fleet-validation-and-website-program-design.md`
-  - `docs/superpowers/plans/2026-03-17-copilot-fleet-validation-and-website-program.md`
+  - `devtools/superpowers/specs/2026-03-17-copilot-fleet-validation-and-website-program-design.md`
+  - `devtools/superpowers/plans/2026-03-17-copilot-fleet-validation-and-website-program.md`
   - or keep this file as the official source of truth and note that explicitly
 
 - [x] **Step 1: Decide whether to restore the original files**
@@ -716,7 +716,7 @@ Status: the original master program spec and plan paths were restored so reposit
 - [x] **Step 2: Commit if needed**
 
 ```bash
-git add docs/superpowers/specs/... docs/superpowers/plans/...
+git add devtools/superpowers/specs/... devtools/superpowers/plans/...
 git commit -m "docs: restore fleet planning artifacts"
 ```
 
@@ -844,4 +844,4 @@ This gap-closure document can stop being the active tracker only when:
 - the branch is merged to `main`
 - the merged `main` branch is verified
 
-Plan complete and saved to `docs/superpowers/plans/2026-03-17-fleet-validation-gap-closure.md`. Ready to execute?
+Plan complete and saved to `devtools/superpowers/plans/2026-03-17-fleet-validation-gap-closure.md`. Ready to execute?

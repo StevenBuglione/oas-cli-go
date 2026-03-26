@@ -6,10 +6,10 @@
 .browser-login/
 .kiro/
 .vscode/
-/config/.cli.authentik.local.json
 /bin/
 dist/
 .cache/
 coverage.out
 __pycache__/
 *.pyc
+.open-cli-local/

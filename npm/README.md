@@ -1,6 +1,6 @@
 # @sbuglione/open-cli
 
-> Remote-only API and MCP command tooling with an operator-hosted open-cli-toolbox runtime server.
+> Remote-only API and MCP command tooling with a separately installed hosted runtime.
 
 ## What is open-cli?
 
@@ -22,12 +22,14 @@ npm install -g @sbuglione/open-cli
 
 ### What happens during install
 
-The `postinstall` script automatically downloads the correct pre-built `ocli` and `open-cli-toolbox` binaries for your platform from [GitHub Releases](https://github.com/StevenBuglione/open-cli/releases). No compiler or Go toolchain is needed.
+The `postinstall` script automatically downloads the correct pre-built **`ocli`** binary for your platform from [GitHub Releases](https://github.com/StevenBuglione/open-cli/releases). No compiler or Go toolchain is needed.
+
+`open-cli-toolbox` is **not** bundled in the npm package. Install it separately from the same GitHub Releases page or build/run it via the repo's Docker flow if you need the reference hosted runtime.
 
 ## Quick Start
 
 ```bash
-# 1. Install globally
+# 1. Install the client
 npm install -g @sbuglione/open-cli
 
 # 2. Point ocli at your hosted runtime

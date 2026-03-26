@@ -2,15 +2,16 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 COMPOSE_FILE="$REPO_ROOT/product-tests/authentik/docker-compose.yml"
-BOOTSTRAP_SCRIPT="$SCRIPT_DIR/bootstrap-authentik.py"
+BOOTSTRAP_SCRIPT="$SCRIPT_DIR/bootstrap.py"
 
-RUNTIME_CONFIG_PATH="${OCLI_RUNTIME_CONFIG_PATH:-${OCLI_DAEMON_CONFIG_PATH:-$REPO_ROOT/config/.cli.authentik.local.json}}"
-CONFIG_PATH="${OCLI_LOCAL_CONFIG_PATH:-$REPO_ROOT/.cli.local.json}"
-BROWSER_CONFIG_PATH="${OCLI_BROWSER_CONFIG_PATH:-$REPO_ROOT/.browser-login/.cli.json}"
-ENV_PATH="${OCLI_LOCAL_ENV_PATH:-$REPO_ROOT/.authentik.local.env}"
-DOCKER_ENV_PATH="${OCLI_DOCKER_ENV_PATH:-$REPO_ROOT/.authentik.docker.env}"
+LOCAL_AUTH_DIR="${OCLI_LOCAL_AUTH_DIR:-$REPO_ROOT/.open-cli-local/authentik}"
+RUNTIME_CONFIG_PATH="${OCLI_RUNTIME_CONFIG_PATH:-${OCLI_DAEMON_CONFIG_PATH:-$LOCAL_AUTH_DIR/runtime.cli.json}}"
+CONFIG_PATH="${OCLI_LOCAL_CONFIG_PATH:-$LOCAL_AUTH_DIR/client.cli.json}"
+BROWSER_CONFIG_PATH="${OCLI_BROWSER_CONFIG_PATH:-$LOCAL_AUTH_DIR/browser.cli.json}"
+ENV_PATH="${OCLI_LOCAL_ENV_PATH:-$LOCAL_AUTH_DIR/client.env}"
+DOCKER_ENV_PATH="${OCLI_DOCKER_ENV_PATH:-$LOCAL_AUTH_DIR/docker.env}"
 AUTHENTIK_BASE_URL="${AUTHENTIK_BASE_URL:-http://127.0.0.1:9100}"
 DEFAULT_RUNTIME_AUTHENTIK_BASE_URL="$(python3 - <<'PY' "$AUTHENTIK_BASE_URL"
 from urllib.parse import urlparse, urlunparse
@@ -204,7 +205,7 @@ browser_jwks_url="$(printf '%s' "$browser_discovery_json" | json_field jwks_uri)
 browser_token_url="$(printf '%s' "$browser_discovery_json" | json_field token_endpoint)"
 browser_authorization_url="$(printf '%s' "$browser_discovery_json" | json_field authorization_endpoint)"
 
-mkdir -p "$(dirname "$RUNTIME_CONFIG_PATH")" "$(dirname "$CONFIG_PATH")" "$(dirname "$BROWSER_CONFIG_PATH")" "$(dirname "$ENV_PATH")" "$(dirname "$DOCKER_ENV_PATH")"
+mkdir -p "$LOCAL_AUTH_DIR" "$(dirname "$RUNTIME_CONFIG_PATH")" "$(dirname "$CONFIG_PATH")" "$(dirname "$BROWSER_CONFIG_PATH")" "$(dirname "$ENV_PATH")" "$(dirname "$DOCKER_ENV_PATH")"
 
 python3 - <<'PY' "$ENV_PATH" "$client_id" "$client_secret"
 import pathlib
@@ -411,20 +412,23 @@ config = {
 path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
 PY
 
-python3 - <<'PY' "$DOCKER_ENV_PATH" "$RUNTIME_CONFIG_PATH" "$REPO_ROOT/config"
+python3 - <<'PY' "$DOCKER_ENV_PATH" "$LOCAL_AUTH_DIR" "$RUNTIME_CONFIG_PATH"
 import pathlib
 import shlex
 import sys
 
 path = pathlib.Path(sys.argv[1])
-runtime_config_path = pathlib.Path(sys.argv[2]).resolve()
-mounted_config_dir = pathlib.Path(sys.argv[3]).resolve()
+mounted_config_dir = pathlib.Path(sys.argv[2]).resolve()
+runtime_config_path = pathlib.Path(sys.argv[3]).resolve()
 try:
     relative_config_path = runtime_config_path.relative_to(mounted_config_dir)
 except ValueError as exc:
     raise SystemExit(f"runtime config path must live under {mounted_config_dir}: {runtime_config_path}") from exc
 path.write_text(
-    "export OPEN_CLI_TOOLBOX_CONFIG_PATH={}\n".format(shlex.quote(f"/config/{relative_config_path.as_posix()}")),
+    "export OPEN_CLI_TOOLBOX_CONFIG_DIR={}\nexport OPEN_CLI_TOOLBOX_CONFIG_PATH={}\n".format(
+        shlex.quote(str(mounted_config_dir)),
+        shlex.quote(f"/config/{relative_config_path.as_posix()}"),
+    ),
     encoding="utf-8",
 )
 path.chmod(0o600)

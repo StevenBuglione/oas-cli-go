@@ -6,7 +6,7 @@
 
 **Architecture:** Introduce a contract-level spec that standardizes runtime token semantics, runtime auth metadata, and validation-profile behavior without forcing one daemon implementation. Anchor it to the existing remote-runtime authz model, then define one reference brokered example that federates third-party IdPs while still issuing runtime-compatible tokens.
 
-**Tech Stack:** Markdown specs under `docs/superpowers/specs`, planning docs under `docs/superpowers/plans`, existing runtime/auth documentation for alignment
+**Tech Stack:** Markdown specs under `devtools/superpowers/specs`, planning docs under `devtools/superpowers/plans`, existing runtime/auth documentation for alignment
 
 ---
 
@@ -15,9 +15,9 @@
 ### Task 1: Finalize the brokered auth contract spec
 
 **Files:**
-- Modify: `docs/superpowers/specs/2026-03-15-brokered-runtime-auth-contract-design.md`
-- Reference: `docs/superpowers/specs/2026-03-15-remote-runtime-authz-policy-design.md`
-- Reference: `docs/superpowers/specs/2026-03-15-runtime-deployment-authz-design.md`
+- Modify: `devtools/superpowers/specs/2026-03-15-brokered-runtime-auth-contract-design.md`
+- Reference: `devtools/superpowers/specs/2026-03-15-remote-runtime-authz-policy-design.md`
+- Reference: `devtools/superpowers/specs/2026-03-15-runtime-deployment-authz-design.md`
 
 - [ ] **Step 1: Reconcile the existing draft with the problem statement**
 
@@ -163,12 +163,12 @@ Write the testing section with these required verification targets:
 
 - [ ] **Step 13: Review the finalized spec chunk**
 
-Run a plan/spec review against `docs/superpowers/specs/2026-03-15-brokered-runtime-auth-contract-design.md` and confirm the contract is complete before committing it.
+Run a plan/spec review against `devtools/superpowers/specs/2026-03-15-brokered-runtime-auth-contract-design.md` and confirm the contract is complete before committing it.
 
 - [ ] **Step 14: Commit the spec**
 
 ```bash
-git add docs/superpowers/specs/2026-03-15-brokered-runtime-auth-contract-design.md
+git add devtools/superpowers/specs/2026-03-15-brokered-runtime-auth-contract-design.md
 git commit -m "docs: define brokered runtime auth contract"
 ```
 

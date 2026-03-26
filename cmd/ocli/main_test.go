@@ -1214,7 +1214,7 @@ func TestResolveCommandOptionsUsesConfiguredRemoteRuntimeURL(t *testing.T) {
 	      "url": "https://runtime.example.com",
 	      "oauth": {
 	        "mode": "providedToken",
-	        "audience": "oclird",
+	        "audience": "open-cli-toolbox",
 	        "scopes": ["bundle:payments"],
 	        "tokenRef": "env:OAS_REMOTE_TOKEN"
 	      }
@@ -1261,7 +1261,7 @@ func TestRootCommandUsesProvidedRemoteRuntimeBearerToken(t *testing.T) {
 	      "url": "https://runtime.example.com",
 	      "oauth": {
 	        "mode": "providedToken",
-	        "audience": "oclird",
+	        "audience": "open-cli-toolbox",
 	        "scopes": ["bundle:payments"],
 	        "tokenRef": "env:OAS_REMOTE_TOKEN"
 	      }
@@ -1341,8 +1341,8 @@ func TestRootCommandUsesOAuthClientRemoteRuntimeBearerToken(t *testing.T) {
 		if got := r.PostForm.Get("client_secret"); got != "runtime-secret" {
 			t.Fatalf("expected oauth client secret, got %q", got)
 		}
-		if got := r.PostForm.Get("audience"); got != "oclird" {
-			t.Fatalf("expected audience oclird, got %q", got)
+		if got := r.PostForm.Get("audience"); got != "open-cli-toolbox" {
+			t.Fatalf("expected audience open-cli-toolbox, got %q", got)
 		}
 		if got := r.PostForm.Get("scope"); got != "bundle:payments" {
 			t.Fatalf("expected scope bundle:payments, got %q", got)
@@ -1370,7 +1370,7 @@ func TestRootCommandUsesOAuthClientRemoteRuntimeBearerToken(t *testing.T) {
 				"capabilities":    []string{"catalog", "brokered-auth"},
 				"auth": map[string]any{
 					"required":                true,
-					"audience":                "oclird",
+					"audience":                "open-cli-toolbox",
 					"scopePrefixes":           []string{"bundle:", "profile:", "tool:"},
 					"tokenValidationProfiles": []string{"oidc_jwks"},
 				},
@@ -1487,7 +1487,7 @@ func TestRootCommandUsesDelegatedOAuthClientRemoteRuntimeBearerToken(t *testing.
 				"capabilities":    []string{"catalog", "brokered-auth"},
 				"auth": map[string]any{
 					"required":                true,
-					"audience":                "oclird",
+					"audience":                "open-cli-toolbox",
 					"scopePrefixes":           []string{"bundle:", "profile:", "tool:"},
 					"tokenValidationProfiles": []string{"oidc_jwks"},
 				},
@@ -1627,7 +1627,7 @@ func TestHTTPRuntimeClientRefreshesExpiredOAuthClientTokenOnce(t *testing.T) {
 				"capabilities":    []string{"catalog", "brokered-auth"},
 				"auth": map[string]any{
 					"required":                true,
-					"audience":                "oclird",
+					"audience":                "open-cli-toolbox",
 					"scopePrefixes":           []string{"bundle:", "profile:", "tool:"},
 					"tokenValidationProfiles": []string{"oidc_jwks"},
 				},
@@ -1668,7 +1668,7 @@ func TestHTTPRuntimeClientRefreshesExpiredOAuthClientTokenOnce(t *testing.T) {
 	      "url": %q,
 	      "oauth": {
 	        "mode": "oauthClient",
-	        "audience": "oclird",
+	        "audience": "open-cli-toolbox",
 	        "scopes": ["bundle:payments"],
 	        "client": {
 	          "tokenURL": %q,
@@ -1761,7 +1761,7 @@ func TestHTTPRuntimeClientRefreshesAfterAuthnFailedOnNextRequest(t *testing.T) {
 				"capabilities":    []string{"catalog", "brokered-auth"},
 				"auth": map[string]any{
 					"required":                true,
-					"audience":                "oclird",
+					"audience":                "open-cli-toolbox",
 					"scopePrefixes":           []string{"bundle:", "profile:", "tool:"},
 					"tokenValidationProfiles": []string{"oidc_jwks"},
 				},
@@ -1803,7 +1803,7 @@ func TestHTTPRuntimeClientRefreshesAfterAuthnFailedOnNextRequest(t *testing.T) {
 	      "url": %q,
 	      "oauth": {
 	        "mode": "oauthClient",
-	        "audience": "oclird",
+	        "audience": "open-cli-toolbox",
 	        "scopes": ["bundle:payments"],
 	        "client": {
 	          "tokenURL": %q,
@@ -1869,8 +1869,8 @@ func TestRootCommandUsesRemoteBrowserLoginBearerToken(t *testing.T) {
 		if request.Metadata.ClientID != "browser-client" {
 			t.Fatalf("expected browser client id from runtime metadata, got %q", request.Metadata.ClientID)
 		}
-		if request.Audience != "oclird" {
-			t.Fatalf("expected runtime audience oclird, got %q", request.Audience)
+		if request.Audience != "open-cli-toolbox" {
+			t.Fatalf("expected runtime audience open-cli-toolbox, got %q", request.Audience)
 		}
 		if len(request.Scopes) != 1 || request.Scopes[0] != "bundle:payments" {
 			t.Fatalf("expected runtime scopes from config, got %#v", request.Scopes)
@@ -1898,7 +1898,7 @@ func TestRootCommandUsesRemoteBrowserLoginBearerToken(t *testing.T) {
 				"capabilities":    []string{"catalog", "brokered-auth", "authorization-envelope"},
 				"auth": map[string]any{
 					"required":                true,
-					"audience":                "oclird",
+					"audience":                "open-cli-toolbox",
 					"scopePrefixes":           []string{"bundle:", "profile:", "tool:"},
 					"tokenValidationProfiles": []string{"oidc_jwks"},
 					"browserLogin": map[string]any{
@@ -1915,7 +1915,7 @@ func TestRootCommandUsesRemoteBrowserLoginBearerToken(t *testing.T) {
 				"authorizationURL": "https://auth.example.com/authorize",
 				"tokenURL":         "https://auth.example.com/token",
 				"clientId":         "browser-client",
-				"audience":         "oclird",
+				"audience":         "open-cli-toolbox",
 			})
 		case "/v1/auth/browser-config":
 			t.Fatalf("expected browser login metadata endpoint from runtime info, not default path")
@@ -1993,7 +1993,7 @@ func TestRootCommandFailsClosedOnInvalidRuntimeBrowserLoginMetadata(t *testing.T
 				"capabilities":    []string{"catalog", "brokered-auth", "authorization-envelope"},
 				"auth": map[string]any{
 					"required":                true,
-					"audience":                "oclird",
+					"audience":                "open-cli-toolbox",
 					"scopePrefixes":           []string{"bundle:", "profile:", "tool:"},
 					"tokenValidationProfiles": []string{"oidc_jwks"},
 					"browserLogin": map[string]any{
@@ -2105,8 +2105,8 @@ func TestRootCommandCompletesRemoteBrowserLoginAuthorizationCodeFlow(t *testing.
 			if got := query.Get("scope"); got != "bundle:payments" {
 				t.Fatalf("expected scope bundle:payments, got %q", got)
 			}
-			if got := query.Get("audience"); got != "oclird" {
-				t.Fatalf("expected audience oclird, got %q", got)
+			if got := query.Get("audience"); got != "open-cli-toolbox" {
+				t.Fatalf("expected audience open-cli-toolbox, got %q", got)
 			}
 			if got := query.Get("code_challenge_method"); got != "S256" {
 				t.Fatalf("expected code_challenge_method S256, got %q", got)
@@ -2158,7 +2158,7 @@ func TestRootCommandCompletesRemoteBrowserLoginAuthorizationCodeFlow(t *testing.
 				"capabilities":    []string{"catalog", "brokered-auth", "authorization-envelope"},
 				"auth": map[string]any{
 					"required":                true,
-					"audience":                "oclird",
+					"audience":                "open-cli-toolbox",
 					"scopePrefixes":           []string{"bundle:", "profile:", "tool:"},
 					"tokenValidationProfiles": []string{"oidc_jwks"},
 					"browserLogin": map[string]any{
@@ -2172,7 +2172,7 @@ func TestRootCommandCompletesRemoteBrowserLoginAuthorizationCodeFlow(t *testing.
 				"authorizationURL": authServer.URL + "/authorize",
 				"tokenURL":         authServer.URL + "/token",
 				"clientId":         "browser-client",
-				"audience":         "oclird",
+				"audience":         "open-cli-toolbox",
 			})
 		case "/v1/catalog/effective":
 			if got := r.Header.Get("Authorization"); got != "Bearer browser-login-token-live" {
@@ -2205,7 +2205,7 @@ func TestRootCommandCompletesRemoteBrowserLoginAuthorizationCodeFlow(t *testing.
 	      "url": %q,
 	      "oauth": {
 	        "mode": "browserLogin",
-	        "audience": "oclird",
+	        "audience": "open-cli-toolbox",
 	        "scopes": ["bundle:payments"],
 	        "browserLogin": {
 	          "callbackPort": %d

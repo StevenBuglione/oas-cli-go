@@ -1,8 +1,12 @@
 {
   "name": "@sbuglione/open-cli",
   "version": "0.0.0",
-  "description": "Remote-first API and MCP command client plus the open-cli-toolbox runtime server",
-  "files": ["bin/ocli.js", "bin/open-cli-toolbox.js", "install.js", "README.md"],
+  "description": "Remote-first API and MCP command client for open-cli",
+  "files": [
+    "bin/ocli.js",
+    "install.js",
+    "README.md"
+  ],
   "keywords": [
     "openapi",
     "mcp",
@@ -25,8 +29,7 @@
   "license": "GPL-3.0",
   "author": "Steven Buglione",
   "bin": {
-    "ocli": "bin/ocli.js",
-    "open-cli-toolbox": "bin/open-cli-toolbox.js"
+    "ocli": "bin/ocli.js"
   },
   "scripts": {
     "postinstall": "node install.js"

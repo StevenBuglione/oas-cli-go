@@ -44,12 +44,26 @@ builds:
       - -X github.com/StevenBuglione/open-cli/internal/version.Date={{.Date}}
 
 archives:
-  - id: default
+  - id: ocli
     ids:
       - ocli
+    name_template: >-
+      ocli_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    files:
+      - LICENSE
+      - README.md
+
+  - id: open-cli-toolbox
+    ids:
       - open-cli-toolbox
     name_template: >-
-      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+      open-cli-toolbox_{{ .Version }}_{{ .Os }}_{{ .Arch }}
     formats:
       - tar.gz
     format_overrides:
@@ -93,15 +107,14 @@ release:
   header: |
     ## What's Changed
 
-    Install via npm (recommended):
+    Install the open-cli client via npm (recommended):
     ```bash
     npm install -g @sbuglione/open-cli
     ```
 
-    Or download a binary from the assets below.
+    Install `open-cli-toolbox` separately from the release assets or via Docker from this repo.
   footer: |
     **Full Changelog**: https://github.com/StevenBuglione/open-cli/compare/{{ .PreviousTag }}...{{ .Tag }}
 
 snapshot:
   version_template: "{{ incpatch .Version }}-next"
-

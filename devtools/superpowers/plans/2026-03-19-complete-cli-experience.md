@@ -15,7 +15,7 @@ go build ./cmd/ocli ./cmd/oclird
 go test ./cmd/ocli/...
 ```
 
-**Spec:** `docs/superpowers/specs/2026-03-19-complete-cli-experience-design.md`
+**Spec:** `devtools/superpowers/specs/2026-03-19-complete-cli-experience-design.md`
 
 ---
 

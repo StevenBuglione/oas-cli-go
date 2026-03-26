@@ -103,7 +103,7 @@ terraform apply -var-file=envs/ocli-runtime-auth.tfvars
 - [ ] **Step 5: Commit**
 
 ```bash
-git -C /home/sbuglione/ocli/open-cli add docs/superpowers/plans/2026-03-16-isolated-entra-browser-proof.md examples/runtime-auth-broker/authentik/entra-federation.md examples/runtime-auth-broker/authentik/evidence-checklist.md examples/runtime-auth-broker/authentik/README.md product-tests/README.md website/docs/runtime/authentik-reference.md
+git -C /home/sbuglione/ocli/open-cli add devtools/superpowers/plans/2026-03-16-isolated-entra-browser-proof.md examples/runtime-auth-broker/authentik/entra-federation.md examples/runtime-auth-broker/authentik/evidence-checklist.md examples/runtime-auth-broker/authentik/README.md product-tests/README.md website/docs/runtime/authentik-reference.md
 ```
 
 Do **not** commit Terraform state, secrets, or session artifacts.

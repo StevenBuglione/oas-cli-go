@@ -227,7 +227,7 @@ func TestResolveDelegatedTokenSuccess(t *testing.T) {
 	token, err := auth.ResolveDelegatedToken(t.Context(), auth.DelegatedTokenRequest{
 		TokenExchangeURL: srv.URL,
 		ParentToken:      "parent-token",
-		Audience:         "oclird",
+		Audience:         "open-cli-toolbox",
 		Scopes:           []string{"bundle:tickets", "tool:tickets:listTickets"},
 		ActorID:          "subagent:triage-01",
 		AgentProfile:     "triage",
@@ -286,7 +286,7 @@ func TestResolveTokenDelegatesProvidedTokenAndRefreshes(t *testing.T) {
 	}, configpkg.RemoteOAuthConfig{
 		Mode:     "providedToken",
 		TokenRef: "env:TEST_RUNTIME_PARENT_TOKEN",
-		Audience: "oclird",
+		Audience: "open-cli-toolbox",
 		Scopes:   []string{"bundle:tickets"},
 		Delegation: &configpkg.RemoteOAuthDelegation{
 			Enabled:          true,

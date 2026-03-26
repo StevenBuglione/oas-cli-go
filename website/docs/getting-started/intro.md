@@ -55,6 +55,6 @@ ocli --runtime http://127.0.0.1:8765 --config ./.cli.json --help
 
 ## Next steps
 
-1. **[Installation](./installation)** — build or install `ocli` and `open-cli-toolbox`.
+1. **[Installation](./installation)** — install `ocli` and choose how you want to obtain the reference runtime (`open-cli-toolbox`).
 2. **[Quickstart](./quickstart)** — start a hosted runtime and inspect a generated command tree.
 3. **[Choose your path](./choose-your-path)** — pick the deployment and reading path that fits your goal.

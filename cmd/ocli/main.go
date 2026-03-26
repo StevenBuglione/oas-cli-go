@@ -113,10 +113,10 @@ func sortedServiceAliases(services []catalog.Service) []string {
 
 func resolveCommandOptions(options CommandOptions) (CommandOptions, error) {
 	return cfgpkg.ResolveCommandOptions(options, cfgpkg.ResolveHooks{
-		LoadRuntimeConfig:         loadRuntimeConfig,
-		ResolveRuntimeDeployment:  resolveRuntimeDeployment,
-		ResolveAgentSessionID:     agentSessionIdentityProvider,
-		ResolveInstancePaths:      resolveInstancePaths,
+		LoadRuntimeConfig:        loadRuntimeConfig,
+		ResolveRuntimeDeployment: resolveRuntimeDeployment,
+		ResolveAgentSessionID:    agentSessionIdentityProvider,
+		ResolveInstancePaths:     resolveInstancePaths,
 	})
 }
 
@@ -291,14 +291,14 @@ func managedRuntimeArgs(options CommandOptions, runtimeCfg *configpkg.RuntimeCon
 func resolveDaemonBinary() (string, error) {
 	executable, err := os.Executable()
 	if err == nil {
-		sibling := filepath.Join(filepath.Dir(executable), "oclird")
+		sibling := filepath.Join(filepath.Dir(executable), "open-cli-toolbox")
 		if _, statErr := os.Stat(sibling); statErr == nil {
 			return sibling, nil
 		}
 	}
-	path, err := exec.LookPath("oclird")
+	path, err := exec.LookPath("open-cli-toolbox")
 	if err != nil {
-		return "", fmt.Errorf("resolve oclird binary: %w", err)
+		return "", fmt.Errorf("resolve open-cli-toolbox binary: %w", err)
 	}
 	return path, nil
 }
