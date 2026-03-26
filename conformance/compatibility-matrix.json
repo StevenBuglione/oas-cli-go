@@ -17,7 +17,7 @@
       },
       "notes": [
         "Reference implementation status after the native MCP + OAuth implementation pass.",
-        "open-cli runtime verification is green, but oas-cli-conformance does not yet mechanically enforce those runtime checks."
+        "open-cli runtime verification is green, but open-cli conformance suite does not yet mechanically enforce those runtime checks."
       ]
     }
   ]

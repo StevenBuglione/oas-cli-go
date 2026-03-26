@@ -33,7 +33,7 @@ title: Choose Your Path
 **First commands to run:**
 ```bash
 open-cli-toolbox --config ./.cli.json --addr 127.0.0.1:8765
-ocli --runtime http://127.0.0.1:8765 --config ./.cli.json catalog list --format pretty
+open-cli --runtime http://127.0.0.1:8765 --config ./.cli.json catalog list --format pretty
 ```
 
 **Read this next:** [CLI overview](../cli/overview) to understand the full command model.
@@ -44,7 +44,7 @@ ocli --runtime http://127.0.0.1:8765 --config ./.cli.json catalog list --format 
 
 **Choose this if:** You are evaluating the supported hosted-runtime model on a laptop or single machine before moving it to shared infrastructure.
 
-**What you get:** `open-cli-toolbox` hosted on loopback; `ocli` still points at it by URL, so the contract matches every other deployment.
+**What you get:** `open-cli-toolbox` hosted on loopback; `open-cli` still points at it by URL, so the contract matches every other deployment.
 
 **Reading order:**
 1. Complete [Path 1](#1-first-successful-run) first

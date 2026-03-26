@@ -1,6 +1,6 @@
 # open-cli
 
-**`ocli`** is the core `open-cli` product: a remote-only, policy-aware client for turning OpenAPI descriptions and MCP servers into governed command surfaces. **`open-cli-toolbox`** is the reference hosted runtime/server implementation that `ocli` talks to, but it is installed separately and can be replaced by other server implementations that honor the same contract.
+**`open-cli`** is the core client product: a remote-only, policy-aware command surface for OpenAPI descriptions and MCP servers. **`open-cli-toolbox`** is the reference hosted runtime/server implementation that `open-cli` talks to, but it is installed separately and can be replaced by other server implementations that honor the same contract.
 
 This is the Go reference implementation of the [Open CLI specification](spec/).
 
@@ -16,7 +16,7 @@ This is the Go reference implementation of the [Open CLI specification](spec/).
 npm install -g @sbuglione/open-cli
 ```
 
-This installs **`ocli` only**. The package automatically downloads the correct pre-built client binary for your platform (macOS, Linux, Windows — x64 and arm64).
+This installs **`open-cli` only**. The package automatically downloads the correct pre-built client binary for your platform (macOS, Linux, Windows — x64 and arm64).
 
 ### Install `open-cli-toolbox` separately
 
@@ -30,7 +30,7 @@ docker pull ghcr.io/stevenbuglione/open-cli-toolbox:latest
 
 Each GitHub Release publishes separate archives for the two products:
 
-- `ocli_<version>_<os>_<arch>.tar.gz|zip`
+- `open-cli_<version>_<os>_<arch>.tar.gz|zip`
 - `open-cli-toolbox_<version>_<os>_<arch>.tar.gz|zip`
 
 Download only the product you need, extract it, and place the binary on your `PATH`.
@@ -40,7 +40,7 @@ Download only the product you need, extract it, and place the binary on your `PA
 Requires Go 1.25.1+:
 
 ```bash
-go install github.com/StevenBuglione/open-cli/cmd/ocli@latest
+go install github.com/StevenBuglione/open-cli/cmd/open-cli@latest
 go install github.com/StevenBuglione/open-cli/cmd/open-cli-toolbox@latest
 ```
 
@@ -50,10 +50,10 @@ go install github.com/StevenBuglione/open-cli/cmd/open-cli-toolbox@latest
 
 | Product | Role | Install surface |
 |--------|------|-----------------|
-| `ocli` | Operator-facing client. Renders the effective catalog, exposes dynamic commands derived from your OpenAPI or MCP sources, and forwards execution requests to the hosted runtime. | npm, release binary, or source build |
+| `open-cli` | Operator-facing client. Renders the effective catalog, exposes dynamic commands derived from your OpenAPI or MCP sources, and forwards execution requests to the hosted runtime. | npm, release binary, or source build |
 | `open-cli-toolbox` | Reference hosted runtime/server. Loads config, performs discovery, normalizes catalogs, resolves auth, enforces policy, executes upstream HTTP requests, and records audit events. | Release binary, Docker, or source build |
 
-`ocli` always needs a remote runtime. `open-cli-toolbox` is the default reference server for that hosted boundary: operators host it, secure it, and point `ocli` at it with `--runtime` or `runtime.remote.url`.
+`open-cli` always needs a remote runtime. `open-cli-toolbox` is the default reference server for that hosted boundary: operators host it, secure it, and point `open-cli` at it with `--runtime` or `runtime.remote.url`.
 
 ---
 
@@ -61,13 +61,13 @@ go install github.com/StevenBuglione/open-cli/cmd/open-cli-toolbox@latest
 
 ### Set up your own API
 
-    ocli init https://petstore3.swagger.io/api/v3/openapi.json
+    open-cli init https://petstore3.swagger.io/api/v3/openapi.json
 
 This creates a `.cli.json` configuration from your OpenAPI spec.
 
 ### Manual configuration
 
-**Prerequisites:** install `ocli`, then ensure you have a reachable hosted runtime such as `open-cli-toolbox`.
+**Prerequisites:** install `open-cli`, then ensure you have a reachable hosted runtime such as `open-cli-toolbox`.
 
 Create a minimal `.cli.json` pointing at an OpenAPI document:
 
@@ -100,7 +100,7 @@ Create a minimal `.cli.json` pointing at an OpenAPI document:
 Inspect the catalog through your hosted runtime:
 
 ```bash
-ocli --config ./.cli.json catalog list --format pretty
+open-cli --config ./.cli.json catalog list --format pretty
 ```
 
 This prints the normalized catalog visible through the hosted runtime: service aliases, tools, and generated command names derived from your OpenAPI document.
@@ -108,14 +108,14 @@ This prints the normalized catalog visible through the hosted runtime: service a
 Inspect a specific tool before executing it:
 
 ```bash
-ocli --config ./.cli.json tool schema tickets:listTickets --format pretty
-ocli --config ./.cli.json explain tickets:listTickets --format pretty
+open-cli --config ./.cli.json tool schema tickets:listTickets --format pretty
+open-cli --config ./.cli.json explain tickets:listTickets --format pretty
 ```
 
 Preview the generated command tree:
 
 ```bash
-ocli --config ./.cli.json helpdesk tickets --help
+open-cli --config ./.cli.json helpdesk tickets --help
 ```
 
 For a complete walkthrough including a sample OpenAPI document, see the [quickstart](https://open-cli.dev/docs/getting-started/quickstart).
@@ -132,7 +132,7 @@ You can host it anywhere you control. The example below uses localhost to illust
 open-cli-toolbox --config ./.cli.json --addr 127.0.0.1:8765
 
 # In another shell:
-ocli --runtime http://127.0.0.1:8765 --config ./.cli.json catalog list --format pretty
+open-cli --runtime http://127.0.0.1:8765 --config ./.cli.json catalog list --format pretty
 ```
 
 **Config-driven selection** — avoid flags by declaring the remote runtime in `.cli.json`:
@@ -196,7 +196,7 @@ Remote client auth modes — `providedToken` (forward a bearer token from an env
 ## Repository layout
 
 ```
-cmd/ocli                 CLI entrypoint and runtime client
+cmd/open-cli                 CLI entrypoint and runtime client
 cmd/open-cli-toolbox     Reference hosted runtime entrypoint
 internal/runtime         Runtime HTTP API and wiring
 pkg/                     Shared config, discovery, catalog, policy, execution, audit, and observability code

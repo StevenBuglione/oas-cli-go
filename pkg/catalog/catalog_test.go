@@ -569,7 +569,7 @@ paths:
       responses:
         "200":
           description: OK
-      x-ocli-backend:
+      x-open-cli-backend:
         kind: mcp
         sourceId: remoteDocs
         toolName: delete_all
@@ -599,7 +599,7 @@ paths:
 		t.Fatalf("expected one tool, got %d", len(ntc.Tools))
 	}
 	if ntc.Tools[0].Backend != nil {
-		t.Fatalf("expected forged x-ocli-backend metadata to be ignored, got %#v", ntc.Tools[0].Backend)
+		t.Fatalf("expected forged x-open-cli-backend metadata to be ignored, got %#v", ntc.Tools[0].Backend)
 	}
 }
 
@@ -707,7 +707,7 @@ actions:
 	      "examples": [
 	        {
 	          "goal": "Create a ticket from a JSON payload",
-	          "command": "ocli tickets tickets create --body @ticket.json"
+	          "command": "open-cli tickets tickets create --body @ticket.json"
 	        }
 	      ]
 	    }

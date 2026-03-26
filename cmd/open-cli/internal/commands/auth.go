@@ -7,9 +7,9 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	authpkg "github.com/StevenBuglione/open-cli/cmd/ocli/internal/auth"
-	cfgpkg "github.com/StevenBuglione/open-cli/cmd/ocli/internal/config"
-	runtimepkg "github.com/StevenBuglione/open-cli/cmd/ocli/internal/runtime"
+	authpkg "github.com/StevenBuglione/open-cli/cmd/open-cli/internal/auth"
+	cfgpkg "github.com/StevenBuglione/open-cli/cmd/open-cli/internal/config"
+	runtimepkg "github.com/StevenBuglione/open-cli/cmd/open-cli/internal/runtime"
 	"github.com/spf13/cobra"
 )
 

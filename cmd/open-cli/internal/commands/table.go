@@ -8,7 +8,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	runtimepkg "github.com/StevenBuglione/open-cli/cmd/ocli/internal/runtime"
+	runtimepkg "github.com/StevenBuglione/open-cli/cmd/open-cli/internal/runtime"
 	"github.com/StevenBuglione/open-cli/pkg/catalog"
 )
 

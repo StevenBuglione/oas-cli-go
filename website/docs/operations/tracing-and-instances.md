@@ -37,13 +37,13 @@ A running hosted runtime writes:
 }
 ```
 
-Treat this as operator metadata. In the remote-only model, `ocli` does not auto-discover or auto-promote runtimes from `runtime.json`.
+Treat this as operator metadata. In the remote-only model, `open-cli` does not auto-discover or auto-promote runtimes from `runtime.json`.
 
 ## Shutdown behavior
 
 `open-cli-toolbox` removes `runtime.json` on normal shutdown.
 
-If the process dies unexpectedly, the file can become stale. Clean it up as part of operator troubleshooting rather than expecting `ocli` to attach to it automatically.
+If the process dies unexpectedly, the file can become stale. Clean it up as part of operator troubleshooting rather than expecting `open-cli` to attach to it automatically.
 
 ## Observability hooks
 
@@ -72,12 +72,12 @@ The runtime uses `X-Request-ID` if the caller provides one. Otherwise it generat
 ## Practical multi-instance pattern
 
 ```bash
-./bin/open-cli-toolbox --config /srv/team-a/.cli.json --instance-id team-a --state-dir /var/lib/ocli
-./bin/open-cli-toolbox --config /srv/team-b/.cli.json --instance-id team-b --state-dir /var/lib/ocli
+./bin/open-cli-toolbox --config /srv/team-a/.cli.json --instance-id team-a --state-dir /var/lib/open-cli
+./bin/open-cli-toolbox --config /srv/team-b/.cli.json --instance-id team-b --state-dir /var/lib/open-cli
 ```
 
 Then callers select the matching runtime with:
 
 ```bash
-./bin/ocli --runtime http://127.0.0.1:9031 --config /srv/team-a/.cli.json --instance-id team-a --state-dir /var/lib/ocli catalog list
+./bin/open-cli --runtime http://127.0.0.1:9031 --config /srv/team-a/.cli.json --instance-id team-a --state-dir /var/lib/open-cli catalog list
 ```

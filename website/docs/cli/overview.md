@@ -4,9 +4,9 @@ title: CLI Overview
 
 # CLI Overview
 
-**Read this if** you are deploying or scripting `ocli` and need to understand its command shape, flag surface, and runtime dependency. This page answers: how are commands named, what flags exist everywhere, and why does `ocli --help` need a reachable runtime.
+**Read this if** you are deploying or scripting `open-cli` and need to understand its command shape, flag surface, and runtime dependency. This page answers: how are commands named, what flags exist everywhere, and why does `open-cli --help` need a reachable runtime.
 
-`ocli` is a **runtime-backed client**. It does not ship a fixed set of service commands. Instead, it asks `open-cli-toolbox` for the effective catalog, then builds a Cobra command tree from the returned services and tools.
+`open-cli` is a **runtime-backed client**. It does not ship a fixed set of service commands. Instead, it asks `open-cli-toolbox` for the effective catalog, then builds a Cobra command tree from the returned services and tools.
 
 ## Command families
 
@@ -24,7 +24,7 @@ Everything else is dynamic and comes from the current catalog view.
 The generated hierarchy is:
 
 ```text
-ocli <service-alias> <group> <command> [path-args] [flags]
+open-cli <service-alias> <group> <command> [path-args] [flags]
 ```
 
 How each segment is chosen:
@@ -51,10 +51,10 @@ With this config:
 and an operation tagged `tickets` with `operationId: listTickets`, the generated path can be:
 
 ```bash
-ocli helpdesk tickets list-tickets
+open-cli helpdesk tickets list-tickets
 ```
 
-If the alias and group are the same, you will see both segments. For example, alias `tickets` plus group `tickets` produces `ocli tickets tickets list-tickets`.
+If the alias and group are the same, you will see both segments. For example, alias `tickets` plus group `tickets` produces `open-cli tickets tickets list-tickets`.
 
 ## Persistent flags
 
@@ -62,7 +62,7 @@ These flags exist on the root command and apply to built-in and dynamic commands
 
 | Flag | Meaning |
 | --- | --- |
-| `--runtime` | Runtime base URL. If omitted, `ocli` tries `OCLI_RUNTIME_URL`, then `runtime.remote.url`, otherwise it errors. |
+| `--runtime` | Runtime base URL. If omitted, `open-cli` tries `OPEN_CLI_RUNTIME_URL`, then `runtime.remote.url`, otherwise it errors. |
 | `--config` | Path to the project `.cli.json`. |
 | `--mode` | Requested mode, typically `discover` or `curated`. |
 | `--agent-profile` | Agent profile name used for the selected effective view. |
@@ -75,24 +75,24 @@ These flags exist on the root command and apply to built-in and dynamic commands
 
 - `catalog list`, `tool schema`, `explain`, and `workflow run` all respect `--format`.
 - Dynamic tool execution has one extra nuance:
-  - if the runtime returns JSON and `--format json`, `ocli` prints the JSON body directly
-  - if the runtime returns non-JSON text, `ocli` prints the text directly
+  - if the runtime returns JSON and `--format json`, `open-cli` prints the JSON body directly
+  - if the runtime returns non-JSON text, `open-cli` prints the text directly
   - otherwise it serializes the execution wrapper (`statusCode`, `body`, or `text`)
 
 ## Help behavior quirk
 
 :::warning Dynamic help needs a catalog
-`ocli` resolves the runtime and fetches the catalog **before** Cobra renders help. In practice, `ocli --help` can fail if no runtime/config is available.
+`open-cli` resolves the runtime and fetches the catalog **before** Cobra renders help. In practice, `open-cli --help` can fail if no runtime/config is available.
 :::
 
 Safe help patterns:
 
 ```bash
 # explicit runtime URL
-./bin/ocli --runtime http://127.0.0.1:8765 --config ./.cli.json --help
+./bin/open-cli --runtime http://127.0.0.1:8765 --config ./.cli.json --help
 
 # config-driven runtime URL
-./bin/ocli --config ./.cli.json --help
+./bin/open-cli --config ./.cli.json --help
 ```
 
 By contrast, `open-cli-toolbox --help` is static because it uses Go's `flag` package and does not fetch a catalog.
@@ -115,7 +115,7 @@ Do not assume that `HEAD`, `OPTIONS`, or `TRACE` operations become CLI tools in 
 | --- | --- |
 | Understand how commands are named from your OpenAPI | [Catalog and explain](./catalog-and-explain) |
 | Map flags and request body fields to HTTP calls | [Tool execution](./tool-execution) |
-| Choose or debug how `ocli` finds the runtime | [Deployment models](../runtime/deployment-models) |
+| Choose or debug how `open-cli` finds the runtime | [Deployment models](../runtime/deployment-models) |
 | Run multi-step operations as a single command | [Workflow run](./workflow-run) |
 | Configure which tools different agents can see | [Configuration overview](../configuration/overview) |
 

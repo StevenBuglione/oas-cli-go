@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	cfgpkg "github.com/StevenBuglione/open-cli/cmd/ocli/internal/config"
-	runtimepkg "github.com/StevenBuglione/open-cli/cmd/ocli/internal/runtime"
+	cfgpkg "github.com/StevenBuglione/open-cli/cmd/open-cli/internal/config"
+	runtimepkg "github.com/StevenBuglione/open-cli/cmd/open-cli/internal/runtime"
 	"github.com/StevenBuglione/open-cli/pkg/catalog"
 	"github.com/spf13/cobra"
 )

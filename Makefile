@@ -7,7 +7,7 @@ test:
 	go test ./...
 
 build:
-	go build ./cmd/ocli ./cmd/open-cli-toolbox
+	go build ./cmd/open-cli ./cmd/open-cli-toolbox
 
 verify: fmt test build
 

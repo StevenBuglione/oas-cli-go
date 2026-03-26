@@ -40,7 +40,7 @@ Or from inside `product-tests/`:
 make fleet-matrix-ci
 ```
 
-Artifacts are written under `/tmp/ocli-fleet/` by default. Each lane gets its own directory with:
+Artifacts are written under `/tmp/open-cli-fleet/` by default. Each lane gets its own directory with:
 
 - `transcript.log`
 - `rubric.json`
@@ -65,7 +65,7 @@ Example `transcript.log` excerpt:
 
 ```text
 [run-agent-campaign] lane='remote-runtime-oauth-client' pattern='^TestCampaignRemoteRuntimeMatrix$' timeout=120s
-[run-agent-campaign] wrote rubric → /tmp/ocli-fleet/remote-runtime-oauth-client/rubric.json
+[run-agent-campaign] wrote rubric → /tmp/open-cli-fleet/remote-runtime-oauth-client/rubric.json
 ```
 
 If you are reviewing enterprise-oriented proof rather than implementation mechanics, continue to [Enterprise readiness](../runtime/enterprise-readiness) or the [Authentik reference proof](../runtime/authentik-reference).

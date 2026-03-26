@@ -19,7 +19,7 @@ const modes: DeploymentMode[] = [
     name: 'Loopback-hosted runtime',
     tagline: 'Fastest way to evaluate',
     description:
-      'Run open-cli-toolbox on the same machine and point ocli at http://127.0.0.1:8765. It is still the remote runtime contract, just hosted locally for development.',
+      'Run open-cli-toolbox on the same machine and point open-cli at http://127.0.0.1:8765. It is still the remote runtime contract, just hosted locally for development.',
     tradeoffs: 'Single-user footprint; you manage process lifecycle and runtime URL wiring.',
     href: '/docs/runtime/deployment-models',
   },

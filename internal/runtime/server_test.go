@@ -1351,7 +1351,7 @@ func TestServerAuditsDelegationLineageForCatalogAndToolExecution(t *testing.T) {
 		"delegation_id": "delegation-123",
 		"act": map[string]string{
 			"sub":       "github:user-123",
-			"client_id": "ocli-browser",
+			"client_id": "open-cli-browser",
 			"actor_id":  "lead-agent",
 		},
 		"exp": time.Now().Add(time.Hour).Unix(),
@@ -1407,7 +1407,7 @@ func TestServerAuditsDelegationLineageForCatalogAndToolExecution(t *testing.T) {
 		if event.Lineage.DelegatedBy != "github:user-123" || event.Lineage.DelegationID != "delegation-123" {
 			t.Fatalf("expected delegation metadata on %s audit event, got %#v", wantType, event.Lineage)
 		}
-		if event.Lineage.Actor["sub"] != "github:user-123" || event.Lineage.Actor["client_id"] != "ocli-browser" || event.Lineage.Actor["actor_id"] != "lead-agent" {
+		if event.Lineage.Actor["sub"] != "github:user-123" || event.Lineage.Actor["client_id"] != "open-cli-browser" || event.Lineage.Actor["actor_id"] != "lead-agent" {
 			t.Fatalf("expected actor lineage on %s audit event, got %#v", wantType, event.Lineage.Actor)
 		}
 	}

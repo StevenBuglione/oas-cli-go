@@ -8,10 +8,10 @@ const snippet = `# Start the hosted runtime once
 open-cli-toolbox --config .cli.json --addr 127.0.0.1:8765
 
 # In another shell, inspect the governed catalog
-ocli --runtime http://127.0.0.1:8765 --config .cli.json catalog list
+open-cli --runtime http://127.0.0.1:8765 --config .cli.json catalog list
 
 # Inspect or execute a tool through the runtime boundary
-ocli --runtime http://127.0.0.1:8765 --config .cli.json explain tickets:listTickets`.trim();
+open-cli --runtime http://127.0.0.1:8765 --config .cli.json explain tickets:listTickets`.trim();
 
 const deepLinks = [
   {label: 'Quickstart', href: '/docs/getting-started/quickstart'},
@@ -31,7 +31,7 @@ export default function FirstRunSnippet(): ReactNode {
             Your first run
           </Heading>
           <p>
-            Start <code>open-cli-toolbox</code>, then drive it with <code>ocli</code>.
+            Start <code>open-cli-toolbox</code>, then drive it with <code>open-cli</code>.
             See the <Link to="/docs/getting-started/quickstart">quickstart</Link> for
             installation and <code>.cli.json</code> setup.
           </p>

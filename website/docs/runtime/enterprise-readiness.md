@@ -46,7 +46,7 @@ Read:
 - [Runtime overview](./overview)
 - [Security overview](../security/overview)
 
-This establishes where the runtime runs, how `ocli` reaches it, and when you should enable runtime auth.
+This establishes where the runtime runs, how `open-cli` reaches it, and when you should enable runtime auth.
 
 ### 2. Runtime auth proof
 

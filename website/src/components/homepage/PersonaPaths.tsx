@@ -18,7 +18,7 @@ const paths: PersonaPath[] = [
     title: 'First run',
     audience: 'End users · agent authors',
     description:
-      'You want commands that work. Start with the quickstart, understand the two binaries, then connect ocli to a hosted runtime.',
+      'You want commands that work. Start with the quickstart, understand the two binaries, then connect open-cli to a hosted runtime.',
     links: [
       {label: 'Choose your path', href: '/docs/getting-started/choose-your-path'},
       {label: 'Quickstart', href: '/docs/getting-started/quickstart'},

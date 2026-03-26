@@ -9,7 +9,7 @@
       "examples": [
         {
           "goal": "List open tickets",
-          "command": "ocli tickets tickets list --state open --format json"
+          "command": "open-cli tickets tickets list --state open --format json"
         }
       ]
     }

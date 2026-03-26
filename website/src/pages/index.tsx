@@ -13,8 +13,8 @@ import FirstRunSnippet from '../components/homepage/FirstRunSnippet';
 export default function Home(): ReactNode {
   return (
     <Layout
-      title="ocli &amp; open-cli-toolbox"
-      description="Governed OpenAPI execution with a remote-only CLI and hosted runtime. Documentation for ocli and open-cli-toolbox.">
+      title="open-cli &amp; open-cli-toolbox"
+      description="Governed OpenAPI execution with a remote-only CLI and hosted runtime. Documentation for open-cli and open-cli-toolbox.">
       <Hero />
       <main>
         <WhyItExists />

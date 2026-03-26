@@ -1,7 +1,7 @@
 package tests_test
 
 // campaign_known_gaps_test.go documents expected-failure scenarios and known
-// feature gaps in the ocli product.  These tests run during every campaign
+// feature gaps in the open-cli product.  These tests run during every campaign
 // pass; failures here are captured via FindingsRecorder as "known gaps" and do
 // NOT fail the overall test suite — only if a gap unexpectedly starts passing
 // is it highlighted so engineers can promote it to a positive assertion.

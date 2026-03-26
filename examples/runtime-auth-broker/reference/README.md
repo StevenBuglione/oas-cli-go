@@ -6,7 +6,7 @@ It is intentionally not normative:
 
 - organizations may use any broker or gateway they want
 - upstream identity can come from Microsoft Entra ID, Google, GitHub, or another provider
-- the only requirement is that the runtime-facing contract stays compatible with `ocli` and the hosted `open-cli-toolbox` runtime
+- the only requirement is that the runtime-facing contract stays compatible with `open-cli` and the hosted `open-cli-toolbox` runtime
 
 The reference shape is:
 

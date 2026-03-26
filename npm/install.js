@@ -9,7 +9,7 @@ const https = require("https");
 const { execSync, execFileSync } = require("child_process");
 
 const REPO = "StevenBuglione/open-cli";
-const BINARIES = ["ocli"];
+const BINARIES = ["open-cli"];
 const MAX_RETRIES = 3;
 const DEFAULT_TIMEOUT_S = 30;
 
@@ -171,10 +171,10 @@ function validateBinaries(binDir, ext) {
 
 function verifyVersion(binDir, ext, platform, arch) {
   try {
-    const out = execFileSync(path.join(binDir, "ocli" + ext), ["--version"], {
+    const out = execFileSync(path.join(binDir, "open-cli" + ext), ["--version"], {
       timeout: 5000,
     }).toString().trim();
-    console.log(`open-cli: ✓ installed ocli (${out}, ${platform}-${arch})`);
+    console.log(`open-cli: ✓ installed open-cli (${out}, ${platform}-${arch})`);
   } catch {
     console.error("open-cli: ⚠ binaries downloaded but --version check failed");
   }
@@ -183,7 +183,7 @@ function verifyVersion(binDir, ext, platform, arch) {
 async function main() {
   const version = getVersion();
   const { platform, arch } = getPlatformArch();
-  const archiveName = getArchiveName("ocli", version, platform, arch);
+  const archiveName = getArchiveName("open-cli", version, platform, arch);
   const url = getDownloadUrl(version, archiveName);
   const binDir = path.join(__dirname, "bin");
   const ext = platform === "windows" ? ".exe" : "";
@@ -205,7 +205,7 @@ async function main() {
     validateBinaries(binDir, ext);
     verifyVersion(binDir, ext, platform, arch);
     console.log("open-cli: install open-cli-toolbox separately from GitHub Releases or Docker if you need the reference runtime server");
-    console.log("open-cli: run `ocli --help` to get started");
+    console.log("open-cli: run `open-cli --help` to get started");
   } catch (err) {
     cleanup();
     console.error(`open-cli: failed to install — ${err.message}`);

@@ -31,10 +31,10 @@ Each instance gets a directory layout like:
 
 Without overrides:
 
-- state root: `$XDG_STATE_HOME/oas-cli` or `~/.local/state/oas-cli`
-- cache root: `$XDG_CACHE_HOME/oas-cli` or `~/.cache/oas-cli`
+- state root: `$XDG_STATE_HOME/open-cli` or `~/.local/state/open-cli`
+- cache root: `$XDG_CACHE_HOME/open-cli` or `~/.cache/open-cli`
 
-If `ocli` is given `--state-dir`, it also derives the cache root under `<state-dir>/cache`.
+If `open-cli` is given `--state-dir`, it also derives the cache root under `<state-dir>/cache`.
 
 ## Core operational tasks
 

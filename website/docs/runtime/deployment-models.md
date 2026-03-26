@@ -6,7 +6,7 @@ title: Deployment Models
 
 **Read this if** you are choosing how to host `open-cli-toolbox` and need to understand the supported remote-only model, runtime resolution order, instance isolation, and the operator-owned security boundary.
 
-The current implementation supports **one runtime model**: `ocli` connects to a hosted `open-cli-toolbox` server over HTTP. What changes is where you host that runtime and how you secure it.
+The current implementation supports **one runtime model**: `open-cli` connects to a hosted `open-cli-toolbox` server over HTTP. What changes is where you host that runtime and how you secure it.
 
 ## 1. Loopback-hosted runtime
 
@@ -22,7 +22,7 @@ Command pattern:
 open-cli-toolbox --config ./.cli.json --addr 127.0.0.1:8765
 
 # In another shell:
-ocli --runtime http://127.0.0.1:8765 --config ./.cli.json catalog list --format pretty
+open-cli --runtime http://127.0.0.1:8765 --config ./.cli.json catalog list --format pretty
 ```
 
 Characteristics:
@@ -49,7 +49,7 @@ Example:
       "url": "https://runtime.example.com",
       "oauth": {
         "mode": "providedToken",
-        "tokenRef": "env:OAS_REMOTE_TOKEN"
+        "tokenRef": "env:OPEN_CLI_REMOTE_TOKEN"
       }
     }
   }
@@ -79,7 +79,7 @@ If you need delegated sub-agent access in a remote deployment, keep that flow ou
 - the child token should be short-lived and scope-subset-only relative to the parent token
 - local config, curated mode, and agent profiles may restrict the child further, but they never expand access beyond the child token scopes
 
-This is a deployment concern, not a finished CLI feature. The current docs intentionally describe the operator-owned broker pattern, not a dedicated `ocli` delegation UX.
+This is a deployment concern, not a finished CLI feature. The current docs intentionally describe the operator-owned broker pattern, not a dedicated `open-cli` delegation UX.
 
 This repo now ships one official worked example:
 
@@ -98,8 +98,8 @@ Best for:
 Example:
 
 ```bash
-./bin/open-cli-toolbox --config /srv/team-a/.cli.json --instance-id team-a --state-dir /var/lib/ocli
-./bin/open-cli-toolbox --config /srv/team-b/.cli.json --instance-id team-b --state-dir /var/lib/ocli
+./bin/open-cli-toolbox --config /srv/team-a/.cli.json --instance-id team-a --state-dir /var/lib/open-cli
+./bin/open-cli-toolbox --config /srv/team-b/.cli.json --instance-id team-b --state-dir /var/lib/open-cli
 ```
 
 Each instance gets its own:
@@ -109,21 +109,21 @@ Each instance gets its own:
 - audit log
 - cache directory
 
-## Runtime resolution order in `ocli`
+## Runtime resolution order in `open-cli`
 
-`ocli` resolves the runtime in this order:
+`open-cli` resolves the runtime in this order:
 
 1. explicit `--runtime`
-2. `OCLI_RUNTIME_URL`
+2. `OPEN_CLI_RUNTIME_URL`
 3. `runtime.remote.url` from the effective config
 
-If none of those are available, the command fails. `ocli` no longer auto-starts or auto-discovers a local runtime.
+If none of those are available, the command fails. `open-cli` no longer auto-starts or auto-discovers a local runtime.
 
 ## `runtime.json` in the remote-only model
 
 `open-cli-toolbox` writes `runtime.json` under the selected state directory so operators can inspect instance metadata such as URL, PID, audit path, and cache directory.
 
-In the remote-only model, `ocli` does **not** promote or attach to runtimes automatically from that file. Treat it as operator-facing metadata, not as a supported client-discovery mechanism.
+In the remote-only model, `open-cli` does **not** promote or attach to runtimes automatically from that file. Treat it as operator-facing metadata, not as a supported client-discovery mechanism.
 
 ## Security note for remote bindings
 

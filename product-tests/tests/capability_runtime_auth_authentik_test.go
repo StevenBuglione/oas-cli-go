@@ -57,7 +57,7 @@ func TestCapabilityRuntimeAuthAuthentikOAuthClient(t *testing.T) {
 		t.Fatalf("expected browser login not configured body, got %q", strings.TrimSpace(string(browserBody)))
 	}
 
-	stdout := runOASCLI(t, fixture, "catalog", "list", "--format", "json")
+	stdout := runOpenCLI(t, fixture, "catalog", "list", "--format", "json")
 	if !bytes.Contains(stdout, []byte(`"tickets:listTickets"`)) {
 		t.Fatalf("expected oauthClient catalog output to contain tickets:listTickets, got %s", stdout)
 	}
@@ -238,21 +238,21 @@ func expectStringSlice(t *testing.T, raw any, want []string, field string) {
 	}
 }
 
-func runOASCLI(t *testing.T, fixture *brokerhelpers.AuthentikRuntimeFixture, args ...string) []byte {
+func runOpenCLI(t *testing.T, fixture *brokerhelpers.AuthentikRuntimeFixture, args ...string) []byte {
 	t.Helper()
 
 	repoRoot, err := filepath.Abs(filepath.Join("..", ".."))
 	if err != nil {
 		t.Fatalf("resolve repo root: %v", err)
 	}
-	cmdArgs := append([]string{"run", "./cmd/ocli", "--config", fixture.ConfigPath}, args...)
+	cmdArgs := append([]string{"run", "./cmd/open-cli", "--config", fixture.ConfigPath}, args...)
 	cmd := exec.Command("go", cmdArgs...)
 	cmd.Dir = repoRoot
 	cmd.Env = append(os.Environ(), fixture.CLIEnv()...)
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("ocli %v failed: %v\n%s", args, err, output)
+		t.Fatalf("open-cli %v failed: %v\n%s", args, err, output)
 	}
 	return output
 }

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/StevenBuglione/open-cli/cmd/ocli/internal/auth"
+	"github.com/StevenBuglione/open-cli/cmd/open-cli/internal/auth"
 	configpkg "github.com/StevenBuglione/open-cli/pkg/config"
 )
 

@@ -232,7 +232,7 @@ func ConfigFingerprint(configPath string) string {
 // ShouldSendHeartbeat decides whether heartbeat should be sent for the given command.
 func ShouldSendHeartbeat(commandPath string) bool {
 	switch commandPath {
-	case "ocli runtime stop", "ocli runtime session-close":
+	case "open-cli runtime stop", "open-cli runtime session-close":
 		return false
 	default:
 		return true

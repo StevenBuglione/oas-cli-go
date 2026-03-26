@@ -44,7 +44,7 @@ Recommended file names:
 
 ### 4. Filtered catalog output
 
-- [ ] `04-filtered-catalog.json` captured from `ocli --config runtime.cli.json catalog list --format json`
+- [ ] `04-filtered-catalog.json` captured from `open-cli --config runtime.cli.json catalog list --format json`
 - [ ] output contains only tools allowed by the issued runtime scopes
 
 ### 5. Allowed execution
@@ -75,7 +75,7 @@ Recommended file names:
 
 Do not sign off until each answer is “yes”:
 
-- [ ] Did `ocli` discover auth requirements from the runtime instead of using a hand-crafted token?
+- [ ] Did `open-cli` discover auth requirements from the runtime instead of using a hand-crafted token?
 - [ ] Did Authentik, not Entra directly, mint the runtime token presented to `open-cli-toolbox`?
 - [ ] Did `open-cli-toolbox` validate the token using `oidc_jwks`?
 - [ ] Did the allowed and denied examples both go through the live runtime?

@@ -4,8 +4,8 @@
 
 Recommended scope locations:
 
-- Managed: `/etc/oas-cli/.cli.json`
-- User: `$XDG_CONFIG_HOME/oas-cli/.cli.json`
+- Managed: `/etc/open-cli/.cli.json`
+- User: `$XDG_CONFIG_HOME/open-cli/.cli.json`
 - Project: `<repo>/.cli.json`
 - Local: `<repo>/.cli.local.json`
 
@@ -173,7 +173,7 @@ Example:
       "type": "oauth2",
       "mode": "clientCredentials",
       "clientId": { "type": "env", "value": "PETSTORE_CLIENT_ID" },
-      "clientSecret": { "type": "osKeychain", "value": "oas-cli/petstore-secret" },
+      "clientSecret": { "type": "osKeychain", "value": "open-cli/petstore-secret" },
       "scopes": ["pets.read"]
     }
   }

@@ -4,7 +4,7 @@ title: Installation
 
 # Installation
 
-`open-cli` is a two-product repository: `ocli` is the client, and `open-cli-toolbox` is the reference hosted runtime. The supported model is remote-only: `ocli` always talks to a reachable runtime.
+`open-cli` is a two-product repository: `open-cli` is the client, and `open-cli-toolbox` is the reference hosted runtime. The supported model is remote-only: `open-cli` always talks to a reachable runtime.
 
 ## npm (Recommended for the client)
 
@@ -12,7 +12,7 @@ title: Installation
 npm install -g @sbuglione/open-cli
 ```
 
-The npm package installs **`ocli` only**. During `postinstall`, it downloads the correct pre-built client binary for your platform.
+The npm package installs **`open-cli` only**. During `postinstall`, it downloads the correct pre-built client binary for your platform.
 
 If you also want the reference hosted runtime, install `open-cli-toolbox` separately from the same GitHub Releases page or via Docker from this repo.
 
@@ -20,7 +20,7 @@ If you also want the reference hosted runtime, install `open-cli-toolbox` separa
 
 Pre-built binaries for every supported platform are attached to each [GitHub Release](https://github.com/StevenBuglione/open-cli/releases). The release publishes separate archives for each product:
 
-- `ocli_<version>_<os>_<arch>.tar.gz|zip`
+- `open-cli_<version>_<os>_<arch>.tar.gz|zip`
 - `open-cli-toolbox_<version>_<os>_<arch>.tar.gz|zip`
 
 Install only the binary you need.
@@ -28,8 +28,8 @@ Install only the binary you need.
 **macOS / Linux:**
 
 ```bash
-tar xzf ocli_<version>_<os>_<arch>.tar.gz
-sudo mv ocli /usr/local/bin/
+tar xzf open-cli_<version>_<os>_<arch>.tar.gz
+sudo mv open-cli /usr/local/bin/
 
 # Optional: install the reference runtime separately
 tar xzf open-cli-toolbox_<version>_<os>_<arch>.tar.gz
@@ -38,7 +38,7 @@ sudo mv open-cli-toolbox /usr/local/bin/
 
 **Windows:**
 
-Extract the `.zip` archive for the product you want and add the folder containing `ocli.exe` and/or `open-cli-toolbox.exe` to your system `PATH`.
+Extract the `.zip` archive for the product you want and add the folder containing `open-cli.exe` and/or `open-cli-toolbox.exe` to your system `PATH`.
 
 ## From Source
 
@@ -47,7 +47,7 @@ Requires **Go 1.25.1+**.
 **Install into your Go bin directory:**
 
 ```bash
-go install github.com/StevenBuglione/open-cli/cmd/ocli@latest
+go install github.com/StevenBuglione/open-cli/cmd/open-cli@latest
 go install github.com/StevenBuglione/open-cli/cmd/open-cli-toolbox@latest
 ```
 
@@ -56,14 +56,14 @@ go install github.com/StevenBuglione/open-cli/cmd/open-cli-toolbox@latest
 ```bash
 git clone https://github.com/StevenBuglione/open-cli.git
 cd open-cli
-go build -o ./bin/ocli ./cmd/ocli
+go build -o ./bin/open-cli ./cmd/open-cli
 go build -o ./bin/open-cli-toolbox ./cmd/open-cli-toolbox
 ```
 
 ## Verify Installation
 
 ```bash
-ocli --version
+open-cli --version
 ```
 
 If you also installed the reference runtime:

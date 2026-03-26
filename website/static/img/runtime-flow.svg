@@ -23,7 +23,7 @@
   <polygon points="452,125 462,130 452,135" fill="#255fb0"/>
 
   <rect x="462" y="52" width="152" height="42" rx="8" fill="#eef4fb" stroke="#255fb0" stroke-width="1.5"/>
-  <text x="538" y="70" text-anchor="middle" font-family="system-ui,-apple-system,sans-serif" font-size="13" font-weight="600" fill="#10233f">ocli</text>
+  <text x="538" y="70" text-anchor="middle" font-family="system-ui,-apple-system,sans-serif" font-size="13" font-weight="600" fill="#10233f">open-cli</text>
   <text x="538" y="86" text-anchor="middle" font-family="system-ui,-apple-system,sans-serif" font-size="10.5" fill="#475569">operator commands</text>
 
   <rect x="462" y="110" width="152" height="42" rx="8" fill="#eef4fb" stroke="#255fb0" stroke-width="1.5"/>

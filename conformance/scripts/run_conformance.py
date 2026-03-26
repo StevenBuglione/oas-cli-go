@@ -20,15 +20,15 @@ def resolve_schema_root(explicit_root: Path | None = None) -> Path:
     if explicit_root is not None:
         candidates.append(explicit_root)
 
-    env_root = os.getenv("OCLI_SCHEMA_ROOT")
+    env_root = os.getenv("OPEN_CLI_SCHEMA_ROOT")
     if env_root:
         candidates.append(Path(env_root))
 
     # Monorepo layout: spec/ lives at the same level as conformance/
     candidates.append(ROOT.parent / "spec" / "schemas")
 
-    # Legacy fallback: sibling oas-cli-spec repository
-    candidates.append(ROOT.parent / "oas-cli-spec" / "schemas")
+    # Legacy fallback: pre-monorepo spec checkout
+    candidates.append(ROOT.parent / "open-cli-spec" / "schemas")
 
     for candidate in candidates:
         if candidate.exists() and candidate.is_dir():

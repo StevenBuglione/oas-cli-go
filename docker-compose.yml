@@ -88,7 +88,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
-      - OCLI_STATE_DIR=/state
+      - OPEN_CLI_STATE_DIR=/state
 
 volumes:
   authentik_database:

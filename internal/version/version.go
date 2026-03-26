@@ -14,5 +14,5 @@ var (
 )
 
 func String() string {
-	return fmt.Sprintf("ocli %s (%s) built %s %s/%s", Version, Commit, Date, runtime.GOOS, runtime.GOARCH)
+	return fmt.Sprintf("open-cli %s (%s) built %s %s/%s", Version, Commit, Date, runtime.GOOS, runtime.GOARCH)
 }

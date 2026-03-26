@@ -25,7 +25,7 @@ A tool can require approval because of either:
 CLI users grant approval with:
 
 ```bash
-ocli --approval ...
+open-cli --approval ...
 ```
 
 HTTP API clients set:

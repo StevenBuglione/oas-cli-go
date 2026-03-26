@@ -6,12 +6,12 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 COMPOSE_FILE="$REPO_ROOT/product-tests/authentik/docker-compose.yml"
 BOOTSTRAP_SCRIPT="$SCRIPT_DIR/bootstrap.py"
 
-LOCAL_AUTH_DIR="${OCLI_LOCAL_AUTH_DIR:-$REPO_ROOT/.open-cli-local/authentik}"
-RUNTIME_CONFIG_PATH="${OCLI_RUNTIME_CONFIG_PATH:-${OCLI_DAEMON_CONFIG_PATH:-$LOCAL_AUTH_DIR/runtime.cli.json}}"
-CONFIG_PATH="${OCLI_LOCAL_CONFIG_PATH:-$LOCAL_AUTH_DIR/client.cli.json}"
-BROWSER_CONFIG_PATH="${OCLI_BROWSER_CONFIG_PATH:-$LOCAL_AUTH_DIR/browser.cli.json}"
-ENV_PATH="${OCLI_LOCAL_ENV_PATH:-$LOCAL_AUTH_DIR/client.env}"
-DOCKER_ENV_PATH="${OCLI_DOCKER_ENV_PATH:-$LOCAL_AUTH_DIR/docker.env}"
+LOCAL_AUTH_DIR="${OPEN_CLI_LOCAL_AUTH_DIR:-$REPO_ROOT/.open-cli-local/authentik}"
+RUNTIME_CONFIG_PATH="${OPEN_CLI_RUNTIME_CONFIG_PATH:-${OPEN_CLI_DAEMON_CONFIG_PATH:-$LOCAL_AUTH_DIR/runtime.cli.json}}"
+CONFIG_PATH="${OPEN_CLI_LOCAL_CONFIG_PATH:-$LOCAL_AUTH_DIR/client.cli.json}"
+BROWSER_CONFIG_PATH="${OPEN_CLI_BROWSER_CONFIG_PATH:-$LOCAL_AUTH_DIR/browser.cli.json}"
+ENV_PATH="${OPEN_CLI_LOCAL_ENV_PATH:-$LOCAL_AUTH_DIR/client.env}"
+DOCKER_ENV_PATH="${OPEN_CLI_DOCKER_ENV_PATH:-$LOCAL_AUTH_DIR/docker.env}"
 AUTHENTIK_BASE_URL="${AUTHENTIK_BASE_URL:-http://127.0.0.1:9100}"
 DEFAULT_RUNTIME_AUTHENTIK_BASE_URL="$(python3 - <<'PY' "$AUTHENTIK_BASE_URL"
 from urllib.parse import urlparse, urlunparse
@@ -25,23 +25,23 @@ if hostname in {"127.0.0.1", "localhost"}:
 print(urlunparse(parsed))
 PY
 )"
-RUNTIME_AUTHENTIK_BASE_URL="${OCLI_RUNTIME_AUTHENTIK_BASE_URL:-${OCLI_DAEMON_AUTHENTIK_BASE_URL:-$DEFAULT_RUNTIME_AUTHENTIK_BASE_URL}}"
-RUNTIME_URL="${OCLI_RUNTIME_URL:-http://127.0.0.1:8765}"
-RUNTIME_AUDIENCE="${OCLI_RUNTIME_AUDIENCE:-open-cli-toolbox}"
-RUNTIME_SERVICE_ID="${OCLI_RUNTIME_SERVICE_ID:-testapi}"
-RUNTIME_EXTRA_SERVICE_IDS="${OCLI_RUNTIME_EXTRA_SERVICE_IDS:-}"
-RUNTIME_EXTRA_SCOPES="${OCLI_RUNTIME_EXTRA_SCOPES:-}"
-OPENAPI_URI="${OCLI_OPENAPI_URI:-./product-tests/testdata/openapi/testapi.openapi.yaml}"
-AUTHENTIK_CLIENT_SLUG="${OCLI_AUTHENTIK_CLIENT_SLUG:-ocli-runtime-local}"
-AUTHENTIK_PROVIDER_NAME="${OCLI_AUTHENTIK_PROVIDER_NAME:-ocli Runtime Local Provider}"
-AUTHENTIK_APPLICATION_NAME="${OCLI_AUTHENTIK_APPLICATION_NAME:-ocli Runtime Local}"
-AUTHENTIK_REDIRECT_URI="${OCLI_AUTHENTIK_REDIRECT_URI:-http://127.0.0.1:8787/callback}"
-BROWSER_CALLBACK_PORT="${OCLI_BROWSER_CALLBACK_PORT:-8787}"
-AUTHENTIK_BROWSER_CLIENT_SLUG="${OCLI_AUTHENTIK_BROWSER_CLIENT_SLUG:-ocli-runtime-browser-local}"
-AUTHENTIK_BROWSER_PROVIDER_NAME="${OCLI_AUTHENTIK_BROWSER_PROVIDER_NAME:-ocli Runtime Browser Local Provider}"
-AUTHENTIK_BROWSER_APPLICATION_NAME="${OCLI_AUTHENTIK_BROWSER_APPLICATION_NAME:-ocli Runtime Browser Local}"
-AUTHENTIK_BROWSER_REDIRECT_URI="${OCLI_AUTHENTIK_BROWSER_REDIRECT_URI:-http://127.0.0.1:${BROWSER_CALLBACK_PORT}/callback}"
-AUTHENTIK_ACCESS_TOKEN_VALIDITY="${OCLI_AUTHENTIK_ACCESS_TOKEN_VALIDITY:-hours=1}"
+RUNTIME_AUTHENTIK_BASE_URL="${OPEN_CLI_RUNTIME_AUTHENTIK_BASE_URL:-${OPEN_CLI_DAEMON_AUTHENTIK_BASE_URL:-$DEFAULT_RUNTIME_AUTHENTIK_BASE_URL}}"
+RUNTIME_URL="${OPEN_CLI_RUNTIME_URL:-http://127.0.0.1:8765}"
+RUNTIME_AUDIENCE="${OPEN_CLI_RUNTIME_AUDIENCE:-open-cli-toolbox}"
+RUNTIME_SERVICE_ID="${OPEN_CLI_RUNTIME_SERVICE_ID:-testapi}"
+RUNTIME_EXTRA_SERVICE_IDS="${OPEN_CLI_RUNTIME_EXTRA_SERVICE_IDS:-}"
+RUNTIME_EXTRA_SCOPES="${OPEN_CLI_RUNTIME_EXTRA_SCOPES:-}"
+OPENAPI_URI="${OPEN_CLI_OPENAPI_URI:-./product-tests/testdata/openapi/testapi.openapi.yaml}"
+AUTHENTIK_CLIENT_SLUG="${OPEN_CLI_AUTHENTIK_CLIENT_SLUG:-open-cli-runtime-local}"
+AUTHENTIK_PROVIDER_NAME="${OPEN_CLI_AUTHENTIK_PROVIDER_NAME:-open-cli Runtime Local Provider}"
+AUTHENTIK_APPLICATION_NAME="${OPEN_CLI_AUTHENTIK_APPLICATION_NAME:-open-cli Runtime Local}"
+AUTHENTIK_REDIRECT_URI="${OPEN_CLI_AUTHENTIK_REDIRECT_URI:-http://127.0.0.1:8787/callback}"
+BROWSER_CALLBACK_PORT="${OPEN_CLI_BROWSER_CALLBACK_PORT:-8787}"
+AUTHENTIK_BROWSER_CLIENT_SLUG="${OPEN_CLI_AUTHENTIK_BROWSER_CLIENT_SLUG:-open-cli-runtime-browser-local}"
+AUTHENTIK_BROWSER_PROVIDER_NAME="${OPEN_CLI_AUTHENTIK_BROWSER_PROVIDER_NAME:-open-cli Runtime Browser Local Provider}"
+AUTHENTIK_BROWSER_APPLICATION_NAME="${OPEN_CLI_AUTHENTIK_BROWSER_APPLICATION_NAME:-open-cli Runtime Browser Local}"
+AUTHENTIK_BROWSER_REDIRECT_URI="${OPEN_CLI_AUTHENTIK_BROWSER_REDIRECT_URI:-http://127.0.0.1:${BROWSER_CALLBACK_PORT}/callback}"
+AUTHENTIK_ACCESS_TOKEN_VALIDITY="${OPEN_CLI_AUTHENTIK_ACCESS_TOKEN_VALIDITY:-hours=1}"
 RUNTIME_BUNDLE_SCOPE="bundle:${RUNTIME_SERVICE_ID}"
 BOOTSTRAP_EXTRA_SCOPES="$(python3 - <<'PY' "$RUNTIME_EXTRA_SERVICE_IDS" "$RUNTIME_EXTRA_SCOPES"
 import sys
@@ -90,7 +90,7 @@ wait_for_worker() {
 extract_bootstrap_json() {
   python3 -c 'import json, sys
 text = sys.stdin.read()
-marker = "__OCLI_JSON__="
+marker = "__OPEN_CLI_JSON__="
 index = text.rfind(marker)
 if index == -1:
     raise SystemExit(1)
@@ -127,18 +127,18 @@ bootstrap_provider() {
   local encoded_script
   encoded_script="$(base64 -w0 "$BOOTSTRAP_SCRIPT")"
   docker_cmd exec \
-    -e OCLI_BOOTSTRAP_SCRIPT_B64="$encoded_script" \
-    -e OCLI_AUTHENTIK_CLIENT_TYPE="$client_type" \
-    -e OCLI_RUNTIME_AUDIENCE="$RUNTIME_AUDIENCE" \
-    -e OCLI_RUNTIME_SERVICE_ID="$RUNTIME_SERVICE_ID" \
-    -e OCLI_RUNTIME_EXTRA_SCOPES="$BOOTSTRAP_EXTRA_SCOPES" \
-    -e OCLI_AUTHENTIK_CLIENT_SLUG="$client_slug" \
-    -e OCLI_AUTHENTIK_PROVIDER_NAME="$provider_name" \
-    -e OCLI_AUTHENTIK_APPLICATION_NAME="$application_name" \
-    -e OCLI_AUTHENTIK_REDIRECT_URI="$redirect_uri" \
-    -e OCLI_AUTHENTIK_ACCESS_TOKEN_VALIDITY="$AUTHENTIK_ACCESS_TOKEN_VALIDITY" \
+    -e OPEN_CLI_BOOTSTRAP_SCRIPT_B64="$encoded_script" \
+    -e OPEN_CLI_AUTHENTIK_CLIENT_TYPE="$client_type" \
+    -e OPEN_CLI_RUNTIME_AUDIENCE="$RUNTIME_AUDIENCE" \
+    -e OPEN_CLI_RUNTIME_SERVICE_ID="$RUNTIME_SERVICE_ID" \
+    -e OPEN_CLI_RUNTIME_EXTRA_SCOPES="$BOOTSTRAP_EXTRA_SCOPES" \
+    -e OPEN_CLI_AUTHENTIK_CLIENT_SLUG="$client_slug" \
+    -e OPEN_CLI_AUTHENTIK_PROVIDER_NAME="$provider_name" \
+    -e OPEN_CLI_AUTHENTIK_APPLICATION_NAME="$application_name" \
+    -e OPEN_CLI_AUTHENTIK_REDIRECT_URI="$redirect_uri" \
+    -e OPEN_CLI_AUTHENTIK_ACCESS_TOKEN_VALIDITY="$AUTHENTIK_ACCESS_TOKEN_VALIDITY" \
     "$worker_id" \
-    /ak-root/venv/bin/python /manage.py shell -c "import base64, os; exec(base64.b64decode(os.environ['OCLI_BOOTSTRAP_SCRIPT_B64']).decode())"
+    /ak-root/venv/bin/python /manage.py shell -c "import base64, os; exec(base64.b64decode(os.environ['OPEN_CLI_BOOTSTRAP_SCRIPT_B64']).decode())"
 }
 
 bootstrap_provider_json() {
@@ -216,7 +216,7 @@ path = pathlib.Path(sys.argv[1])
 client_id = sys.argv[2]
 client_secret = sys.argv[3]
 path.write_text(
-    "export OAS_REMOTE_CLIENT_ID={}\nexport OAS_REMOTE_CLIENT_SECRET={}\n".format(
+    "export OPEN_CLI_REMOTE_CLIENT_ID={}\nexport OPEN_CLI_REMOTE_CLIENT_SECRET={}\n".format(
         shlex.quote(client_id),
         shlex.quote(client_secret),
     ),
@@ -312,8 +312,8 @@ config = {
                 "scopes": scopes,
                 "client": {
                     "tokenURL": token_url,
-                    "clientId": {"type": "env", "value": "OAS_REMOTE_CLIENT_ID"},
-                    "clientSecret": {"type": "env", "value": "OAS_REMOTE_CLIENT_SECRET"},
+                    "clientId": {"type": "env", "value": "OPEN_CLI_REMOTE_CLIENT_ID"},
+                    "clientSecret": {"type": "env", "value": "OPEN_CLI_REMOTE_CLIENT_SECRET"},
                 },
             },
         },
@@ -359,8 +359,8 @@ config = {
                 "scopes": unique([bundle_scope, *extra_scopes]),
                 "client": {
                     "tokenURL": token_url,
-                    "clientId": {"type": "env", "value": "OAS_REMOTE_CLIENT_ID"},
-                    "clientSecret": {"type": "env", "value": "OAS_REMOTE_CLIENT_SECRET"},
+                    "clientId": {"type": "env", "value": "OPEN_CLI_REMOTE_CLIENT_ID"},
+                    "clientSecret": {"type": "env", "value": "OPEN_CLI_REMOTE_CLIENT_SECRET"},
                 },
             },
         },
@@ -444,7 +444,7 @@ echo "Next steps:"
 echo "  source \"$ENV_PATH\""
 echo "  go run ./cmd/open-cli-toolbox --addr 127.0.0.1:8765 --config \"$RUNTIME_CONFIG_PATH\""
 echo "  source \"$DOCKER_ENV_PATH\" && docker compose up -d open-cli-toolbox"
-echo "  source \"$ENV_PATH\" && go run ./cmd/ocli --config \"$CONFIG_PATH\" catalog list --format pretty"
+echo "  source \"$ENV_PATH\" && go run ./cmd/open-cli --config \"$CONFIG_PATH\" catalog list --format pretty"
 echo "  # browser client config written to: \"$BROWSER_CONFIG_PATH\""
 echo "  # hosted browser login still needs a browser-matched runtime auth config"
 echo

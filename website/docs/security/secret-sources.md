@@ -135,7 +135,7 @@ Example:
       },
       "clientSecret": {
         "type": "osKeychain",
-        "value": "oas-cli/petstore-secret"
+        "value": "open-cli/petstore-secret"
       },
       "scopes": ["pets.read"],
       "tokenStorage": "instance"

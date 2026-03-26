@@ -1,4 +1,4 @@
-# oas-cli-spec
+# open-cli spec
 
 Normative specification and JSON schemas for Open CLI.
 

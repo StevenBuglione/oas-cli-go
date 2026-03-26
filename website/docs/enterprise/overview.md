@@ -23,7 +23,7 @@ For the structured checklist form of this material, see [Adoption Checklist](./a
 
 | Model | Description | Reference |
 |---|---|---|
-| Loopback-hosted runtime | Host `open-cli-toolbox` on localhost or a single machine for evaluation. `ocli` still talks to it over HTTP. | [Deployment Models](../runtime/deployment-models) |
+| Loopback-hosted runtime | Host `open-cli-toolbox` on localhost or a single machine for evaluation. `open-cli` still talks to it over HTTP. | [Deployment Models](../runtime/deployment-models) |
 | Shared hosted runtime | Host `open-cli-toolbox` for teams, agents, or automation behind a stable URL. | [Deployment Models](../runtime/deployment-models) |
 | Brokered enterprise runtime | Put `open-cli-toolbox` behind runtime bearer auth plus network controls. This is the production posture to evaluate. | [Deployment Models](../runtime/deployment-models) |
 

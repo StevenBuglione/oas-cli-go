@@ -12,8 +12,8 @@ Unless you override paths programmatically, `pkg/config.DiscoverScopePaths` look
 
 | Scope | Default path |
 | --- | --- |
-| Managed | `/etc/oas-cli/.cli.json` |
-| User | `$XDG_CONFIG_HOME/oas-cli/.cli.json` or `~/.config/oas-cli/.cli.json` |
+| Managed | `/etc/open-cli/.cli.json` |
+| User | `$XDG_CONFIG_HOME/open-cli/.cli.json` or `~/.config/open-cli/.cli.json` |
 | Project | `<working-dir>/.cli.json` |
 | Local | `<working-dir>/.cli.local.json` |
 

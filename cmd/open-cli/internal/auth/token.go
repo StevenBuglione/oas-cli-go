@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	runtimepkg "github.com/StevenBuglione/open-cli/cmd/ocli/internal/runtime"
+	runtimepkg "github.com/StevenBuglione/open-cli/cmd/open-cli/internal/runtime"
 	embeddedruntime "github.com/StevenBuglione/open-cli/internal/runtime"
 	oauthruntime "github.com/StevenBuglione/open-cli/pkg/auth"
 	configpkg "github.com/StevenBuglione/open-cli/pkg/config"

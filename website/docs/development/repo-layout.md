@@ -14,7 +14,7 @@ The main implementation lives in a compact set of directories.
     ci.yml              Go verification, spec/conformance validation, docs build
     docs-pages.yml      GitHub Pages deployment for website/
 cmd/
-  ocli/               CLI entrypoint and runtime client
+  open-cli/               CLI entrypoint and runtime client
   open-cli-toolbox/   hosted runtime entrypoint
 internal/
   runtime/              HTTP API handlers and runtime wiring
@@ -55,7 +55,7 @@ README.md               repository front door and install/verify summary
 
 | If you need to change... | Start here |
 | --- | --- |
-| CLI flags, output, runtime client behavior | `cmd/ocli/main.go` |
+| CLI flags, output, runtime client behavior | `cmd/open-cli/main.go` |
 | hosted runtime startup, flags, registry writing | `cmd/open-cli-toolbox/main.go` |
 | runtime endpoints | `internal/runtime/server.go` |
 | config schema or merge behavior | `pkg/config/` |
@@ -76,7 +76,7 @@ README.md               repository front door and install/verify summary
 
 The repo keeps tests close to the packages they exercise:
 
-- `cmd/ocli/main_test.go`
+- `cmd/open-cli/main_test.go`
 - `internal/runtime/server_test.go`
 - `pkg/config/config_test.go`
 - `pkg/catalog/*.go` tests

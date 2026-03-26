@@ -13,9 +13,9 @@ import (
 	"sync/atomic"
 	"testing"
 
-	authpkg "github.com/StevenBuglione/open-cli/cmd/ocli/internal/auth"
-	cfgpkg "github.com/StevenBuglione/open-cli/cmd/ocli/internal/config"
-	runtimepkg "github.com/StevenBuglione/open-cli/cmd/ocli/internal/runtime"
+	authpkg "github.com/StevenBuglione/open-cli/cmd/open-cli/internal/auth"
+	cfgpkg "github.com/StevenBuglione/open-cli/cmd/open-cli/internal/config"
+	runtimepkg "github.com/StevenBuglione/open-cli/cmd/open-cli/internal/runtime"
 	"github.com/StevenBuglione/open-cli/pkg/catalog"
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/spf13/cobra"
@@ -155,7 +155,7 @@ func runInitCommand(t *testing.T, source string) (string, map[string]any) {
 		t.Fatalf("init failed: %v", err)
 	}
 
-	data, err := os.ReadFile(filepath.Join(homeDir, ".config", "oas-cli", ".cli.json"))
+	data, err := os.ReadFile(filepath.Join(homeDir, ".config", "open-cli", ".cli.json"))
 	if err != nil {
 		t.Fatalf("read created config: %v", err)
 	}
@@ -209,9 +209,9 @@ func runInitCommandSubprocess(t *testing.T, source string, env map[string]string
 	homeDir := t.TempDir()
 	cmd := exec.Command(os.Args[0], "-test.run=TestInitCommandHelperProcess")
 	childEnv := map[string]string{
-		"OCLI_HELPER_INIT":   "1",
-		"OCLI_HELPER_SOURCE": source,
-		"HOME":               homeDir,
+		"OPEN_CLI_HELPER_INIT":   "1",
+		"OPEN_CLI_HELPER_SOURCE": source,
+		"HOME":                   homeDir,
 	}
 	for key, value := range env {
 		childEnv[key] = value
@@ -296,7 +296,7 @@ func countEnvKey(env []string, key string) int {
 }
 
 func TestInitCommandHelperProcess(t *testing.T) {
-	if os.Getenv("OCLI_HELPER_INIT") != "1" {
+	if os.Getenv("OPEN_CLI_HELPER_INIT") != "1" {
 		return
 	}
 
@@ -304,7 +304,7 @@ func TestInitCommandHelperProcess(t *testing.T) {
 	cmd := NewInitCommand()
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&stdout)
-	cmd.SetArgs([]string{"--global", os.Getenv("OCLI_HELPER_SOURCE")})
+	cmd.SetArgs([]string{"--global", os.Getenv("OPEN_CLI_HELPER_SOURCE")})
 	err := cmd.Execute()
 	_, _ = os.Stdout.Write(stdout.Bytes())
 	if err != nil {
@@ -643,7 +643,7 @@ func TestExplainCommandUsesLayeredApprovalPolicy(t *testing.T) {
 	root := t.TempDir()
 	homeDir := filepath.Join(root, "home")
 	projectDir := filepath.Join(root, "project")
-	userDir := filepath.Join(homeDir, ".config", "oas-cli")
+	userDir := filepath.Join(homeDir, ".config", "open-cli")
 	if err := os.MkdirAll(projectDir, 0o755); err != nil {
 		t.Fatalf("mkdir project: %v", err)
 	}
@@ -864,7 +864,7 @@ func TestStatusCommandStructuredIncludesSecuritySummary(t *testing.T) {
 	root := t.TempDir()
 	homeDir := filepath.Join(root, "home")
 	projectDir := filepath.Join(root, "project")
-	userDir := filepath.Join(homeDir, ".config", "oas-cli")
+	userDir := filepath.Join(homeDir, ".config", "open-cli")
 	if err := os.MkdirAll(projectDir, 0o755); err != nil {
 		t.Fatalf("mkdir project: %v", err)
 	}
@@ -1677,7 +1677,7 @@ func TestDynamicCommandDryRun(t *testing.T) {
 		},
 		Servers: []string{"https://api.example.com"},
 	}
-	root := &cobra.Command{Use: "ocli"}
+	root := &cobra.Command{Use: "open-cli"}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	options := testOptions(&stdout, &stderr)
@@ -1723,7 +1723,7 @@ func TestDynamicCommandDryRunShowsUnresolvedBaseAndSecurityPosture(t *testing.T)
 		}},
 		Safety: catalog.Safety{RequiresApproval: true},
 	}
-	root := &cobra.Command{Use: "ocli"}
+	root := &cobra.Command{Use: "open-cli"}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	options := testOptions(&stdout, &stderr)
@@ -1768,7 +1768,7 @@ func TestDynamicCommandDryRunPreviewsMCPWithoutExecuting(t *testing.T) {
 			ToolName: "read_file",
 		},
 	}
-	root := &cobra.Command{Use: "ocli"}
+	root := &cobra.Command{Use: "open-cli"}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	options := testOptions(&stdout, &stderr)
@@ -1829,7 +1829,7 @@ func TestDynamicCommandBuildsMCPBodyFromScalarFlags(t *testing.T) {
 			ToolName: "read_file",
 		},
 	}
-	root := &cobra.Command{Use: "ocli"}
+	root := &cobra.Command{Use: "open-cli"}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	options := testOptions(&stdout, &stderr)
@@ -1880,7 +1880,7 @@ func TestDynamicCommandRejectsBodyWhenMCPScalarFlagsAlsoProvided(t *testing.T) {
 			ToolName: "read_file",
 		},
 	}
-	root := &cobra.Command{Use: "ocli"}
+	root := &cobra.Command{Use: "open-cli"}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	options := testOptions(&stdout, &stderr)
@@ -1967,7 +1967,7 @@ func TestInitCommandGlobalCreatesConfigDir(t *testing.T) {
 		t.Fatalf("init --global failed: %v", err)
 	}
 
-	configPath := filepath.Join(dir, ".config", "oas-cli", ".cli.json")
+	configPath := filepath.Join(dir, ".config", "open-cli", ".cli.json")
 	if _, err := os.Stat(configPath); err != nil {
 		t.Fatalf("expected global config at %s: %v", configPath, err)
 	}
@@ -1984,7 +1984,7 @@ func TestInitCommandDerivesNameFromGenericBasenameAndTitle(t *testing.T) {
 	}
 
 	stdout, cfg := runInitCommand(t, specPath)
-	if !strings.Contains(stdout, "ocli billing-service --help") {
+	if !strings.Contains(stdout, "open-cli billing-service --help") {
 		t.Fatalf("expected billing-service next step, got: %s", stdout)
 	}
 	assertInitConfigName(t, cfg, "billing-service")
@@ -2040,7 +2040,7 @@ func TestInitCommandFallsBackToServiceForLocalFiles(t *testing.T) {
 	}
 
 	stdout, cfg := runInitCommand(t, specPath)
-	if !strings.Contains(stdout, "ocli service --help") {
+	if !strings.Contains(stdout, "open-cli service --help") {
 		t.Fatalf("expected service next step, got: %s", stdout)
 	}
 	assertInitConfigName(t, cfg, "service")
@@ -2076,7 +2076,7 @@ func TestInitCommandRemoteURLFallsBackToFirstHostLabel(t *testing.T) {
 		t.Fatalf("init failed: %v\n%s", err, stdout)
 	}
 
-	data, err := os.ReadFile(filepath.Join(homeDir, ".config", "oas-cli", ".cli.json"))
+	data, err := os.ReadFile(filepath.Join(homeDir, ".config", "open-cli", ".cli.json"))
 	if err != nil {
 		t.Fatalf("read created config: %v", err)
 	}
@@ -2084,7 +2084,7 @@ func TestInitCommandRemoteURLFallsBackToFirstHostLabel(t *testing.T) {
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		t.Fatalf("unmarshal config: %v", err)
 	}
-	if !strings.Contains(stdout, "ocli billing --help") {
+	if !strings.Contains(stdout, "open-cli billing --help") {
 		t.Fatalf("expected billing next step, got: %s", stdout)
 	}
 	assertInitConfigName(t, cfg, "billing")
@@ -2138,11 +2138,11 @@ func TestInitCommandAuthHintsPrefixDigitLeadingEnvVarNames(t *testing.T) {
 	}
 
 	stdout, _ := runInitCommand(t, specPath)
-	if !strings.Contains(stdout, "OCLI_3_BILLING_API_KEY") {
-		t.Fatalf("expected OCLI_3_BILLING_API_KEY auth hint, got: %s", stdout)
+	if !strings.Contains(stdout, "OPEN_CLI_3_BILLING_API_KEY") {
+		t.Fatalf("expected OPEN_CLI_3_BILLING_API_KEY auth hint, got: %s", stdout)
 	}
-	if !strings.Contains(stdout, "OCLI_3_BILLING_TOKEN") {
-		t.Fatalf("expected OCLI_3_BILLING_TOKEN auth hint, got: %s", stdout)
+	if !strings.Contains(stdout, "OPEN_CLI_3_BILLING_TOKEN") {
+		t.Fatalf("expected OPEN_CLI_3_BILLING_TOKEN auth hint, got: %s", stdout)
 	}
 }
 

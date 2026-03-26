@@ -29,7 +29,7 @@ const steps: Step[] = [
     number: 3,
     label: 'Execute with confidence',
     detail:
-      'Use ocli commands or the built-in MCP server. Every tool call, approval decision, and auth event passes through the hosted runtime and lands in the audit trail.',
+      'Use open-cli commands or the built-in MCP server. Every tool call, approval decision, and auth event passes through the hosted runtime and lands in the audit trail.',
     href: '/docs/cli/overview',
   },
 ];
@@ -63,7 +63,7 @@ export default function HowItWorks(): ReactNode {
           <figure className={styles.howItWorksDiagram}>
             <img
               src="/img/runtime-flow.svg"
-              alt="Flow: OpenAPI sources feed into open-cli-toolbox, which discovers, normalizes, applies policy and auth, records audit events, and exposes the governed catalog to ocli commands and the MCP server."
+              alt="Flow: OpenAPI sources feed into open-cli-toolbox, which discovers, normalizes, applies policy and auth, records audit events, and exposes the governed catalog to open-cli commands and the MCP server."
               width="420"
               height="200"
               loading="lazy"

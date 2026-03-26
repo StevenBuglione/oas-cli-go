@@ -42,7 +42,7 @@ func NewInitCommand() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				dir := filepath.Join(home, ".config", "oas-cli")
+				dir := filepath.Join(home, ".config", "open-cli")
 				if err := os.MkdirAll(dir, 0o755); err != nil {
 					return err
 				}
@@ -84,8 +84,8 @@ func NewInitCommand() *cobra.Command {
 			fmt.Fprintf(w, "\nCreated %s\n", outPath)
 			fmt.Fprintln(w)
 			fmt.Fprintln(w, "Next steps:")
-			fmt.Fprintln(w, "  ocli catalog list              List available tools")
-			fmt.Fprintf(w, "  ocli %s --help                See %s commands\n", name, name)
+			fmt.Fprintln(w, "  open-cli catalog list              List available tools")
+			fmt.Fprintf(w, "  open-cli %s --help                See %s commands\n", name, name)
 			if len(authHints) > 0 {
 				fmt.Fprintln(w)
 				fmt.Fprintln(w, "This API requires authentication. Configure secrets:")
@@ -96,7 +96,7 @@ func NewInitCommand() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&global, "global", false, "Write config to ~/.config/oas-cli/ instead of current directory")
+	cmd.Flags().BoolVar(&global, "global", false, "Write config to ~/.config/open-cli/ instead of current directory")
 	cmd.Flags().StringVar(&sourceType, "type", "openapi", "Source type: openapi or mcp")
 	cmd.Flags().StringVar(&transport, "transport", "", "MCP transport: stdio, sse, streamable-http")
 	cmd.Flags().StringVar(&mcpCommand, "command", "", "MCP stdio command")
@@ -205,11 +205,11 @@ func buildOpenAPIConfig(source string, w io.Writer) (map[string]any, []string, s
 			scheme := schemeRef.Value
 			switch scheme.Type {
 			case "oauth2":
-				authHints = append(authHints, fmt.Sprintf("ocli config add-secret %s --type oauth2 --token-url <url> --client-id-env <var> --client-secret-env <var>", schemeName))
+				authHints = append(authHints, fmt.Sprintf("open-cli config add-secret %s --type oauth2 --token-url <url> --client-id-env <var> --client-secret-env <var>", schemeName))
 			case "apiKey":
-				authHints = append(authHints, fmt.Sprintf("ocli config add-secret %s --type env --env-value %s_API_KEY", schemeName, envNamePrefix))
+				authHints = append(authHints, fmt.Sprintf("open-cli config add-secret %s --type env --env-value %s_API_KEY", schemeName, envNamePrefix))
 			case "http":
-				authHints = append(authHints, fmt.Sprintf("ocli config add-secret %s --type env --env-value %s_TOKEN", schemeName, envNamePrefix))
+				authHints = append(authHints, fmt.Sprintf("open-cli config add-secret %s --type env --env-value %s_TOKEN", schemeName, envNamePrefix))
 			}
 		}
 	}
@@ -427,13 +427,13 @@ func sanitizeServiceName(raw string) string {
 func serviceNameEnvPrefix(name string) string {
 	prefix := strings.ToUpper(strings.ReplaceAll(name, "-", "_"))
 	if prefix == "" {
-		return "OCLI"
+		return "OPEN_CLI"
 	}
 	first := prefix[0]
 	if first >= 'A' && first <= 'Z' {
 		return prefix
 	}
-	return "OCLI_" + prefix
+	return "OPEN_CLI_" + prefix
 }
 
 func titleTokens(title string) []string {

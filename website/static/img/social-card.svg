@@ -9,8 +9,8 @@
   </defs>
   <rect width="1200" height="630" rx="36" fill="url(#bg)" />
   <rect x="64" y="64" width="160" height="160" rx="24" fill="#255fb0" />
-  <text x="144" y="165" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="52" font-weight="700" fill="#ffffff">OCLI</text>
+  <text x="144" y="165" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="52" font-weight="700" fill="#ffffff">OPEN_CLI</text>
   <text x="280" y="200" font-family="Inter, Arial, sans-serif" font-size="76" font-weight="700" fill="#10233f">open-cli</text>
   <text x="280" y="280" font-family="Inter, Arial, sans-serif" font-size="34" fill="#29415f">A remote-only CLI and hosted runtime for OpenAPI discovery, policy, and execution.</text>
-  <text x="280" y="360" font-family="Inter, Arial, sans-serif" font-size="28" fill="#29415f">ocli renders commands • open-cli-toolbox discovers, authorizes, executes, and audits</text>
+  <text x="280" y="360" font-family="Inter, Arial, sans-serif" font-size="28" fill="#29415f">open-cli renders commands • open-cli-toolbox discovers, authorizes, executes, and audits</text>
 </svg>

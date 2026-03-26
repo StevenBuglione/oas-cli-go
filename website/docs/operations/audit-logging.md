@@ -19,7 +19,7 @@ For a resolved instance, the default audit path is:
 You can override it in hosted-runtime mode with:
 
 ```bash
-open-cli-toolbox --audit-path /var/log/ocli/team-a.audit.log
+open-cli-toolbox --audit-path /var/log/open-cli/team-a.audit.log
 ```
 
 ## File format

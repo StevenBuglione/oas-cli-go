@@ -8,7 +8,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	cfgpkg "github.com/StevenBuglione/open-cli/cmd/ocli/internal/config"
+	cfgpkg "github.com/StevenBuglione/open-cli/cmd/open-cli/internal/config"
 	configpkg "github.com/StevenBuglione/open-cli/pkg/config"
 	"github.com/spf13/cobra"
 )
@@ -78,7 +78,7 @@ func newConfigShowCommand(options cfgpkg.Options) *cobra.Command {
 				return NewUserError(
 					"No config file found",
 					"No .cli.json exists in any scope",
-					"Run 'ocli init <url>' to create one")
+					"Run 'open-cli init <url>' to create one")
 			}
 			raw, err := readConfigFile(options.ConfigPath)
 			if err != nil {
@@ -107,7 +107,7 @@ func newConfigAddSourceCommand() *cobra.Command {
 				return NewUserError(
 					fmt.Sprintf("Source %q already exists", name),
 					"A source with this name is already configured",
-					fmt.Sprintf("Remove it first with: ocli config remove-source %s", name))
+					fmt.Sprintf("Remove it first with: open-cli config remove-source %s", name))
 			}
 
 			source := map[string]any{"type": sourceType, "enabled": true}
@@ -165,7 +165,7 @@ func newConfigAddSourceCommand() *cobra.Command {
 	cmd.Flags().StringVar(&args, "args", "", "Comma-separated MCP stdio args")
 	cmd.Flags().StringVar(&mcpURL, "url", "", "MCP sse/streamable-http URL")
 	cmd.Flags().StringVar(&alias, "alias", "", "Service alias (default: same as name)")
-	cmd.Flags().BoolVar(&global, "global", false, "Write to ~/.config/oas-cli/ instead of current directory")
+	cmd.Flags().BoolVar(&global, "global", false, "Write to ~/.config/open-cli/ instead of current directory")
 	return cmd
 }
 
@@ -190,7 +190,7 @@ func newConfigRemoveSourceCommand() *cobra.Command {
 				return NewUserError(
 					fmt.Sprintf("Source %q not found", name),
 					"No source with this name exists in "+configPath,
-					"Run 'ocli config show' to see configured sources")
+					"Run 'open-cli config show' to see configured sources")
 			}
 			delete(sources, name)
 			if services, ok := raw["services"].(map[string]any); ok {
@@ -204,7 +204,7 @@ func newConfigRemoveSourceCommand() *cobra.Command {
 			return writeConfigFile(configPath, raw, cmd.OutOrStdout(), fmt.Sprintf("Removed source %q", name))
 		},
 	}
-	cmd.Flags().BoolVar(&global, "global", false, "Modify ~/.config/oas-cli/ config")
+	cmd.Flags().BoolVar(&global, "global", false, "Modify ~/.config/open-cli/ config")
 	return cmd
 }
 
@@ -268,7 +268,7 @@ func newConfigAddSecretCommand() *cobra.Command {
 	cmd.Flags().StringVar(&clientSecret, "client-secret-env", "", "Env var name for OAuth client secret")
 	cmd.Flags().StringVar(&scopes, "scopes", "", "Comma-separated OAuth scopes")
 	cmd.Flags().StringVar(&envValue, "env-value", "", "Environment variable name (for --type env)")
-	cmd.Flags().BoolVar(&global, "global", false, "Write to ~/.config/oas-cli/ config")
+	cmd.Flags().BoolVar(&global, "global", false, "Write to ~/.config/open-cli/ config")
 	return cmd
 }
 
@@ -295,7 +295,7 @@ func configFilePath(global bool) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	dir := filepath.Join(home, ".config", "oas-cli")
+	dir := filepath.Join(home, ".config", "open-cli")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}

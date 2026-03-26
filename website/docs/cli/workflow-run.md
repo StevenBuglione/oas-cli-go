@@ -4,10 +4,10 @@ title: Workflow Run
 
 # Workflow Run
 
-`ocli workflow run <workflow-id>` is a **validation and planning** command, not a workflow engine.
+`open-cli workflow run <workflow-id>` is a **validation and planning** command, not a workflow engine.
 
 ```bash
-./bin/ocli --runtime http://127.0.0.1:8765 --config ./.cli.json workflow run triageTicket --format pretty
+./bin/open-cli --runtime http://127.0.0.1:8765 --config ./.cli.json workflow run triageTicket --format pretty
 ```
 
 ## What it does

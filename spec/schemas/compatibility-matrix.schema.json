@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://stevenbuglione.github.io/oas-cli-spec/schemas/compatibility-matrix.schema.json",
+  "$id": "https://stevenbuglione.github.io/open-cli/spec/schemas/compatibility-matrix.schema.json",
   "title": "Open CLI Compatibility Matrix",
   "type": "object",
   "required": ["suiteVersion", "specVersion", "publishedAt", "implementations"],

@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	authpkg "github.com/StevenBuglione/open-cli/cmd/ocli/internal/auth"
-	runtimepkg "github.com/StevenBuglione/open-cli/cmd/ocli/internal/runtime"
+	authpkg "github.com/StevenBuglione/open-cli/cmd/open-cli/internal/auth"
+	runtimepkg "github.com/StevenBuglione/open-cli/cmd/open-cli/internal/runtime"
 	configpkg "github.com/StevenBuglione/open-cli/pkg/config"
 	"github.com/StevenBuglione/open-cli/pkg/instance"
 )
@@ -64,7 +64,7 @@ func EnvBool(name string) bool {
 }
 
 // DiscoverConfigPath searches standard locations for a .cli.json config file.
-// Priority: project (.cli.json in CWD) > user (~/.config/oas-cli/.cli.json) > managed (/etc/oas-cli/.cli.json).
+// Priority: project (.cli.json in CWD) > user (~/.config/open-cli/.cli.json) > managed (/etc/open-cli/.cli.json).
 func DiscoverConfigPath() string {
 	paths := configpkg.DiscoverScopePaths(configpkg.LoadOptions{})
 	for _, scope := range []configpkg.Scope{configpkg.ScopeProject, configpkg.ScopeLocal, configpkg.ScopeUser, configpkg.ScopeManaged} {
@@ -155,19 +155,19 @@ func ResolveCommandOptions(options Options, hooks ResolveHooks) (Options, error)
 		}
 	}
 	if options.InstanceID == "" {
-		options.InstanceID = os.Getenv("OCLI_INSTANCE_ID")
+		options.InstanceID = os.Getenv("OPEN_CLI_INSTANCE_ID")
 	}
 	if options.StateDir == "" {
-		options.StateDir = os.Getenv("OCLI_STATE_DIR")
+		options.StateDir = os.Getenv("OPEN_CLI_STATE_DIR")
 	}
 	if options.AuthActorID == "" && hooks.ResolveAgentSessionID != nil {
 		options.AuthActorID = hooks.ResolveAgentSessionID()
 	}
 	if options.Demo {
-		return options, fmt.Errorf("demo mode has been removed; connect ocli to a remote open-cli-toolbox server instead")
+		return options, fmt.Errorf("demo mode has been removed; connect open-cli to a remote open-cli-toolbox server instead")
 	}
-	if options.Embedded || EnvBool("OCLI_EMBEDDED") {
-		return options, fmt.Errorf("embedded mode has been removed; connect ocli to a remote open-cli-toolbox server instead")
+	if options.Embedded || EnvBool("OPEN_CLI_EMBEDDED") {
+		return options, fmt.Errorf("embedded mode has been removed; connect open-cli to a remote open-cli-toolbox server instead")
 	}
 	if options.RuntimeDeployment == "" {
 		options.RuntimeDeployment = hooks.ResolveRuntimeDeployment(options)
@@ -178,7 +178,7 @@ func ResolveCommandOptions(options Options, hooks ResolveHooks) (Options, error)
 	options.RuntimeDeployment = "remote"
 	options.RuntimeRequestConfigPath = options.ConfigPath
 	if options.RuntimeURL == "" {
-		options.RuntimeURL = os.Getenv("OCLI_RUNTIME_URL")
+		options.RuntimeURL = os.Getenv("OPEN_CLI_RUNTIME_URL")
 	}
 	if options.RuntimeURL == "" {
 		if runtimeCfg, ok := loadCachedRuntimeConfig(); ok && runtimeCfg.Remote != nil && runtimeCfg.Remote.URL != "" {

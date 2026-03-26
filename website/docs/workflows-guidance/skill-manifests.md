@@ -26,7 +26,7 @@ The current loader expects JSON with a `toolGuidance` object keyed by tool ID.
       "examples": [
         {
           "goal": "List only open tickets",
-          "command": "ocli helpdesk tickets list-tickets --status open"
+          "command": "open-cli helpdesk tickets list-tickets --status open"
         }
       ]
     }

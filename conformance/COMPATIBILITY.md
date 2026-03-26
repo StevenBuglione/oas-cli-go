@@ -12,7 +12,7 @@ The machine-readable source of truth for this table is [`compatibility-matrix.js
 
 Feature rows in this table are backed by two inputs:
 
-- schema and fixture validation in `oas-cli-conformance`
+- schema and fixture validation in `conformance/`
 - implementation verification in `open-cli` for runtime transport and auth behavior
 
 `MCP transports` and `OAuth runtime` remain `partial` here until that runtime evidence is mechanically enforced by this repository's own validation flow.

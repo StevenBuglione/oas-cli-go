@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://stevenbuglione.github.io/oas-cli-spec/schemas/ntc.schema.json",
+  "$id": "https://stevenbuglione.github.io/open-cli/spec/schemas/ntc.schema.json",
   "title": "Normalized Tool Catalog",
   "type": "object",
   "required": ["catalogVersion", "generatedAt", "sourceFingerprint", "sources", "services", "tools", "effectiveViews"],

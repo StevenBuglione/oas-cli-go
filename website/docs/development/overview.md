@@ -8,7 +8,7 @@ title: Development Overview
 
 The repository is organized around a clear split:
 
-- **CLI surface** in `cmd/ocli`
+- **CLI surface** in `cmd/open-cli`
 - **hosted runtime** in `cmd/open-cli-toolbox` and `internal/runtime`
 - **library packages** under `pkg/` for config, discovery, catalog building, execution, caching, audit, instance handling, and observability
 - **docs site** under `website/` for the published Docusaurus documentation and contributor guides
@@ -43,7 +43,7 @@ Each bucket has a natural owner package; resist the urge to push behavior into `
 
 ## Current design constraints worth respecting
 
-- `ocli` is thin and runtime-backed by design
+- `open-cli` is thin and runtime-backed by design
 - the runtime is the enforcement point for policy, auth, cache, and audit
 - instance isolation is file-system based
 - observability is abstracted behind `pkg/obs.Observer`

@@ -108,13 +108,13 @@ func resolveStateRoot(explicit string) (string, error) {
 		return explicit, nil
 	}
 	if xdg := os.Getenv("XDG_STATE_HOME"); xdg != "" {
-		return filepath.Join(xdg, "oas-cli"), nil
+		return filepath.Join(xdg, "open-cli"), nil
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".local", "state", "oas-cli"), nil
+	return filepath.Join(home, ".local", "state", "open-cli"), nil
 }
 
 func resolveCacheRoot(explicit, stateRoot string) (string, error) {
@@ -125,13 +125,13 @@ func resolveCacheRoot(explicit, stateRoot string) (string, error) {
 		return filepath.Join(stateRoot, "cache"), nil
 	}
 	if xdg := os.Getenv("XDG_CACHE_HOME"); xdg != "" {
-		return filepath.Join(xdg, "oas-cli"), nil
+		return filepath.Join(xdg, "open-cli"), nil
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".cache", "oas-cli"), nil
+	return filepath.Join(home, ".cache", "open-cli"), nil
 }
 
 func slugify(value string) string {

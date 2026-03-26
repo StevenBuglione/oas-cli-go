@@ -12,10 +12,10 @@ import (
 	"strconv"
 	"time"
 
-	authpkg "github.com/StevenBuglione/open-cli/cmd/ocli/internal/auth"
-	cmdspkg "github.com/StevenBuglione/open-cli/cmd/ocli/internal/commands"
-	cfgpkg "github.com/StevenBuglione/open-cli/cmd/ocli/internal/config"
-	runtimepkg "github.com/StevenBuglione/open-cli/cmd/ocli/internal/runtime"
+	authpkg "github.com/StevenBuglione/open-cli/cmd/open-cli/internal/auth"
+	cmdspkg "github.com/StevenBuglione/open-cli/cmd/open-cli/internal/commands"
+	cfgpkg "github.com/StevenBuglione/open-cli/cmd/open-cli/internal/config"
+	runtimepkg "github.com/StevenBuglione/open-cli/cmd/open-cli/internal/runtime"
 	"github.com/StevenBuglione/open-cli/internal/version"
 	"github.com/StevenBuglione/open-cli/pkg/catalog"
 	configpkg "github.com/StevenBuglione/open-cli/pkg/config"
@@ -64,7 +64,7 @@ func main() {
 	}
 	options := bootstrapFromArgs(os.Args[1:])
 	if options.Demo {
-		_, _ = fmt.Fprintln(os.Stderr, "demo mode has been removed; connect ocli to a remote open-cli-toolbox server instead")
+		_, _ = fmt.Fprintln(os.Stderr, "demo mode has been removed; connect open-cli to a remote open-cli-toolbox server instead")
 		os.Exit(1)
 	}
 	command, err := NewRootCommand(options, os.Args[1:])
@@ -373,7 +373,7 @@ func cacheRootForState(stateDir string) string {
 }
 
 func detectTerminalSessionIdentity() string {
-	if value := os.Getenv("OCLI_TERMINAL_SESSION_ID"); value != "" {
+	if value := os.Getenv("OPEN_CLI_TERMINAL_SESSION_ID"); value != "" {
 		return value
 	}
 	for _, fdPath := range []string{"/proc/self/fd/0", "/proc/self/fd/1", "/proc/self/fd/2"} {
@@ -386,7 +386,7 @@ func detectTerminalSessionIdentity() string {
 }
 
 func detectAgentSessionIdentity() string {
-	for _, name := range []string{"OCLI_AGENT_SESSION_ID", "COPILOT_SESSION_ID"} {
+	for _, name := range []string{"OPEN_CLI_AGENT_SESSION_ID", "COPILOT_SESSION_ID"} {
 		if value := os.Getenv(name); value != "" {
 			return value
 		}
@@ -410,5 +410,5 @@ func envBool(name string) bool {
 }
 
 func setupDemoConfig(options CommandOptions) (CommandOptions, error) {
-	return options, fmt.Errorf("demo mode has been removed; connect ocli to a remote open-cli-toolbox server instead")
+	return options, fmt.Errorf("demo mode has been removed; connect open-cli to a remote open-cli-toolbox server instead")
 }

@@ -94,7 +94,7 @@ func XTestResolveCommandOptionsRejectsNonLocalRuntimeOverrideForLocalMode(t *tes
 }
 
 func TestResolveCommandOptionsUsesEnvRuntimeURLBeforeConfig(t *testing.T) {
-	t.Setenv("OCLI_RUNTIME_URL", "https://env.example.com")
+	t.Setenv("OPEN_CLI_RUNTIME_URL", "https://env.example.com")
 
 	options := Options{ConfigPath: writeResolvedConfig(t, `{
   "cli": "1.0.0",

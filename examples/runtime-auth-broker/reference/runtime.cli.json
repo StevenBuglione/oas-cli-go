@@ -12,7 +12,7 @@
         "audience": "open-cli-toolbox",
         "authorizationURL": "https://broker.example.com/authorize",
         "tokenURL": "https://broker.example.com/token",
-        "browserClientId": "ocli-browser"
+        "browserClientId": "open-cli-browser"
       }
     },
     "remote": {

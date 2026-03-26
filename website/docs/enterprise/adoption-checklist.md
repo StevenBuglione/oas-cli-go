@@ -17,7 +17,7 @@ Answer these questions before investing evaluation time. A "no" answer does not 
 
 | Question | If no |
 |---|---|
-| Can you host `open-cli-toolbox` as a separate runtime boundary? | `ocli` is remote-only; you need a reachable hosted runtime before the workflow fits. |
+| Can you host `open-cli-toolbox` as a separate runtime boundary? | `open-cli` is remote-only; you need a reachable hosted runtime before the workflow fits. |
 | Can you tolerate revocation as a tracked gap rather than a solved capability? | Token revocation is not implemented. Short expiry + network controls are the current mitigation path. |
 | Can you supply audit log rotation and retention tooling? | There is no built-in log rotation, retention policy, or push exporter. |
 | Do you have infrastructure available for live identity proof (Authentik, Entra, or equivalent)? | Browser-login and federation proof cannot be validated in CI — you need real identity infrastructure. |

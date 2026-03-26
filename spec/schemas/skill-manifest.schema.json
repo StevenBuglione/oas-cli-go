@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://stevenbuglione.github.io/oas-cli-spec/schemas/skill-manifest.schema.json",
+  "$id": "https://stevenbuglione.github.io/open-cli/spec/schemas/skill-manifest.schema.json",
   "title": "Open CLI Skill Manifest",
   "type": "object",
   "required": ["oasCliSkill", "serviceId", "toolGuidance"],

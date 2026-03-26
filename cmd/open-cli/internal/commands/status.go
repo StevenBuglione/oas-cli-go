@@ -6,8 +6,8 @@ import (
 	"sort"
 	"strings"
 
-	cfgpkg "github.com/StevenBuglione/open-cli/cmd/ocli/internal/config"
-	runtimepkg "github.com/StevenBuglione/open-cli/cmd/ocli/internal/runtime"
+	cfgpkg "github.com/StevenBuglione/open-cli/cmd/open-cli/internal/config"
+	runtimepkg "github.com/StevenBuglione/open-cli/cmd/open-cli/internal/runtime"
 	configpkg "github.com/StevenBuglione/open-cli/pkg/config"
 	"github.com/spf13/cobra"
 )

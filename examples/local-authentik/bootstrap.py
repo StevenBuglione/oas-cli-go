@@ -19,15 +19,15 @@ from authentik.providers.oauth2.models import (
 )
 
 
-runtime_audience = os.getenv("OCLI_RUNTIME_AUDIENCE", "open-cli-toolbox")
-service_id = os.getenv("OCLI_RUNTIME_SERVICE_ID", "testapi")
-provider_name = os.getenv("OCLI_AUTHENTIK_PROVIDER_NAME", "ocli Runtime Local Provider")
-application_name = os.getenv("OCLI_AUTHENTIK_APPLICATION_NAME", "ocli Runtime Local")
-client_slug = os.getenv("OCLI_AUTHENTIK_CLIENT_SLUG", "ocli-runtime-local")
-redirect_uri = os.getenv("OCLI_AUTHENTIK_REDIRECT_URI", "http://127.0.0.1:8787/callback")
-access_token_validity = os.getenv("OCLI_AUTHENTIK_ACCESS_TOKEN_VALIDITY", "hours=1")
-client_type = os.getenv("OCLI_AUTHENTIK_CLIENT_TYPE", "confidential")
-extra_scopes = [scope for scope in os.getenv("OCLI_RUNTIME_EXTRA_SCOPES", "").split() if scope]
+runtime_audience = os.getenv("OPEN_CLI_RUNTIME_AUDIENCE", "open-cli-toolbox")
+service_id = os.getenv("OPEN_CLI_RUNTIME_SERVICE_ID", "testapi")
+provider_name = os.getenv("OPEN_CLI_AUTHENTIK_PROVIDER_NAME", "open-cli Runtime Local Provider")
+application_name = os.getenv("OPEN_CLI_AUTHENTIK_APPLICATION_NAME", "open-cli Runtime Local")
+client_slug = os.getenv("OPEN_CLI_AUTHENTIK_CLIENT_SLUG", "open-cli-runtime-local")
+redirect_uri = os.getenv("OPEN_CLI_AUTHENTIK_REDIRECT_URI", "http://127.0.0.1:8787/callback")
+access_token_validity = os.getenv("OPEN_CLI_AUTHENTIK_ACCESS_TOKEN_VALIDITY", "hours=1")
+client_type = os.getenv("OPEN_CLI_AUTHENTIK_CLIENT_TYPE", "confidential")
+extra_scopes = [scope for scope in os.getenv("OPEN_CLI_RUNTIME_EXTRA_SCOPES", "").split() if scope]
 
 scope_expression = (
     "audience = {audience!r}\n"
@@ -49,7 +49,7 @@ if signing_key is None:
 
 def ensure_scope(scope_name: str) -> ScopeMapping:
     mapping, _ = ScopeMapping.objects.update_or_create(
-        name=f"ocli runtime {scope_name}",
+        name=f"open-cli runtime {scope_name}",
         defaults={
             "scope_name": scope_name,
             "description": scope_name,
@@ -95,4 +95,4 @@ result = {
     "client_secret": provider.client_secret,
     "scope_names": scope_names,
 }
-print("__OCLI_JSON__=" + json.dumps(result))
+print("__OPEN_CLI_JSON__=" + json.dumps(result))

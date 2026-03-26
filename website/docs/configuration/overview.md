@@ -6,7 +6,7 @@ title: Configuration Overview
 
 **Read this if** you are an operator writing or tuning `.cli.json` for your environment. This page answers: what does each top-level config block control, how do sources and services relate, and what is the minimum viable config vs a fully curated one.
 
-`ocli` and `open-cli-toolbox` are driven by **JSON config files** named `.cli.json` (plus optional scope variants described in [Scope merging](./scope-merging)).
+`open-cli` and `open-cli-toolbox` are driven by **JSON config files** named `.cli.json` (plus optional scope variants described in [Scope merging](./scope-merging)).
 
 ## What the config controls
 
@@ -93,15 +93,15 @@ The default runtime mode. Current meaningful values are:
 
 ### `runtime`
 
-Controls how `ocli` reaches execution:
+Controls how `open-cli` reaches execution:
 
-- `remote`: the only supported value; point `ocli` at a hosted `open-cli-toolbox` runtime
+- `remote`: the only supported value; point `open-cli` at a hosted `open-cli-toolbox` runtime
 
 `runtime.local` is retained only for legacy schema compatibility and is rejected by the current CLI.
 
 `runtime.remote` carries the remote runtime base URL and optional runtime-auth configuration. The current CLI supports:
 
-- `providedToken`: forward a bearer token referenced by `tokenRef` such as `env:OAS_REMOTE_TOKEN`
+- `providedToken`: forward a bearer token referenced by `tokenRef` such as `env:OPEN_CLI_REMOTE_TOKEN`
 - `oauthClient`: acquire a client-credentials token for the remote runtime before calling it
 - `browserLogin`: fetch runtime-hosted browser-login metadata and complete an authorization-code + PKCE flow
 

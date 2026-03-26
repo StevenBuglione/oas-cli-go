@@ -13,7 +13,7 @@ func DiscoverScopePaths(options LoadOptions) map[Scope]string {
 	} else {
 		managedDir := options.ManagedDir
 		if managedDir == "" {
-			managedDir = "/etc/oas-cli"
+			managedDir = "/etc/open-cli"
 		}
 		addIfExists(paths, ScopeManaged, filepath.Join(managedDir, ".cli.json"))
 	}
@@ -32,7 +32,7 @@ func DiscoverScopePaths(options LoadOptions) map[Scope]string {
 			}
 		}
 		if userConfigDir != "" {
-			addIfExists(paths, ScopeUser, filepath.Join(userConfigDir, "oas-cli", ".cli.json"))
+			addIfExists(paths, ScopeUser, filepath.Join(userConfigDir, "open-cli", ".cli.json"))
 		}
 	}
 

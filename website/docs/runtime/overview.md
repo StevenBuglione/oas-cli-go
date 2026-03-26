@@ -6,7 +6,7 @@ title: Runtime Overview
 
 **Read this if** you are deploying `open-cli-toolbox`, debugging policy or auth behavior, or evaluating the runtime as a shared enforcement point. This page answers: what does the runtime own, what is its HTTP surface, and how does the request lifecycle work end to end.
 
-`open-cli-toolbox` is the execution and policy plane for `ocli`.
+`open-cli-toolbox` is the execution and policy plane for `open-cli`.
 
 ## Responsibilities
 
@@ -39,10 +39,10 @@ See [HTTP API](./http-api) for request and response examples.
 
 ## Remote-only deployment model
 
-`ocli` always talks to `open-cli-toolbox` over HTTP.
+`open-cli` always talks to `open-cli-toolbox` over HTTP.
 
 - For development, you can host `open-cli-toolbox` on loopback (`127.0.0.1:8765`).
-- For shared deployments, host it on infrastructure you control and point `ocli` at the runtime URL.
+- For shared deployments, host it on infrastructure you control and point `open-cli` at the runtime URL.
 - `runtime.mode` must be `remote`; embedded and local-daemon modes are no longer supported.
 
 ## Default config path behavior
@@ -53,9 +53,9 @@ If you do not set a default config, runtime requests must provide one.
 
 ## Request lifecycle
 
-A normal `ocli` request looks like this:
+A normal `open-cli` request looks like this:
 
-1. resolve runtime location from `--runtime`, `OCLI_RUNTIME_URL`, or `runtime.remote.url`
+1. resolve runtime location from `--runtime`, `OPEN_CLI_RUNTIME_URL`, or `runtime.remote.url`
 2. fetch the effective catalog
 3. build the Cobra command tree
 4. execute a selected tool or built-in command
@@ -66,7 +66,7 @@ Because catalog resolution happens so early, runtime availability affects even C
 
 ## Runtime auth for hosted deployments
 
-For remote runtimes, `ocli` can attach runtime-level bearer auth before those HTTP calls. The current client supports:
+For remote runtimes, `open-cli` can attach runtime-level bearer auth before those HTTP calls. The current client supports:
 
 - forwarding an operator-provided token (`runtime.remote.oauth.mode: "providedToken"`)
 - acquiring a client-credentials token (`runtime.remote.oauth.mode: "oauthClient"`)

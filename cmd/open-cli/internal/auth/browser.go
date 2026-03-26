@@ -9,7 +9,7 @@ import (
 	"net/url"
 	"strings"
 
-	runtimepkg "github.com/StevenBuglione/open-cli/cmd/ocli/internal/runtime"
+	runtimepkg "github.com/StevenBuglione/open-cli/cmd/open-cli/internal/runtime"
 	embeddedruntime "github.com/StevenBuglione/open-cli/internal/runtime"
 	oauthruntime "github.com/StevenBuglione/open-cli/pkg/auth"
 	"github.com/StevenBuglione/open-cli/pkg/catalog"

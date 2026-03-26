@@ -11,7 +11,7 @@ That reference proof covers two paths:
 - **automated workload proof** with `oauthClient`
 - **operator-run browser proof** with Authentik federating to Microsoft Entra ID
 
-Authentik is the example, not the requirement. Any broker or gateway is acceptable as long as it satisfies the runtime auth contract expected by `ocli` and `open-cli-toolbox`.
+Authentik is the example, not the requirement. Any broker or gateway is acceptable as long as it satisfies the runtime auth contract expected by `open-cli` and `open-cli-toolbox`.
 
 ## Proof boundary
 
@@ -29,7 +29,7 @@ The automated proof is the reproducible CI artifact. The browser-login and Entra
 The automated Authentik product test proves that:
 
 - Authentik serves discovery, JWKS, authorization, and token endpoints
-- `ocli` can acquire a runtime token through `oauthClient`
+- `open-cli` can acquire a runtime token through `oauthClient`
 - `open-cli-toolbox` validates that token with `oidc_jwks`
 - catalog visibility is filtered by runtime scopes
 - allowed execution succeeds
@@ -45,8 +45,8 @@ The implementation lives in:
 
 The manual proof is the human path:
 
-1. `ocli` discovers runtime auth requirements from `/v1/runtime/info`
-2. `ocli` reads `/v1/auth/browser-config`
+1. `open-cli` discovers runtime auth requirements from `/v1/runtime/info`
+2. `open-cli` reads `/v1/auth/browser-config`
 3. the browser redirects to Authentik
 4. Authentik federates to Entra
 5. Authentik issues the runtime token
@@ -110,7 +110,7 @@ Important constraints for operators:
 - lineage claims such as `act`, `delegated_by`, or a delegation ID are recommended for auditability, but authorization still comes only from the child token `scope` claim
 - local config, curated mode, managed deny rules, and agent profiles may narrow what the child can see or execute, but they must never expand access beyond the child token scopes
 
-This repository does **not** currently document a first-class CLI UX for requesting delegated child tokens. The implemented reality today is the runtime-facing contract plus the reference broker/token-exchange pattern, not a finished end-user delegation workflow in `ocli`.
+This repository does **not** currently document a first-class CLI UX for requesting delegated child tokens. The implemented reality today is the runtime-facing contract plus the reference broker/token-exchange pattern, not a finished end-user delegation workflow in `open-cli`.
 
 ## Authentik deployment guidance for delegation
 

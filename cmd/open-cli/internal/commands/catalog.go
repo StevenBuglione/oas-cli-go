@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	cfgpkg "github.com/StevenBuglione/open-cli/cmd/ocli/internal/config"
-	runtimepkg "github.com/StevenBuglione/open-cli/cmd/ocli/internal/runtime"
+	cfgpkg "github.com/StevenBuglione/open-cli/cmd/open-cli/internal/config"
+	runtimepkg "github.com/StevenBuglione/open-cli/cmd/open-cli/internal/runtime"
 	"github.com/StevenBuglione/open-cli/pkg/catalog"
 	configpkg "github.com/StevenBuglione/open-cli/pkg/config"
 	policypkg "github.com/StevenBuglione/open-cli/pkg/policy"
@@ -58,7 +58,7 @@ func NewToolCommand(options cfgpkg.Options, response runtimepkg.CatalogResponse)
 				return FormatError(
 					fmt.Errorf("tool %q not found in catalog", strings.Join(args, " ")),
 					"The tool ID may be misspelled or filtered by curation rules",
-					"Run 'ocli catalog list' to see available tools")
+					"Run 'open-cli catalog list' to see available tools")
 			}
 			return WriteOutput(options.Stdout, options.Format, tool)
 		},
@@ -81,7 +81,7 @@ func NewExplainCommand(options cfgpkg.Options, response runtimepkg.CatalogRespon
 				return FormatError(
 					fmt.Errorf("tool %q not found in catalog", strings.Join(args, " ")),
 					"The tool ID may be misspelled or filtered by curation rules",
-					"Run 'ocli catalog list' to see available tools")
+					"Run 'open-cli catalog list' to see available tools")
 			}
 			result := buildExplainReport(options, response, tool)
 			return WriteOutput(options.Stdout, options.Format, result)

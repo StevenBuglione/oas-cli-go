@@ -65,7 +65,7 @@ func NewRuntimeAuthBroker(t *testing.T) *RuntimeAuthBroker {
 	broker := &RuntimeAuthBroker{
 		keyID:           "broker-test-key",
 		privateKey:      privateKey,
-		BrowserClientID: "ocli-browser",
+		BrowserClientID: "open-cli-browser",
 		ClientID:        "runtime-client",
 		ClientSecret:    "runtime-secret",
 		codes:           map[string]authorizationCodeGrant{},

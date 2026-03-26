@@ -1,4 +1,4 @@
-# oas-cli-conformance
+# open-cli conformance
 
 Language-neutral fixtures and expected outputs for validating Open CLI implementations.
 

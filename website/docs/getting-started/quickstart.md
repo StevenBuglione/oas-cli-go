@@ -6,7 +6,7 @@ title: Quickstart
 
 **Goal:** get a generated command tree running in under 5 minutes with the supported hosted-runtime model.
 
-You will install `ocli`, generate a `.cli.json`, start `open-cli-toolbox`, and then drive it with `ocli`.
+You will install `open-cli`, generate a `.cli.json`, start `open-cli-toolbox`, and then drive it with `open-cli`.
 
 :::tip First win
 After step 3, you will already have a working catalog. If you only need a first win, stop there and return when you are ready to point at your own API.
@@ -14,16 +14,16 @@ After step 3, you will already have a working catalog. If you only need a first 
 
 ## 1. Generate a starter config
 
-Point `ocli init` at any OpenAPI spec to generate a `.cli.json` automatically:
+Point `open-cli init` at any OpenAPI spec to generate a `.cli.json` automatically:
 
 ```bash
-ocli init https://petstore3.swagger.io/api/v3/openapi.json
+open-cli init https://petstore3.swagger.io/api/v3/openapi.json
 ```
 
 This creates a `.cli.json` in the current directory. You can also pass a local file path:
 
 ```bash
-ocli init ./my-api.openapi.yaml
+open-cli init ./my-api.openapi.yaml
 ```
 
 :::info Manual config
@@ -69,7 +69,7 @@ This hosts the runtime locally on loopback, which is the quickest way to evaluat
 In another shell:
 
 ```bash
-ocli --runtime http://127.0.0.1:8765 --config ./.cli.json catalog list --format pretty
+open-cli --runtime http://127.0.0.1:8765 --config ./.cli.json catalog list --format pretty
 ```
 
 **What to expect:**
@@ -86,14 +86,14 @@ If you see catalog output, discovery succeeded.
 These are the safest first commands because they do **not** call the upstream API:
 
 ```bash
-ocli --runtime http://127.0.0.1:8765 --config ./.cli.json tool schema tickets:listTickets --format pretty
-ocli --runtime http://127.0.0.1:8765 --config ./.cli.json explain tickets:listTickets --format pretty
+open-cli --runtime http://127.0.0.1:8765 --config ./.cli.json tool schema tickets:listTickets --format pretty
+open-cli --runtime http://127.0.0.1:8765 --config ./.cli.json explain tickets:listTickets --format pretty
 ```
 
 ## 5. Preview the dynamic command tree
 
 ```bash
-ocli --runtime http://127.0.0.1:8765 --config ./.cli.json helpdesk tickets --help
+open-cli --runtime http://127.0.0.1:8765 --config ./.cli.json helpdesk tickets --help
 ```
 
 This help renders correctly because the runtime and config are already available. Without a reachable runtime plus config, top-level help can fail before Cobra renders anything — that is expected behavior, not a bug.
@@ -103,7 +103,7 @@ This help renders correctly because the runtime and config are already available
 With the sample config, a dynamic command looks like this:
 
 ```bash
-ocli --runtime http://127.0.0.1:8765 --config ./.cli.json helpdesk tickets list-tickets --status open
+open-cli --runtime http://127.0.0.1:8765 --config ./.cli.json helpdesk tickets list-tickets --status open
 ```
 
 This calls the first OpenAPI server URL (`https://api.example.com` in the sample config). Replace it with a real service before expecting a successful response.

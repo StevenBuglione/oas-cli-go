@@ -2,15 +2,15 @@
 
 This directory contains the official reference deployment for the brokered runtime auth contract using **Authentik as the broker**.
 
-Authentik is the worked example, **not** the requirement. Organizations can replace it with any broker or gateway that emits the same external contract expected by `ocli` and the hosted `open-cli-toolbox` runtime.
+Authentik is the worked example, **not** the requirement. Organizations can replace it with any broker or gateway that emits the same external contract expected by `open-cli` and the hosted `open-cli-toolbox` runtime.
 
 ## What this reference proves
 
 The reference deployment covers two proof paths:
 
 1. **Human path (`browserLogin`)**
-   - `ocli` reads `/v1/runtime/info`
-   - `ocli` reads `/v1/auth/browser-config`
+   - `open-cli` reads `/v1/runtime/info`
+   - `open-cli` reads `/v1/auth/browser-config`
    - the browser redirects to Authentik
    - Authentik can federate to Microsoft Entra ID
    - Authentik issues the runtime token
@@ -19,7 +19,7 @@ The reference deployment covers two proof paths:
 2. **Workload path (`oauthClient`)**
    - a workload authenticates to Authentik with client credentials
    - Authentik issues a runtime token
-   - `ocli` acquires that token before runtime requests
+   - `open-cli` acquires that token before runtime requests
    - `open-cli-toolbox` validates the token with `oidc_jwks`
    - catalog visibility and execution remain fail-closed
 
@@ -101,11 +101,11 @@ Do **not** assume that you can keep one rendered config and only flip `runtime.r
 Render `runtime.cli.json.tmpl` with your **public browser-provider** values:
 
 ```bash
-export AUTHENTIK_ISSUER="https://auth.example.com/application/o/ocli-runtime/"
-export AUTHENTIK_JWKS_URL="https://auth.example.com/application/o/ocli-runtime/jwks/"
+export AUTHENTIK_ISSUER="https://auth.example.com/application/o/open-cli-runtime/"
+export AUTHENTIK_JWKS_URL="https://auth.example.com/application/o/open-cli-runtime/jwks/"
 export AUTHENTIK_AUTHORIZATION_URL="https://auth.example.com/application/o/authorize/"
 export AUTHENTIK_TOKEN_URL="https://auth.example.com/application/o/token/"
-export AUTHENTIK_BROWSER_CLIENT_ID="ocli-browser"
+export AUTHENTIK_BROWSER_CLIENT_ID="open-cli-browser"
 export RUNTIME_AUDIENCE="open-cli-toolbox"
 export RUNTIME_URL="https://runtime.example.com"
 
@@ -117,8 +117,8 @@ envsubst < runtime.cli.json.tmpl > runtime.cli.json
 Render `runtime.oauth-client.cli.json.tmpl` with your **confidential workload-provider** values:
 
 ```bash
-export AUTHENTIK_ISSUER="https://auth.example.com/application/o/ocli-runtime-workload/"
-export AUTHENTIK_JWKS_URL="https://auth.example.com/application/o/ocli-runtime-workload/jwks/"
+export AUTHENTIK_ISSUER="https://auth.example.com/application/o/open-cli-runtime-workload/"
+export AUTHENTIK_JWKS_URL="https://auth.example.com/application/o/open-cli-runtime-workload/jwks/"
 export AUTHENTIK_TOKEN_URL="https://auth.example.com/application/o/token/"
 export RUNTIME_AUDIENCE="open-cli-toolbox"
 export RUNTIME_URL="https://runtime.example.com"
@@ -129,8 +129,8 @@ envsubst < runtime.oauth-client.cli.json.tmpl > runtime.oauth-client.cli.json
 Then provide the confidential client credentials out of band:
 
 ```bash
-export OAS_REMOTE_CLIENT_ID="your-workload-client-id"
-export OAS_REMOTE_CLIENT_SECRET="your-workload-client-secret"
+export OPEN_CLI_REMOTE_CLIENT_ID="your-workload-client-id"
+export OPEN_CLI_REMOTE_CLIENT_SECRET="your-workload-client-secret"
 ```
 
 The rendered workload file should look like this:
@@ -140,8 +140,8 @@ The rendered workload file should look like this:
   "server": {
     "auth": {
       "validationProfile": "oidc_jwks",
-      "issuer": "https://auth.example.com/application/o/ocli-runtime-workload/",
-      "jwksURL": "https://auth.example.com/application/o/ocli-runtime-workload/jwks/",
+      "issuer": "https://auth.example.com/application/o/open-cli-runtime-workload/",
+      "jwksURL": "https://auth.example.com/application/o/open-cli-runtime-workload/jwks/",
       "audience": "open-cli-toolbox"
     }
   },
@@ -152,8 +152,8 @@ The rendered workload file should look like this:
       "scopes": ["bundle:tickets", "tool:tickets:listTickets"],
       "client": {
         "tokenURL": "https://auth.example.com/application/o/token/",
-        "clientId": { "type": "env", "value": "OAS_REMOTE_CLIENT_ID" },
-        "clientSecret": { "type": "env", "value": "OAS_REMOTE_CLIENT_SECRET" }
+        "clientId": { "type": "env", "value": "OPEN_CLI_REMOTE_CLIENT_ID" },
+        "clientSecret": { "type": "env", "value": "OPEN_CLI_REMOTE_CLIENT_SECRET" }
       }
     }
   }
@@ -170,12 +170,12 @@ The rendered workload file should look like this:
     "server": {
       "auth": {
         "validationProfile": "oidc_jwks",
-        "issuer": "https://auth.example.com/application/o/ocli-runtime/",
-        "jwksURL": "https://auth.example.com/application/o/ocli-runtime/jwks/",
+        "issuer": "https://auth.example.com/application/o/open-cli-runtime/",
+        "jwksURL": "https://auth.example.com/application/o/open-cli-runtime/jwks/",
         "audience": "open-cli-toolbox",
         "authorizationURL": "https://auth.example.com/application/o/authorize/",
         "tokenURL": "https://auth.example.com/application/o/token/",
-        "browserClientId": "ocli-browser"
+        "browserClientId": "open-cli-browser"
       }
     }
   }
@@ -209,7 +209,7 @@ This automated slice proves:
 Run the browser path after the automated workload proof:
 
 ```bash
-ocli --config runtime.cli.json catalog list --format json
+open-cli --config runtime.cli.json catalog list --format json
 ```
 
 There is no separate `runtime login` command. The first runtime request triggers the browser flow.

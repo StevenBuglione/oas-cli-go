@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	runtimepkg "github.com/StevenBuglione/open-cli/cmd/ocli/internal/runtime"
+	runtimepkg "github.com/StevenBuglione/open-cli/cmd/open-cli/internal/runtime"
 	"github.com/StevenBuglione/open-cli/pkg/catalog"
 )
 
@@ -196,8 +196,8 @@ func TestLoadBody(t *testing.T) {
 }
 
 func TestErrorHelpers(t *testing.T) {
-	authErr := NewAuthError("token expired", "Run ocli auth login")
-	if authErr.Err != "Authentication failed" || authErr.Cause != "token expired" || authErr.Suggestion != "Run ocli auth login" {
+	authErr := NewAuthError("token expired", "Run open-cli auth login")
+	if authErr.Err != "Authentication failed" || authErr.Cause != "token expired" || authErr.Suggestion != "Run open-cli auth login" {
 		t.Fatalf("unexpected auth error: %#v", authErr)
 	}
 

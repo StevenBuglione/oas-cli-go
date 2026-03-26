@@ -7,7 +7,7 @@
   <text x="114" y="42" text-anchor="middle" font-family="system-ui,-apple-system,sans-serif" font-size="13" font-weight="700" fill="#10233f">Loopback host</text>
   <text x="114" y="58" text-anchor="middle" font-family="system-ui,-apple-system,sans-serif" font-size="11" fill="#255fb0">local evaluation</text>
   <rect x="28" y="72" width="72" height="42" rx="8" fill="#eef4fb" stroke="#255fb0" stroke-width="1.5"/>
-  <text x="64" y="98" text-anchor="middle" font-family="system-ui,-apple-system,sans-serif" font-size="12" font-weight="600" fill="#10233f">ocli</text>
+  <text x="64" y="98" text-anchor="middle" font-family="system-ui,-apple-system,sans-serif" font-size="12" font-weight="600" fill="#10233f">open-cli</text>
   <line x1="100" y1="93" x2="126" y2="93" stroke="#255fb0" stroke-width="2" stroke-dasharray="5 3"/>
   <polygon points="124,88 134,93 124,98" fill="#255fb0"/>
   <rect x="134" y="72" width="72" height="42" rx="8" fill="#eef4fb" stroke="#255fb0" stroke-width="1.5"/>
@@ -18,7 +18,7 @@
   <text x="341" y="42" text-anchor="middle" font-family="system-ui,-apple-system,sans-serif" font-size="13" font-weight="700" fill="#10233f">Shared team runtime</text>
   <text x="341" y="58" text-anchor="middle" font-family="system-ui,-apple-system,sans-serif" font-size="11" fill="#255fb0">centralized hosting</text>
   <rect x="244" y="72" width="80" height="42" rx="8" fill="#eef4fb" stroke="#255fb0" stroke-width="1.5"/>
-  <text x="284" y="98" text-anchor="middle" font-family="system-ui,-apple-system,sans-serif" font-size="12" font-weight="600" fill="#10233f">ocli</text>
+  <text x="284" y="98" text-anchor="middle" font-family="system-ui,-apple-system,sans-serif" font-size="12" font-weight="600" fill="#10233f">open-cli</text>
   <line x1="324" y1="93" x2="350" y2="93" stroke="#255fb0" stroke-width="2" stroke-dasharray="5 3"/>
   <polygon points="348,88 358,93 348,98" fill="#255fb0"/>
   <text x="337" y="86" text-anchor="middle" font-family="system-ui,-apple-system,sans-serif" font-size="9" fill="#475569">network</text>
@@ -30,7 +30,7 @@
   <text x="567" y="42" text-anchor="middle" font-family="system-ui,-apple-system,sans-serif" font-size="13" font-weight="700" fill="#10233f">Brokered enterprise</text>
   <text x="567" y="58" text-anchor="middle" font-family="system-ui,-apple-system,sans-serif" font-size="11" fill="#255fb0">auth + perimeter controls</text>
   <rect x="470" y="72" width="80" height="42" rx="8" fill="#eef4fb" stroke="#255fb0" stroke-width="1.5"/>
-  <text x="510" y="98" text-anchor="middle" font-family="system-ui,-apple-system,sans-serif" font-size="12" font-weight="600" fill="#10233f">ocli</text>
+  <text x="510" y="98" text-anchor="middle" font-family="system-ui,-apple-system,sans-serif" font-size="12" font-weight="600" fill="#10233f">open-cli</text>
   <line x1="550" y1="93" x2="576" y2="93" stroke="#255fb0" stroke-width="2" stroke-dasharray="5 3"/>
   <polygon points="574,88 584,93 574,98" fill="#255fb0"/>
   <text x="563" y="86" text-anchor="middle" font-family="system-ui,-apple-system,sans-serif" font-size="9" fill="#475569">token</text>

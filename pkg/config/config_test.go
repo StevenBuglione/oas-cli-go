@@ -179,8 +179,8 @@ func TestLoadEffectiveAcceptsRemoteRuntimeOnlyConfig(t *testing.T) {
 	        "scopes": ["bundle:testapi"],
 	        "client": {
 	          "tokenURL": "http://127.0.0.1:9100/token",
-	          "clientId": { "type": "env", "value": "OAS_REMOTE_CLIENT_ID" },
-	          "clientSecret": { "type": "env", "value": "OAS_REMOTE_CLIENT_SECRET" }
+	          "clientId": { "type": "env", "value": "OPEN_CLI_REMOTE_CLIENT_ID" },
+	          "clientSecret": { "type": "env", "value": "OPEN_CLI_REMOTE_CLIENT_SECRET" }
 	        }
 	      }
 	    }
@@ -204,18 +204,18 @@ func TestLoadEffectiveAcceptsRemoteRuntimeOnlyConfig(t *testing.T) {
 
 func TestDiscoverScopePaths(t *testing.T) {
 	root := t.TempDir()
-	managedDir := filepath.Join(root, "etc", "oas-cli")
+	managedDir := filepath.Join(root, "etc", "open-cli")
 	userConfigDir := filepath.Join(root, "xdg")
 	projectDir := filepath.Join(root, "project")
 
-	for _, dir := range []string{managedDir, filepath.Join(userConfigDir, "oas-cli"), projectDir} {
+	for _, dir := range []string{managedDir, filepath.Join(userConfigDir, "open-cli"), projectDir} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatalf("mkdir %s: %v", dir, err)
 		}
 	}
 
 	managedPath := writeJSON(t, managedDir, ".cli.json", `{"cli":"1.0.0","mode":{"default":"discover"},"sources":{"svc":{"type":"openapi","uri":"file:///managed.json"}}}`)
-	userPath := writeJSON(t, filepath.Join(userConfigDir, "oas-cli"), ".cli.json", `{"sources":{"svc":{"enabled":false}}}`)
+	userPath := writeJSON(t, filepath.Join(userConfigDir, "open-cli"), ".cli.json", `{"sources":{"svc":{"enabled":false}}}`)
 	projectPath := writeJSON(t, projectDir, ".cli.json", `{"services":{"svc":{"source":"svc"}}}`)
 	localPath := writeJSON(t, projectDir, ".cli.local.json", `{"sources":{"svc":{"enabled":true}}}`)
 
@@ -581,7 +581,7 @@ func XTestLoadEffectiveRejectsRemoteRuntimeWithoutURL(t *testing.T) {
 	    "remote": {
 	      "oauth": {
 	        "mode": "providedToken",
-	        "tokenRef": "env:OAS_REMOTE_TOKEN"
+	        "tokenRef": "env:OPEN_CLI_REMOTE_TOKEN"
 	      }
 	    }
 	  },
@@ -615,7 +615,7 @@ func TestLoadEffectiveRejectsOAuthClientRemoteRuntimeWithoutClientSecret(t *test
 	        "mode": "oauthClient",
 	        "client": {
 	          "tokenURL": "https://auth.example.com/token",
-	          "clientId": { "type": "env", "value": "OAS_REMOTE_CLIENT_ID" }
+	          "clientId": { "type": "env", "value": "OPEN_CLI_REMOTE_CLIENT_ID" }
 	        }
 	      }
 	    }
@@ -959,8 +959,8 @@ func TestLoadEffectivePreservesRemoteRuntimeOAuth2IntrospectionConfiguration(t *
 	        "authorizationURL": "https://auth.example.com/oauth/authorize",
 	        "tokenURL": "https://auth.example.com/oauth/token",
 	        "browserClientId": "runtime-browser-client",
-	        "clientId": { "type": "env", "value": "OAS_RUNTIME_CLIENT_ID" },
-	        "clientSecret": { "type": "env", "value": "OAS_RUNTIME_CLIENT_SECRET" }
+	        "clientId": { "type": "env", "value": "OPEN_CLI_RUNTIME_CLIENT_ID" },
+	        "clientSecret": { "type": "env", "value": "OPEN_CLI_RUNTIME_CLIENT_SECRET" }
 	      }
 	    }
 	  },
@@ -1006,10 +1006,10 @@ func TestLoadEffectivePreservesRemoteRuntimeOAuth2IntrospectionConfiguration(t *
 	if auth.BrowserClientID != "runtime-browser-client" {
 		t.Fatalf("expected browser client ID to be preserved, got %q", auth.BrowserClientID)
 	}
-	if auth.ClientID == nil || auth.ClientID.Type != "env" || auth.ClientID.Value != "OAS_RUNTIME_CLIENT_ID" {
+	if auth.ClientID == nil || auth.ClientID.Type != "env" || auth.ClientID.Value != "OPEN_CLI_RUNTIME_CLIENT_ID" {
 		t.Fatalf("expected clientId to be preserved, got %#v", auth.ClientID)
 	}
-	if auth.ClientSecret == nil || auth.ClientSecret.Type != "env" || auth.ClientSecret.Value != "OAS_RUNTIME_CLIENT_SECRET" {
+	if auth.ClientSecret == nil || auth.ClientSecret.Type != "env" || auth.ClientSecret.Value != "OPEN_CLI_RUNTIME_CLIENT_SECRET" {
 		t.Fatalf("expected clientSecret to be preserved, got %#v", auth.ClientSecret)
 	}
 }

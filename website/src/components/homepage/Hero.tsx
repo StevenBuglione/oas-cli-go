@@ -15,7 +15,7 @@ export default function Hero(): ReactNode {
         <p className={clsx('hero__subtitle', styles.heroLead)}>
           <strong>open-cli-toolbox</strong> is the hosted runtime that discovers APIs,
           normalizes catalogs, resolves credentials, enforces policy, and writes audit
-          events. <strong>ocli</strong> is the thin client that renders commands and sends
+          events. <strong>open-cli</strong> is the thin client that renders commands and sends
           execution requests into that remote boundary.
         </p>
         <div className={styles.heroButtons}>

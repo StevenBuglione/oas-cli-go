@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	cfgpkg "github.com/StevenBuglione/open-cli/cmd/ocli/internal/config"
-	runtimepkg "github.com/StevenBuglione/open-cli/cmd/ocli/internal/runtime"
+	cfgpkg "github.com/StevenBuglione/open-cli/cmd/open-cli/internal/config"
+	runtimepkg "github.com/StevenBuglione/open-cli/cmd/open-cli/internal/runtime"
 	"github.com/StevenBuglione/open-cli/internal/version"
 	"github.com/spf13/cobra"
 )
@@ -87,7 +87,7 @@ func NewRootCommand(options cfgpkg.Options, args []string, hooks RootHooks) (*co
 	}
 
 	root := &cobra.Command{
-		Use:           "ocli",
+		Use:           "open-cli",
 		Version:       version.Version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -104,8 +104,8 @@ func NewRootCommand(options cfgpkg.Options, args []string, hooks RootHooks) (*co
 		}
 		fmt.Fprintln(w)
 		fmt.Fprintln(w, "Getting started:")
-		fmt.Fprintln(w, "  ocli init <url>    Set up a new configuration from an API spec")
-		fmt.Fprintln(w, "  ocli status        Check connectivity to your remote open-cli-toolbox server")
+		fmt.Fprintln(w, "  open-cli init <url>    Set up a new configuration from an API spec")
+		fmt.Fprintln(w, "  open-cli status        Check connectivity to your remote open-cli-toolbox server")
 		return nil
 	}
 	root.SetOut(options.Stdout)

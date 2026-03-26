@@ -10,7 +10,7 @@ The broker may accept identity from:
 - Google
 - GitHub
 
-Those upstream identities are normalized before runtime token issuance. `ocli` does not need provider-specific logic for each one.
+Those upstream identities are normalized before runtime token issuance. `open-cli` does not need provider-specific logic for each one.
 
 ## Runtime token requirements
 
@@ -91,12 +91,12 @@ The child token presented to `open-cli-toolbox` should still look like a normal 
   "iss": "https://broker.example.com",
   "aud": "open-cli-toolbox",
   "sub": "github:user-123",
-  "client_id": "ocli-browser",
+  "client_id": "open-cli-browser",
   "scope": "tool:tickets:listTickets",
   "exp": 1773596400,
   "act": {
     "sub": "github:user-123",
-    "client_id": "ocli-browser"
+    "client_id": "open-cli-browser"
   },
   "delegated_by": "github:user-123",
   "delegation_id": "delegation-01HXYZ..."

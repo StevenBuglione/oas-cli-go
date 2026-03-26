@@ -2,7 +2,7 @@
 
 This runbook describes one concrete way to prove the brokered runtime auth contract with **Microsoft Entra ID as the upstream identity provider** and **Authentik as the reference broker**.
 
-This document is intentionally **descriptive, not normative**. `ocli` and `open-cli-toolbox` only require a broker that satisfies the runtime auth contract. Authentik + Entra is the official worked example in this repository.
+This document is intentionally **descriptive, not normative**. `open-cli` and `open-cli-toolbox` only require a broker that satisfies the runtime auth contract. Authentik + Entra is the official worked example in this repository.
 
 ## Required operator inputs
 
@@ -20,8 +20,8 @@ Before starting, gather these values:
 
 The runtime contract stays the same regardless of the upstream identity provider:
 
-- `ocli` discovers runtime auth requirements from `/v1/runtime/info`
-- `ocli` reads browser metadata from `/v1/auth/browser-config`
+- `open-cli` discovers runtime auth requirements from `/v1/runtime/info`
+- `open-cli` reads browser metadata from `/v1/auth/browser-config`
 - the broker issues a runtime token with the required claims
 - `open-cli-toolbox` validates the bearer token with `oidc_jwks`
 - authorization is enforced from normalized runtime scopes such as `bundle:*`, `profile:*`, and `tool:*`
@@ -68,16 +68,16 @@ Inside Authentik:
 4. Configure Authentik to request the user identity and group/role claims you need for runtime authorization.
 5. Verify that Authentik can successfully redirect to Entra and complete the upstream callback.
 
-This upstream is only the first half of the chain. `ocli` will still talk to the **Authentik** runtime application, not directly to Entra.
+This upstream is only the first half of the chain. `open-cli` will still talk to the **Authentik** runtime application, not directly to Entra.
 
 ## 3. Configure the Authentik runtime application/provider
 
-Create or update the Authentik application/provider that will mint runtime tokens consumed by `ocli`.
+Create or update the Authentik application/provider that will mint runtime tokens consumed by `open-cli`.
 
 Use these settings as the reference baseline:
 
 1. Create an Authentik OAuth2/OpenID provider for the runtime.
-2. Link it to an Authentik application that `ocli` will target.
+2. Link it to an Authentik application that `open-cli` will target.
 3. Configure a browser redirect URI such as `http://127.0.0.1:8787/callback`.
 4. Configure a signing key so the provider publishes a JWKS.
 5. Keep the issuer stable; `open-cli-toolbox` validates it exactly.
@@ -144,8 +144,8 @@ For workload proof, render `runtime.oauth-client.cli.json.tmpl` with the confide
   "server": {
     "auth": {
       "validationProfile": "oidc_jwks",
-      "issuer": "https://auth.example.com/application/o/ocli-runtime-workload/",
-      "jwksURL": "https://auth.example.com/application/o/ocli-runtime-workload/jwks/",
+      "issuer": "https://auth.example.com/application/o/open-cli-runtime-workload/",
+      "jwksURL": "https://auth.example.com/application/o/open-cli-runtime-workload/jwks/",
       "audience": "open-cli-toolbox"
     }
   },
@@ -156,8 +156,8 @@ For workload proof, render `runtime.oauth-client.cli.json.tmpl` with the confide
       "scopes": ["bundle:tickets", "tool:tickets:listTickets"],
       "client": {
         "tokenURL": "https://auth.example.com/application/o/token/",
-        "clientId": { "type": "env", "value": "OAS_REMOTE_CLIENT_ID" },
-        "clientSecret": { "type": "env", "value": "OAS_REMOTE_CLIENT_SECRET" }
+        "clientId": { "type": "env", "value": "OPEN_CLI_REMOTE_CLIENT_ID" },
+        "clientSecret": { "type": "env", "value": "OPEN_CLI_REMOTE_CLIENT_SECRET" }
       }
     }
   }
@@ -168,8 +168,8 @@ For workload proof, render `runtime.oauth-client.cli.json.tmpl` with the confide
 
 The end-to-end browser proof should follow this exact sequence:
 
-1. `ocli` reads `/v1/runtime/info`
-2. `ocli` reads `/v1/auth/browser-config`
+1. `open-cli` reads `/v1/runtime/info`
+2. `open-cli` reads `/v1/auth/browser-config`
 3. the browser redirects to Authentik
 4. Authentik federates to Entra
 5. Authentik issues the runtime token
@@ -182,7 +182,7 @@ If any step is skipped or replaced with manual token injection, the browser proo
 Run this sequence against the real deployment:
 
 1. Start the runtime and confirm `/v1/runtime/info` advertises `oidc_jwks`.
-2. Run `ocli --config runtime.cli.json catalog list --format json`.
+2. Run `open-cli --config runtime.cli.json catalog list --format json`.
 3. Complete the Authentik -> Entra browser login flow.
 4. Save the filtered catalog output.
 5. Execute one allowed tool and save the output.

@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "description": "Remote-first API and MCP command client for open-cli",
   "files": [
-    "bin/ocli.js",
+    "bin/open-cli.js",
     "install.js",
     "README.md"
   ],
@@ -11,8 +11,8 @@
     "openapi",
     "mcp",
     "cli",
+    "client",
     "open-cli",
-    "ocli",
     "api",
     "rest",
     "policy",
@@ -29,7 +29,7 @@
   "license": "GPL-3.0",
   "author": "Steven Buglione",
   "bin": {
-    "ocli": "bin/ocli.js"
+    "open-cli": "bin/open-cli.js"
   },
   "scripts": {
     "postinstall": "node install.js"

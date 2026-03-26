@@ -3,8 +3,8 @@ package commands
 import (
 	"fmt"
 
-	cfgpkg "github.com/StevenBuglione/open-cli/cmd/ocli/internal/config"
-	runtimepkg "github.com/StevenBuglione/open-cli/cmd/ocli/internal/runtime"
+	cfgpkg "github.com/StevenBuglione/open-cli/cmd/open-cli/internal/config"
+	runtimepkg "github.com/StevenBuglione/open-cli/cmd/open-cli/internal/runtime"
 	"github.com/spf13/cobra"
 )
 
@@ -31,7 +31,7 @@ func NewSearchCommand(options cfgpkg.Options, response *runtimepkg.CatalogRespon
 			}
 			matches := SearchTools(tools, pattern)
 			if len(matches) == 0 {
-				_, err := fmt.Fprintf(options.Stderr, "No tools matching %q. Run 'ocli catalog list' to see all tools.\n", pattern)
+				_, err := fmt.Fprintf(options.Stderr, "No tools matching %q. Run 'open-cli catalog list' to see all tools.\n", pattern)
 				return err
 			}
 

@@ -5,7 +5,7 @@
 The CLI command shape is:
 
 ```text
-ocli <service> <group> <command> [args...] [flags...]
+open-cli <service> <group> <command> [args...] [flags...]
 ```
 
 ## Group Derivation

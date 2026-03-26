@@ -155,7 +155,7 @@ func TestAuthenticateRequestCapturesOIDCJWKSDelegationLineage(t *testing.T) {
 		"delegation_id": "delegation-123",
 		"act": map[string]string{
 			"sub":       "github:user-123",
-			"client_id": "ocli-browser",
+			"client_id": "open-cli-browser",
 			"actor_id":  "lead-agent",
 		},
 		"exp": time.Now().Add(time.Hour).Unix(),
@@ -194,7 +194,7 @@ func TestAuthenticateRequestCapturesOIDCJWKSDelegationLineage(t *testing.T) {
 	}
 	if !reflect.DeepEqual(result.Lineage.Actor, map[string]string{
 		"sub":       "github:user-123",
-		"client_id": "ocli-browser",
+		"client_id": "open-cli-browser",
 		"actor_id":  "lead-agent",
 	}) {
 		t.Fatalf("expected act lineage map, got %#v", result.Lineage.Actor)

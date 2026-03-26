@@ -21,8 +21,8 @@ import (
 	"testing"
 	"time"
 
-	authpkg "github.com/StevenBuglione/open-cli/cmd/ocli/internal/auth"
-	runtimepkg "github.com/StevenBuglione/open-cli/cmd/ocli/internal/runtime"
+	authpkg "github.com/StevenBuglione/open-cli/cmd/open-cli/internal/auth"
+	runtimepkg "github.com/StevenBuglione/open-cli/cmd/open-cli/internal/runtime"
 	"github.com/StevenBuglione/open-cli/pkg/catalog"
 	configpkg "github.com/StevenBuglione/open-cli/pkg/config"
 	"github.com/StevenBuglione/open-cli/pkg/instance"
@@ -575,8 +575,8 @@ func TestRootCommandFailsFastOnUnsupportedRuntimeMode(t *testing.T) {
 }
 
 func XTestResolveCommandOptionsFallsBackWhenRuntimeRegistryIsStale(t *testing.T) {
-	t.Setenv("OCLI_RUNTIME_URL", "")
-	t.Setenv("OCLI_EMBEDDED", "")
+	t.Setenv("OPEN_CLI_RUNTIME_URL", "")
+	t.Setenv("OPEN_CLI_EMBEDDED", "")
 
 	deadServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
@@ -617,29 +617,29 @@ func XTestResolveCommandOptionsFallsBackWhenRuntimeRegistryIsStale(t *testing.T)
 	}
 }
 
-func TestResolveCommandOptionsUsesOCLIEnvironmentVariables(t *testing.T) {
+func TestResolveCommandOptionsUsesOPEN_CLIEnvironmentVariables(t *testing.T) {
 	stateDir := t.TempDir()
-	t.Setenv("OCLI_INSTANCE_ID", "ocli-instance")
-	t.Setenv("OCLI_STATE_DIR", stateDir)
-	t.Setenv("OCLI_RUNTIME_URL", "http://127.0.0.1:18765")
+	t.Setenv("OPEN_CLI_INSTANCE_ID", "open-cli-instance")
+	t.Setenv("OPEN_CLI_STATE_DIR", stateDir)
+	t.Setenv("OPEN_CLI_RUNTIME_URL", "http://127.0.0.1:18765")
 
 	resolved, err := resolveCommandOptions(CommandOptions{})
 	if err != nil {
 		t.Fatalf("resolveCommandOptions: %v", err)
 	}
-	if resolved.InstanceID != "ocli-instance" {
-		t.Fatalf("expected instance id from OCLI_INSTANCE_ID, got %q", resolved.InstanceID)
+	if resolved.InstanceID != "open-cli-instance" {
+		t.Fatalf("expected instance id from OPEN_CLI_INSTANCE_ID, got %q", resolved.InstanceID)
 	}
 	if resolved.StateDir != stateDir {
-		t.Fatalf("expected state dir from OCLI_STATE_DIR, got %q", resolved.StateDir)
+		t.Fatalf("expected state dir from OPEN_CLI_STATE_DIR, got %q", resolved.StateDir)
 	}
 	if resolved.RuntimeURL != "http://127.0.0.1:18765" {
-		t.Fatalf("expected runtime url from OCLI_RUNTIME_URL, got %q", resolved.RuntimeURL)
+		t.Fatalf("expected runtime url from OPEN_CLI_RUNTIME_URL, got %q", resolved.RuntimeURL)
 	}
 }
 
-func TestResolveCommandOptionsUsesOCLIEmbeddedEnvironmentVariable(t *testing.T) {
-	t.Setenv("OCLI_EMBEDDED", "1")
+func TestResolveCommandOptionsUsesOPEN_CLIEmbeddedEnvironmentVariable(t *testing.T) {
+	t.Setenv("OPEN_CLI_EMBEDDED", "1")
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, ".cli.json")
 	if err := os.WriteFile(configPath, []byte(`{
@@ -664,7 +664,7 @@ func TestResolveCommandOptionsUsesOCLIEmbeddedEnvironmentVariable(t *testing.T) 
 
 	_, err := resolveCommandOptions(CommandOptions{ConfigPath: configPath})
 	if err == nil {
-		t.Fatal("expected OCLI_EMBEDDED to be rejected for normal configs")
+		t.Fatal("expected OPEN_CLI_EMBEDDED to be rejected for normal configs")
 	}
 	if !strings.Contains(err.Error(), "embedded") {
 		t.Fatalf("expected embedded rejection, got %v", err)
@@ -1216,7 +1216,7 @@ func TestResolveCommandOptionsUsesConfiguredRemoteRuntimeURL(t *testing.T) {
 	        "mode": "providedToken",
 	        "audience": "open-cli-toolbox",
 	        "scopes": ["bundle:payments"],
-	        "tokenRef": "env:OAS_REMOTE_TOKEN"
+	        "tokenRef": "env:OPEN_CLI_REMOTE_TOKEN"
 	      }
 	    }
 	  },
@@ -1248,7 +1248,7 @@ func TestResolveCommandOptionsUsesConfiguredRemoteRuntimeURL(t *testing.T) {
 }
 
 func TestRootCommandUsesProvidedRemoteRuntimeBearerToken(t *testing.T) {
-	t.Setenv("OAS_REMOTE_TOKEN", "token-123")
+	t.Setenv("OPEN_CLI_REMOTE_TOKEN", "token-123")
 
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, ".cli.json")
@@ -1263,7 +1263,7 @@ func TestRootCommandUsesProvidedRemoteRuntimeBearerToken(t *testing.T) {
 	        "mode": "providedToken",
 	        "audience": "open-cli-toolbox",
 	        "scopes": ["bundle:payments"],
-	        "tokenRef": "env:OAS_REMOTE_TOKEN"
+	        "tokenRef": "env:OPEN_CLI_REMOTE_TOKEN"
 	      }
 	    }
 	  },
@@ -1321,8 +1321,8 @@ func TestRootCommandUsesProvidedRemoteRuntimeBearerToken(t *testing.T) {
 }
 
 func TestRootCommandUsesOAuthClientRemoteRuntimeBearerToken(t *testing.T) {
-	t.Setenv("OAS_REMOTE_CLIENT_ID", "runtime-client")
-	t.Setenv("OAS_REMOTE_CLIENT_SECRET", "runtime-secret")
+	t.Setenv("OPEN_CLI_REMOTE_CLIENT_ID", "runtime-client")
+	t.Setenv("OPEN_CLI_REMOTE_CLIENT_SECRET", "runtime-secret")
 
 	authServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/token" {
@@ -1413,8 +1413,8 @@ func TestRootCommandUsesOAuthClientRemoteRuntimeBearerToken(t *testing.T) {
 	        "scopes": ["bundle:payments"],
 	        "client": {
 	          "tokenURL": %q,
-	          "clientId": { "type": "env", "value": "OAS_REMOTE_CLIENT_ID" },
-	          "clientSecret": { "type": "env", "value": "OAS_REMOTE_CLIENT_SECRET" }
+	          "clientId": { "type": "env", "value": "OPEN_CLI_REMOTE_CLIENT_ID" },
+	          "clientSecret": { "type": "env", "value": "OPEN_CLI_REMOTE_CLIENT_SECRET" }
 	        }
 	      }
 	    }
@@ -1439,9 +1439,9 @@ func TestRootCommandUsesOAuthClientRemoteRuntimeBearerToken(t *testing.T) {
 }
 
 func TestRootCommandUsesDelegatedOAuthClientRemoteRuntimeBearerToken(t *testing.T) {
-	t.Setenv("OAS_REMOTE_CLIENT_ID", "runtime-client")
-	t.Setenv("OAS_REMOTE_CLIENT_SECRET", "runtime-secret")
-	t.Setenv("OCLI_AGENT_SESSION_ID", "subagent:triage-01")
+	t.Setenv("OPEN_CLI_REMOTE_CLIENT_ID", "runtime-client")
+	t.Setenv("OPEN_CLI_REMOTE_CLIENT_SECRET", "runtime-secret")
+	t.Setenv("OPEN_CLI_AGENT_SESSION_ID", "subagent:triage-01")
 
 	var authRequests []url.Values
 	authServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1533,8 +1533,8 @@ func TestRootCommandUsesDelegatedOAuthClientRemoteRuntimeBearerToken(t *testing.
 	        "scopes": ["bundle:payments"],
 	        "client": {
 	          "tokenURL": %q,
-	          "clientId": { "type": "env", "value": "OAS_REMOTE_CLIENT_ID" },
-	          "clientSecret": { "type": "env", "value": "OAS_REMOTE_CLIENT_SECRET" }
+	          "clientId": { "type": "env", "value": "OPEN_CLI_REMOTE_CLIENT_ID" },
+	          "clientSecret": { "type": "env", "value": "OPEN_CLI_REMOTE_CLIENT_SECRET" }
 	        },
 	        "delegation": {
 	          "enabled": true,
@@ -1585,8 +1585,8 @@ func TestRootCommandUsesDelegatedOAuthClientRemoteRuntimeBearerToken(t *testing.
 }
 
 func TestHTTPRuntimeClientRefreshesExpiredOAuthClientTokenOnce(t *testing.T) {
-	t.Setenv("OAS_REMOTE_CLIENT_ID", "runtime-client")
-	t.Setenv("OAS_REMOTE_CLIENT_SECRET", "runtime-secret")
+	t.Setenv("OPEN_CLI_REMOTE_CLIENT_ID", "runtime-client")
+	t.Setenv("OPEN_CLI_REMOTE_CLIENT_SECRET", "runtime-secret")
 
 	tokenFetches := 0
 	authServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1672,8 +1672,8 @@ func TestHTTPRuntimeClientRefreshesExpiredOAuthClientTokenOnce(t *testing.T) {
 	        "scopes": ["bundle:payments"],
 	        "client": {
 	          "tokenURL": %q,
-	          "clientId": { "type": "env", "value": "OAS_REMOTE_CLIENT_ID" },
-	          "clientSecret": { "type": "env", "value": "OAS_REMOTE_CLIENT_SECRET" }
+	          "clientId": { "type": "env", "value": "OPEN_CLI_REMOTE_CLIENT_ID" },
+	          "clientSecret": { "type": "env", "value": "OPEN_CLI_REMOTE_CLIENT_SECRET" }
 	        }
 	      }
 	    }
@@ -1723,8 +1723,8 @@ func TestHTTPRuntimeClientRefreshesExpiredOAuthClientTokenOnce(t *testing.T) {
 }
 
 func TestHTTPRuntimeClientRefreshesAfterAuthnFailedOnNextRequest(t *testing.T) {
-	t.Setenv("OAS_REMOTE_CLIENT_ID", "runtime-client")
-	t.Setenv("OAS_REMOTE_CLIENT_SECRET", "runtime-secret")
+	t.Setenv("OPEN_CLI_REMOTE_CLIENT_ID", "runtime-client")
+	t.Setenv("OPEN_CLI_REMOTE_CLIENT_SECRET", "runtime-secret")
 
 	tokenFetches := 0
 	authServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1807,8 +1807,8 @@ func TestHTTPRuntimeClientRefreshesAfterAuthnFailedOnNextRequest(t *testing.T) {
 	        "scopes": ["bundle:payments"],
 	        "client": {
 	          "tokenURL": %q,
-	          "clientId": { "type": "env", "value": "OAS_REMOTE_CLIENT_ID" },
-	          "clientSecret": { "type": "env", "value": "OAS_REMOTE_CLIENT_SECRET" }
+	          "clientId": { "type": "env", "value": "OPEN_CLI_REMOTE_CLIENT_ID" },
+	          "clientSecret": { "type": "env", "value": "OPEN_CLI_REMOTE_CLIENT_SECRET" }
 	        }
 	      }
 	    }
@@ -2373,20 +2373,20 @@ func XTestResolveCommandOptionsUsesShareKeyForSharedGroupLocalRuntime(t *testing
 	}
 }
 
-func TestDetectTerminalSessionIdentityUsesOCLIEnvironmentVariable(t *testing.T) {
-	t.Setenv("OCLI_TERMINAL_SESSION_ID", "ocli-terminal")
+func TestDetectTerminalSessionIdentityUsesOPEN_CLIEnvironmentVariable(t *testing.T) {
+	t.Setenv("OPEN_CLI_TERMINAL_SESSION_ID", "open-cli-terminal")
 
-	if got := detectTerminalSessionIdentity(); got != "ocli-terminal" {
-		t.Fatalf("expected OCLI terminal session id, got %q", got)
+	if got := detectTerminalSessionIdentity(); got != "open-cli-terminal" {
+		t.Fatalf("expected OPEN_CLI terminal session id, got %q", got)
 	}
 }
 
-func TestDetectAgentSessionIdentityUsesOCLIEnvironmentVariable(t *testing.T) {
-	t.Setenv("OCLI_AGENT_SESSION_ID", "ocli-agent")
+func TestDetectAgentSessionIdentityUsesOPEN_CLIEnvironmentVariable(t *testing.T) {
+	t.Setenv("OPEN_CLI_AGENT_SESSION_ID", "open-cli-agent")
 	t.Setenv("COPILOT_SESSION_ID", "copilot-agent")
 
-	if got := detectAgentSessionIdentity(); got != "ocli-agent" {
-		t.Fatalf("expected OCLI agent session id, got %q", got)
+	if got := detectAgentSessionIdentity(); got != "open-cli-agent" {
+		t.Fatalf("expected OPEN_CLI agent session id, got %q", got)
 	}
 }
 

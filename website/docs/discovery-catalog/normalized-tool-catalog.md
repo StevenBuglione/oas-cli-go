@@ -108,7 +108,7 @@ The catalog always contains:
 - a `discover` view with every tool
 - one additional view per configured agent profile
 
-`ocli` uses the selected view to decide which dynamic commands to render.
+`open-cli` uses the selected view to decide which dynamic commands to render.
 
 ## Workflows in the catalog
 

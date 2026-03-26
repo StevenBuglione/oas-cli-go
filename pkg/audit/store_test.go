@@ -36,7 +36,7 @@ func TestFileStoreAppendAndList(t *testing.T) {
 				DelegationID: "delegation-123",
 				Actor: map[string]string{
 					"sub":       "github:user-123",
-					"client_id": "ocli-browser",
+					"client_id": "open-cli-browser",
 				},
 			},
 			ToolID:     "svc:op1",
