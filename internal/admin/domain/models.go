@@ -79,22 +79,22 @@ type CreateBundleAssignmentInput struct {
 
 // Revision represents a versioned snapshot of a bundle's configuration
 type Revision struct {
-	ID          string
-	BundleID    string
-	Status      string // "draft", "published"
-	CreatedBy   string
-	CreatedAt   time.Time
-	PublishedAt *time.Time
+	ID           string
+	BundleID     string
+	Status       string // "draft", "published"
+	CreatedBy    string
+	CreatedAt    time.Time
+	PublishedAt  *time.Time
 	SnapshotHash string
 }
 
 // CompiledSnapshot represents a runtime-ready configuration snapshot
 type CompiledSnapshot struct {
-	BundleID    string
-	BundleName  string
-	Sources     map[string]SnapshotSource
-	Services    map[string]SnapshotService
-	CompiledAt  time.Time
+	BundleID   string
+	BundleName string
+	Sources    map[string]SnapshotSource
+	Services   map[string]SnapshotService
+	CompiledAt time.Time
 }
 
 // SnapshotSource represents a source in a compiled snapshot
@@ -112,11 +112,11 @@ type SnapshotService struct {
 
 // RevisionDiff represents the difference between two revisions
 type RevisionDiff struct {
-	FromRevisionID string
-	ToRevisionID   string
-	SourcesAdded   []string
-	SourcesRemoved []string
-	SourcesChanged []string
+	FromRevisionID  string
+	ToRevisionID    string
+	SourcesAdded    []string
+	SourcesRemoved  []string
+	SourcesChanged  []string
 	ServicesAdded   []string
 	ServicesRemoved []string
 }

@@ -108,18 +108,18 @@ func (s *Service) ValidateSource(ctx context.Context, id string) (*domain.Valida
 // PublishBundle creates a new revision and publishes it
 func (s *Service) PublishBundle(ctx context.Context, bundleID, publishedBy string) (string, error) {
 	compiler := publish.NewCompiler(s.store)
-	
+
 	// Create a new revision
 	revisionID, err := compiler.CreateRevision(ctx, bundleID, publishedBy)
 	if err != nil {
 		return "", fmt.Errorf("failed to create revision: %w", err)
 	}
-	
+
 	// Publish the revision
 	if err := compiler.PublishRevision(ctx, revisionID); err != nil {
 		return "", fmt.Errorf("failed to publish revision: %w", err)
 	}
-	
+
 	return revisionID, nil
 }
 

@@ -199,5 +199,5 @@ For complete observability, correlate both audit trails:
 ## See Also
 
 - [Runtime Audit Logging](./audit-logging.md)
-- [Admin Authentication](../security/admin-authentication.md) (if exists)
-- [Access Control Overview](../security/access-control.md) (if exists)
+- [Security Overview](../security/overview.md)
+- [Authorization Resolution](../security/auth-resolution.md)

@@ -11,16 +11,16 @@ import (
 	"github.com/StevenBuglione/open-cli/internal/admin/httpapi"
 	"github.com/StevenBuglione/open-cli/internal/admin/service"
 	"github.com/StevenBuglione/open-cli/internal/admin/store"
-	_ "github.com/lib/pq"
+	_ "modernc.org/sqlite"
 )
 
 // setupAuthzTestAdmin creates an admin server for authorization testing
 func setupAuthzTestAdmin(t *testing.T) (*httptest.Server, func()) {
 	t.Helper()
 
-	db, err := sql.Open("postgres", "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable")
+	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
-		t.Skipf("postgres not available: %v", err)
+		t.Fatalf("open sqlite db: %v", err)
 	}
 
 	st := store.New(db)

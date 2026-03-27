@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"testing"
+	"time"
 
 	"github.com/StevenBuglione/open-cli/internal/admin/domain"
 	_ "modernc.org/sqlite"
@@ -224,7 +225,7 @@ func TestStoreGetBundleNotFound(t *testing.T) {
 
 func TestStoreListBundles(t *testing.T) {
 	store := NewTestStore(t)
-	
+
 	// Create multiple bundles
 	_, err := store.CreateBundle(context.Background(), domain.CreateBundleInput{
 		Name:        "Engineering",
@@ -233,7 +234,7 @@ func TestStoreListBundles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	
+
 	_, err = store.CreateBundle(context.Background(), domain.CreateBundleInput{
 		Name:        "Sales",
 		Description: "Sales APIs",
@@ -301,7 +302,7 @@ func TestStoreDeleteBundle(t *testing.T) {
 
 func TestStoreCreateBundleAssignment(t *testing.T) {
 	store := NewTestStore(t)
-	
+
 	// Create a bundle first
 	bundleID, err := store.CreateBundle(context.Background(), domain.CreateBundleInput{
 		Name:        "Engineering",
@@ -324,10 +325,10 @@ func TestStoreCreateBundleAssignment(t *testing.T) {
 	}
 
 	var (
-		id                  string
-		storedBundleID      string
-		principalType       string
-		principalID         string
+		id             string
+		storedBundleID string
+		principalType  string
+		principalID    string
 	)
 	err = store.db.QueryRowContext(
 		context.Background(),
@@ -338,14 +339,14 @@ func TestStoreCreateBundleAssignment(t *testing.T) {
 		t.Fatalf("expected stored assignment row: %v", err)
 	}
 	if id != assignmentID || storedBundleID != bundleID || principalType != "user" || principalID != "user_123" {
-		t.Fatalf("unexpected assignment: id=%q bundleID=%q principalType=%q principalID=%q", 
+		t.Fatalf("unexpected assignment: id=%q bundleID=%q principalType=%q principalID=%q",
 			id, storedBundleID, principalType, principalID)
 	}
 }
 
 func TestStoreListBundleAssignments(t *testing.T) {
 	store := NewTestStore(t)
-	
+
 	// Create a bundle
 	bundleID, err := store.CreateBundle(context.Background(), domain.CreateBundleInput{
 		Name:        "Engineering",
@@ -385,7 +386,7 @@ func TestStoreListBundleAssignments(t *testing.T) {
 
 func TestStoreDeleteBundleAssignment(t *testing.T) {
 	store := NewTestStore(t)
-	
+
 	// Create a bundle and assignment
 	bundleID, err := store.CreateBundle(context.Background(), domain.CreateBundleInput{
 		Name:        "Engineering",
@@ -421,7 +422,7 @@ func TestStoreDeleteBundleAssignment(t *testing.T) {
 
 func TestStoreBundleAssignmentUniqueness(t *testing.T) {
 	store := NewTestStore(t)
-	
+
 	// Create a bundle
 	bundleID, err := store.CreateBundle(context.Background(), domain.CreateBundleInput{
 		Name:        "Engineering",
@@ -452,3 +453,33 @@ func TestStoreBundleAssignmentUniqueness(t *testing.T) {
 	}
 }
 
+func TestStoreListAuditEventsWithSQLiteTimestamp(t *testing.T) {
+	store := NewTestStore(t)
+
+	err := store.CreateAuditEvent(context.Background(), domain.AdminAuditEvent{
+		ID:           "audit_1",
+		Timestamp:    time.Now().UTC().Truncate(time.Second),
+		AdminID:      "admin@example.com",
+		Action:       "CREATE_BUNDLE",
+		ResourceType: "bundle",
+		ResourceID:   "bun_1",
+		Changes:      map[string]interface{}{"name": "bundle"},
+		Success:      true,
+	})
+	if err != nil {
+		t.Fatalf("create audit event: %v", err)
+	}
+
+	events, err := store.ListAuditEvents(context.Background(), domain.AuditEventFilter{
+		Action: "CREATE_BUNDLE",
+	})
+	if err != nil {
+		t.Fatalf("list audit events: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected 1 audit event, got %d", len(events))
+	}
+	if events[0].Action != "CREATE_BUNDLE" {
+		t.Fatalf("expected CREATE_BUNDLE action, got %q", events[0].Action)
+	}
+}

@@ -32,11 +32,11 @@ func (c *Compiler) CompileBundle(ctx context.Context, bundleID string) (*domain.
 	}
 
 	snapshot := &domain.CompiledSnapshot{
-		BundleID:    bundle.ID,
-		BundleName:  bundle.Name,
-		Sources:     make(map[string]domain.SnapshotSource),
-		Services:    make(map[string]domain.SnapshotService),
-		CompiledAt:  time.Now().UTC(),
+		BundleID:   bundle.ID,
+		BundleName: bundle.Name,
+		Sources:    make(map[string]domain.SnapshotSource),
+		Services:   make(map[string]domain.SnapshotService),
+		CompiledAt: time.Now().UTC(),
 	}
 
 	// For v1, bundles are empty containers - future versions will link to sources

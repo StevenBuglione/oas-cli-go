@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -15,7 +16,7 @@ import (
 	"github.com/StevenBuglione/open-cli/internal/admin/httpapi"
 	"github.com/StevenBuglione/open-cli/internal/admin/service"
 	"github.com/StevenBuglione/open-cli/internal/admin/store"
-	_ "github.com/lib/pq"
+	_ "modernc.org/sqlite"
 )
 
 // mockTokenVerifier provides a test token verifier
@@ -31,10 +32,9 @@ func (m *mockTokenVerifier) VerifyToken(ctx context.Context, token string) (*aut
 func setupTestAdmin(t *testing.T) (*httptest.Server, *service.Service, func()) {
 	t.Helper()
 
-	// Use in-memory SQLite for testing (or postgres if available)
-	db, err := sql.Open("postgres", "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable")
+	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
-		t.Skipf("postgres not available: %v", err)
+		t.Fatalf("open sqlite db: %v", err)
 	}
 
 	st := store.New(db)
@@ -109,8 +109,14 @@ func doAdminRequest(t *testing.T, method, url, token string, body interface{}) (
 
 	var result map[string]interface{}
 	if resp.StatusCode != http.StatusNoContent {
-		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil && resp.StatusCode < 400 {
-			t.Fatalf("decode response: %v", err)
+		payload, err := io.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatalf("read response: %v", err)
+		}
+		if len(bytes.TrimSpace(payload)) > 0 && bytes.TrimSpace(payload)[0] == '{' {
+			if err := json.Unmarshal(payload, &result); err != nil && resp.StatusCode < 400 {
+				t.Fatalf("decode response: %v", err)
+			}
 		}
 	}
 	resp.Body.Close()
@@ -142,18 +148,10 @@ func TestAdminAuditBundleLifecycle(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// 2. Check audit events for CREATE_BUNDLE
-	resp, result = doAdminRequest(t, http.MethodGet, server.URL+"/v1/admin/audit/events?action=CREATE_BUNDLE", adminToken, nil)
+	resp, _ = doAdminRequest(t, http.MethodGet, server.URL+"/v1/admin/audit/events?action=CREATE_BUNDLE", adminToken, nil)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("list audit events: expected 200, got %d", resp.StatusCode)
 	}
-
-	events, ok := result["events"].([]interface{})
-	if !ok {
-		// Try direct array response
-		events = []interface{}{result}
-	}
-	
-	t.Logf("Found %d audit events", len(events))
 
 	// Verify audit trail via service
 	auditEvents, err := svc.ListAuditEvents(context.Background(), domain.AuditEventFilter{
@@ -183,8 +181,8 @@ func TestAdminAuditBundleLifecycle(t *testing.T) {
 		"name":        "updated-bundle",
 		"description": "Updated description",
 	})
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("update bundle: expected 200, got %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("update bundle: expected 204, got %d", resp.StatusCode)
 	}
 
 	// 4. Delete bundle (should create DELETE_BUNDLE audit event)
@@ -204,7 +202,7 @@ func TestAdminAuditBundleLifecycle(t *testing.T) {
 	}
 
 	t.Logf("Found %d audit events for bundle %s", len(auditEvents), bundleID)
-	
+
 	// We expect CREATE, potentially UPDATE, potentially DELETE
 	// For now, just verify we have events
 	if len(auditEvents) == 0 {
@@ -227,7 +225,10 @@ func TestAdminAuditSourceOperations(t *testing.T) {
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("create source: expected 201, got %d", resp.StatusCode)
 	}
-	sourceID := result["id"].(string)
+	sourceID, ok := result["ID"].(string)
+	if !ok || sourceID == "" {
+		t.Fatalf("create source response missing ID: %#v", result)
+	}
 
 	time.Sleep(100 * time.Millisecond)
 
@@ -293,10 +294,10 @@ func TestAdminAuditTimeRange(t *testing.T) {
 	endTime := time.Now().UTC()
 
 	// Query with time range via HTTP API
-	resp, _ := doAdminRequest(t, http.MethodGet, 
-		server.URL+"/v1/admin/audit/events?start_time="+startTime.Format(time.RFC3339), 
+	resp, _ := doAdminRequest(t, http.MethodGet,
+		server.URL+"/v1/admin/audit/events?start_time="+startTime.Format(time.RFC3339),
 		adminToken, nil)
-	
+
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("list audit events: expected 200, got %d", resp.StatusCode)
 	}

@@ -3,9 +3,10 @@ package store
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	_ "embed"
+	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/StevenBuglione/open-cli/internal/admin/domain"
@@ -279,12 +280,12 @@ func (s *Store) CreateAuditEvent(ctx context.Context, event domain.AdminAuditEve
 	if err != nil {
 		return fmt.Errorf("marshal changes: %w", err)
 	}
-	
+
 	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO admin_audit_events (id, timestamp, admin_id, action, resource_type, resource_id, changes, success, error_message)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 	`, event.ID, event.Timestamp, event.AdminID, event.Action, event.ResourceType, event.ResourceID, changesJSON, event.Success, event.ErrorMessage)
-	
+
 	return err
 }
 
@@ -297,116 +298,169 @@ func (s *Store) ListAuditEvents(ctx context.Context, filter domain.AuditEventFil
 	`
 	args := []interface{}{}
 	argIdx := 1
-	
+
 	if filter.AdminID != "" {
 		query += fmt.Sprintf(" AND admin_id = $%d", argIdx)
 		args = append(args, filter.AdminID)
 		argIdx++
 	}
-	
+
 	if filter.Action != "" {
 		query += fmt.Sprintf(" AND action = $%d", argIdx)
 		args = append(args, filter.Action)
 		argIdx++
 	}
-	
+
 	if filter.ResourceType != "" {
 		query += fmt.Sprintf(" AND resource_type = $%d", argIdx)
 		args = append(args, filter.ResourceType)
 		argIdx++
 	}
-	
+
 	if filter.ResourceID != "" {
 		query += fmt.Sprintf(" AND resource_id = $%d", argIdx)
 		args = append(args, filter.ResourceID)
 		argIdx++
 	}
-	
+
 	if filter.StartTime != nil {
 		query += fmt.Sprintf(" AND timestamp >= $%d", argIdx)
 		args = append(args, filter.StartTime)
 		argIdx++
 	}
-	
+
 	if filter.EndTime != nil {
 		query += fmt.Sprintf(" AND timestamp <= $%d", argIdx)
 		args = append(args, filter.EndTime)
 		argIdx++
 	}
-	
+
 	query += " ORDER BY timestamp DESC"
-	
+
 	if filter.Limit > 0 {
 		query += fmt.Sprintf(" LIMIT $%d", argIdx)
 		args = append(args, filter.Limit)
 		argIdx++
 	}
-	
+
 	if filter.Offset > 0 {
 		query += fmt.Sprintf(" OFFSET $%d", argIdx)
 		args = append(args, filter.Offset)
 	}
-	
+
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	
+
 	var events []domain.AdminAuditEvent
 	for rows.Next() {
 		var event domain.AdminAuditEvent
+		var rawTimestamp interface{}
 		var changesJSON []byte
 		var errorMessage sql.NullString
-		
-		err := rows.Scan(&event.ID, &event.Timestamp, &event.AdminID, &event.Action, 
+
+		err := rows.Scan(&event.ID, &rawTimestamp, &event.AdminID, &event.Action,
 			&event.ResourceType, &event.ResourceID, &changesJSON, &event.Success, &errorMessage)
 		if err != nil {
 			return nil, err
 		}
-		
+		if err := assignAuditTimestamp(&event.Timestamp, rawTimestamp); err != nil {
+			return nil, err
+		}
+
 		if len(changesJSON) > 0 {
 			if err := json.Unmarshal(changesJSON, &event.Changes); err != nil {
 				return nil, fmt.Errorf("unmarshal changes: %w", err)
 			}
 		}
-		
+
 		if errorMessage.Valid {
 			event.ErrorMessage = errorMessage.String
 		}
-		
+
 		events = append(events, event)
 	}
-	
+
 	return events, rows.Err()
 }
 
 // GetAuditEvent retrieves a specific audit event by ID
 func (s *Store) GetAuditEvent(ctx context.Context, id string) (*domain.AdminAuditEvent, error) {
 	var event domain.AdminAuditEvent
+	var rawTimestamp interface{}
 	var changesJSON []byte
 	var errorMessage sql.NullString
-	
+
 	err := s.db.QueryRowContext(ctx, `
 		SELECT id, timestamp, admin_id, action, resource_type, resource_id, changes, success, error_message
 		FROM admin_audit_events
 		WHERE id = $1
-	`, id).Scan(&event.ID, &event.Timestamp, &event.AdminID, &event.Action, 
+	`, id).Scan(&event.ID, &rawTimestamp, &event.AdminID, &event.Action,
 		&event.ResourceType, &event.ResourceID, &changesJSON, &event.Success, &errorMessage)
-	
+
 	if err != nil {
 		return nil, err
 	}
-	
+	if err := assignAuditTimestamp(&event.Timestamp, rawTimestamp); err != nil {
+		return nil, err
+	}
+
 	if len(changesJSON) > 0 {
 		if err := json.Unmarshal(changesJSON, &event.Changes); err != nil {
 			return nil, fmt.Errorf("unmarshal changes: %w", err)
 		}
 	}
-	
+
 	if errorMessage.Valid {
 		event.ErrorMessage = errorMessage.String
 	}
-	
+
 	return &event, nil
+}
+
+func assignAuditTimestamp(dst *time.Time, value interface{}) error {
+	switch v := value.(type) {
+	case time.Time:
+		*dst = v
+		return nil
+	case string:
+		parsed, err := parseAuditTimestamp(v)
+		if err != nil {
+			return fmt.Errorf("parse audit timestamp %q: %w", v, err)
+		}
+		*dst = parsed
+		return nil
+	case []byte:
+		parsed, err := parseAuditTimestamp(string(v))
+		if err != nil {
+			return fmt.Errorf("parse audit timestamp %q: %w", string(v), err)
+		}
+		*dst = parsed
+		return nil
+	default:
+		return fmt.Errorf("unsupported audit timestamp type %T", value)
+	}
+}
+
+func parseAuditTimestamp(value string) (time.Time, error) {
+	value = strings.TrimSpace(value)
+	layouts := []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02 15:04:05 -0700 MST",
+		"2006-01-02 15:04:05.999999999-07:00",
+		"2006-01-02 15:04:05.999999999",
+		"2006-01-02 15:04:05",
+	}
+	var lastErr error
+	for _, layout := range layouts {
+		parsed, err := time.Parse(layout, value)
+		if err == nil {
+			return parsed.UTC(), nil
+		}
+		lastErr = err
+	}
+	return time.Time{}, lastErr
 }

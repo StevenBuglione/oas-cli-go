@@ -43,7 +43,7 @@ func RegisterRoutes(mux *http.ServeMux, deps Dependencies) http.Handler {
 
 	mux.Handle("/v1/admin/bundles/", middleware.RequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		bundleID := strings.TrimPrefix(r.URL.Path, "/v1/admin/bundles/")
-		
+
 		// Check if it's an assignment operation
 		if strings.HasSuffix(bundleID, "/assignments") {
 			bundleID = strings.TrimSuffix(bundleID, "/assignments")
@@ -94,7 +94,7 @@ func RegisterRoutes(mux *http.ServeMux, deps Dependencies) http.Handler {
 
 	mux.Handle("/v1/admin/sources/", middleware.RequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sourceID := strings.TrimPrefix(r.URL.Path, "/v1/admin/sources/")
-		
+
 		// Check if it's a validate operation
 		if strings.HasSuffix(sourceID, "/validate") {
 			sourceID = strings.TrimSuffix(sourceID, "/validate")
@@ -170,7 +170,7 @@ func handleCreateBundle(w http.ResponseWriter, r *http.Request, deps Dependencie
 	id, err := deps.Service.CreateBundle(r.Context(), input)
 	if err != nil {
 		// Log failed attempt
-		deps.Service.LogAuditEvent(r.Context(), identity.Subject, "CREATE_BUNDLE", "bundle", "", 
+		deps.Service.LogAuditEvent(r.Context(), identity.Subject, "CREATE_BUNDLE", "bundle", "",
 			map[string]interface{}{"name": input.Name, "description": input.Description}, false, err.Error())
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -433,7 +433,7 @@ func handleListAuditEvents(w http.ResponseWriter, r *http.Request, deps Dependen
 			filter.Limit = limit
 		}
 	}
-	
+
 	if offsetStr := r.URL.Query().Get("offset"); offsetStr != "" {
 		var offset int
 		if _, err := fmt.Sscanf(offsetStr, "%d", &offset); err == nil {

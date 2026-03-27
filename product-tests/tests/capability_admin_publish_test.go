@@ -25,7 +25,10 @@ func TestAdminPublishBundleWorkflow(t *testing.T) {
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("create source: expected 201, got %d", resp.StatusCode)
 	}
-	sourceID := result["id"].(string)
+	sourceID, ok := result["ID"].(string)
+	if !ok || sourceID == "" {
+		t.Fatalf("create source response missing ID: %#v", result)
+	}
 	t.Logf("Created source: %s", sourceID)
 
 	// 2. Create a bundle
@@ -41,8 +44,8 @@ func TestAdminPublishBundleWorkflow(t *testing.T) {
 
 	// 3. Assign bundle to a user
 	resp, result = doAdminRequest(t, http.MethodPost, server.URL+"/v1/admin/bundles/"+bundleID+"/assignments", adminToken, map[string]interface{}{
-		"principalType": "user",
-		"principalId":   "engineer@example.com",
+		"principal_type": "user",
+		"principal_id":   "engineer@example.com",
 	})
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("create assignment: expected 201, got %d", resp.StatusCode)
@@ -103,8 +106,8 @@ func TestAdminPublishGroupAssignment(t *testing.T) {
 
 	// Assign to a group
 	resp, result = doAdminRequest(t, http.MethodPost, server.URL+"/v1/admin/bundles/"+bundleID+"/assignments", adminToken, map[string]interface{}{
-		"principalType": "group",
-		"principalId":   "engineering-team",
+		"principal_type": "group",
+		"principal_id":   "engineering-team",
 	})
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("create group assignment: expected 201, got %d", resp.StatusCode)
@@ -148,8 +151,8 @@ func TestAdminPublishMultipleAssignments(t *testing.T) {
 	users := []string{"user1@example.com", "user2@example.com", "user3@example.com"}
 	for _, userID := range users {
 		resp, _ = doAdminRequest(t, http.MethodPost, server.URL+"/v1/admin/bundles/"+bundleID+"/assignments", adminToken, map[string]interface{}{
-			"principalType": "user",
-			"principalId":   userID,
+			"principal_type": "user",
+			"principal_id":   userID,
 		})
 		if resp.StatusCode != http.StatusCreated {
 			t.Fatalf("create assignment for %s: expected 201, got %d", userID, resp.StatusCode)
@@ -185,8 +188,8 @@ func TestAdminPublishDeleteAssignment(t *testing.T) {
 	bundleID := result["id"].(string)
 
 	resp, result = doAdminRequest(t, http.MethodPost, server.URL+"/v1/admin/bundles/"+bundleID+"/assignments", adminToken, map[string]interface{}{
-		"principalType": "user",
-		"principalId":   "temp-user@example.com",
+		"principal_type": "user",
+		"principal_id":   "temp-user@example.com",
 	})
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("create assignment: expected 201, got %d", resp.StatusCode)
@@ -228,8 +231,8 @@ func TestAdminPublishInvalidPrincipalType(t *testing.T) {
 
 	// Try to create assignment with invalid principal type
 	resp, _ = doAdminRequest(t, http.MethodPost, server.URL+"/v1/admin/bundles/"+bundleID+"/assignments", adminToken, map[string]interface{}{
-		"principalType": "invalid",
-		"principalId":   "test@example.com",
+		"principal_type": "invalid",
+		"principal_id":   "test@example.com",
 	})
 	if resp.StatusCode == http.StatusCreated {
 		t.Error("expected error for invalid principal type, got 201")

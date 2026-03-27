@@ -361,16 +361,12 @@ curl ".../audit/events?action=DELETE_ASSIGNMENT&resource_id=$ASSIGNMENT_ID"
 - Check admin control-plane logs
 - Verify PostgreSQL is running and accessible
 
-## API Reference
+## API Notes
 
-For complete API documentation, see:
-
-- [Admin API Endpoints](./api-reference.md) (if exists)
-- [Bundle Schema](./schemas.md) (if exists)
-- [Source Types](./source-types.md) (if exists)
+The current admin surface is documented in this overview and in the admin product tests under `product-tests/tests/capability_admin_*_test.go`.
 
 ## See Also
 
 - [Admin Audit Trail](../operations/admin-audit-trail.md)
-- [Runtime Operations](../runtime/overview.md) (if exists)
-- [Security Best Practices](../security/overview.md) (if exists)
+- [Runtime Operations](../runtime/overview.md)
+- [Security Overview](../security/overview.md)

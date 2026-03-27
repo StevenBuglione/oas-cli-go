@@ -366,47 +366,46 @@ func TestServiceValidateSource(t *testing.T) {
 	}
 }
 
-
 func TestServicePublishBundle(t *testing.T) {
-svc := NewTestService(t)
-ctx := context.Background()
+	svc := NewTestService(t)
+	ctx := context.Background()
 
-// Create a bundle
-bundleID, err := svc.CreateBundle(ctx, domain.CreateBundleInput{
-Name:        "Production Bundle",
-Description: "Bundle for production",
-})
-if err != nil {
-t.Fatal(err)
-}
+	// Create a bundle
+	bundleID, err := svc.CreateBundle(ctx, domain.CreateBundleInput{
+		Name:        "Production Bundle",
+		Description: "Bundle for production",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
-// Publish the bundle
-revisionID, err := svc.PublishBundle(ctx, bundleID, "admin@example.com")
-if err != nil {
-t.Fatalf("expected no error, got: %v", err)
-}
+	// Publish the bundle
+	revisionID, err := svc.PublishBundle(ctx, bundleID, "admin@example.com")
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
 
-if revisionID == "" {
-t.Fatal("expected revision ID, got empty string")
-}
+	if revisionID == "" {
+		t.Fatal("expected revision ID, got empty string")
+	}
 
-// Get the revision
-revision, err := svc.GetRevision(ctx, revisionID)
-if err != nil {
-t.Fatalf("expected no error, got: %v", err)
-}
+	// Get the revision
+	revision, err := svc.GetRevision(ctx, revisionID)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
 
-if revision.Status != "published" {
-t.Errorf("expected status 'published', got %q", revision.Status)
-}
+	if revision.Status != "published" {
+		t.Errorf("expected status 'published', got %q", revision.Status)
+	}
 
-// Should be the active revision
-activeRev, err := svc.GetActiveRevision(ctx, bundleID)
-if err != nil {
-t.Fatalf("expected no error, got: %v", err)
-}
+	// Should be the active revision
+	activeRev, err := svc.GetActiveRevision(ctx, bundleID)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
 
-if activeRev.ID != revisionID {
-t.Errorf("expected active revision ID %q, got %q", revisionID, activeRev.ID)
-}
+	if activeRev.ID != revisionID {
+		t.Errorf("expected active revision ID %q, got %q", revisionID, activeRev.ID)
+	}
 }

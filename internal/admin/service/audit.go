@@ -22,7 +22,7 @@ func (s *Service) LogAuditEvent(ctx context.Context, adminID, action, resourceTy
 		Success:      success,
 		ErrorMessage: errorMsg,
 	}
-	
+
 	return s.store.CreateAuditEvent(ctx, event)
 }
 
@@ -32,7 +32,7 @@ func (s *Service) ListAuditEvents(ctx context.Context, filter domain.AuditEventF
 	if filter.Limit == 0 {
 		filter.Limit = 100
 	}
-	
+
 	return s.store.ListAuditEvents(ctx, filter)
 }
 

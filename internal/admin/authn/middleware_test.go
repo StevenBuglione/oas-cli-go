@@ -109,10 +109,10 @@ func TestMiddleware_NotAdminUser(t *testing.T) {
 	verifier := &mockTokenVerifier{
 		verifyFunc: func(ctx context.Context, token string) (*AdminIdentity, error) {
 			return &AdminIdentity{
-				Subject:  "user@example.com",
-				Name:     "Regular User",
-				Groups:   []string{"users"},
-				IsAdmin:  false,
+				Subject: "user@example.com",
+				Name:    "Regular User",
+				Groups:  []string{"users"},
+				IsAdmin: false,
 			}, nil
 		},
 	}
@@ -137,10 +137,10 @@ func TestMiddleware_NotAdminUser(t *testing.T) {
 
 func TestMiddleware_ValidAdminToken(t *testing.T) {
 	expectedIdentity := &AdminIdentity{
-		Subject:  "admin@example.com",
-		Name:     "Admin User",
-		Groups:   []string{"admins", "users"},
-		IsAdmin:  true,
+		Subject: "admin@example.com",
+		Name:    "Admin User",
+		Groups:  []string{"admins", "users"},
+		IsAdmin: true,
 	}
 
 	verifier := &mockTokenVerifier{
@@ -195,11 +195,11 @@ func TestGetIdentity_NoIdentityInContext(t *testing.T) {
 
 func TestAdminIdentity_JSON(t *testing.T) {
 	identity := &AdminIdentity{
-		Subject:  "admin@example.com",
-		Name:     "Admin User",
-		Email:    "admin@example.com",
-		Groups:   []string{"admins", "users"},
-		IsAdmin:  true,
+		Subject: "admin@example.com",
+		Name:    "Admin User",
+		Email:   "admin@example.com",
+		Groups:  []string{"admins", "users"},
+		IsAdmin: true,
 	}
 
 	data, err := json.Marshal(identity)
