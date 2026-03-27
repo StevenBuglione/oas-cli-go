@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/StevenBuglione/open-cli/internal/admin/domain"
+	"github.com/StevenBuglione/open-cli/internal/admin/publish"
 	"github.com/StevenBuglione/open-cli/internal/admin/store"
 )
 
@@ -102,4 +103,52 @@ func (s *Service) ValidateSource(ctx context.Context, id string) (*domain.Valida
 	}
 
 	return result, nil
+}
+
+// PublishBundle creates a new revision and publishes it
+func (s *Service) PublishBundle(ctx context.Context, bundleID, publishedBy string) (string, error) {
+	compiler := publish.NewCompiler(s.store)
+	
+	// Create a new revision
+	revisionID, err := compiler.CreateRevision(ctx, bundleID, publishedBy)
+	if err != nil {
+		return "", fmt.Errorf("failed to create revision: %w", err)
+	}
+	
+	// Publish the revision
+	if err := compiler.PublishRevision(ctx, revisionID); err != nil {
+		return "", fmt.Errorf("failed to publish revision: %w", err)
+	}
+	
+	return revisionID, nil
+}
+
+// GetRevision retrieves a revision by ID
+func (s *Service) GetRevision(ctx context.Context, revisionID string) (*domain.Revision, error) {
+	compiler := publish.NewCompiler(s.store)
+	return compiler.GetRevision(ctx, revisionID)
+}
+
+// ListRevisions lists all revisions for a bundle
+func (s *Service) ListRevisions(ctx context.Context, bundleID string) ([]*domain.Revision, error) {
+	compiler := publish.NewCompiler(s.store)
+	return compiler.ListRevisions(ctx, bundleID)
+}
+
+// GetActiveRevision gets the active revision for a bundle
+func (s *Service) GetActiveRevision(ctx context.Context, bundleID string) (*domain.Revision, error) {
+	compiler := publish.NewCompiler(s.store)
+	return compiler.GetActiveRevision(ctx, bundleID)
+}
+
+// GetRevisionSnapshot gets the compiled snapshot for a revision
+func (s *Service) GetRevisionSnapshot(ctx context.Context, revisionID string) (*domain.CompiledSnapshot, error) {
+	compiler := publish.NewCompiler(s.store)
+	return compiler.GetRevisionSnapshot(ctx, revisionID)
+}
+
+// DiffRevisions computes differences between two revisions
+func (s *Service) DiffRevisions(ctx context.Context, fromRevisionID, toRevisionID string) (*domain.RevisionDiff, error) {
+	compiler := publish.NewCompiler(s.store)
+	return compiler.DiffRevisions(ctx, fromRevisionID, toRevisionID)
 }
