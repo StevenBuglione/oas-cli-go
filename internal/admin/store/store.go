@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	_ "embed"
 	"fmt"
 	"time"
@@ -232,4 +233,180 @@ func formatTime(t time.Time) string {
 func parseTime(s string) time.Time {
 	t, _ := time.Parse(time.RFC3339Nano, s)
 	return t
+}
+
+// Exec executes a query that doesn't return rows (for compiler use)
+func (s *Store) Exec(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+	// Replace ? placeholders with $1, $2, etc. for PostgreSQL compatibility
+	query = replacePlaceholders(query)
+	return s.db.ExecContext(ctx, query, args...)
+}
+
+// Query executes a query that returns rows (for compiler use)
+func (s *Store) Query(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
+	// Replace ? placeholders with $1, $2, etc. for PostgreSQL compatibility
+	query = replacePlaceholders(query)
+	return s.db.QueryContext(ctx, query, args...)
+}
+
+// QueryRow executes a query that returns at most one row (for compiler use)
+func (s *Store) QueryRow(ctx context.Context, query string, args ...interface{}) *sql.Row {
+	// Replace ? placeholders with $1, $2, etc. for PostgreSQL compatibility
+	query = replacePlaceholders(query)
+	return s.db.QueryRowContext(ctx, query, args...)
+}
+
+// replacePlaceholders replaces ? placeholders with $1, $2, etc. for PostgreSQL
+func replacePlaceholders(query string) string {
+	// SQLite uses ?, PostgreSQL uses $1, $2, etc.
+	// This simple implementation works for basic queries
+	result := ""
+	paramNum := 1
+	for i := 0; i < len(query); i++ {
+		if query[i] == '?' {
+			result += fmt.Sprintf("$%d", paramNum)
+			paramNum++
+		} else {
+			result += string(query[i])
+		}
+	}
+	return result
+}
+
+// CreateAuditEvent creates a new audit event
+func (s *Store) CreateAuditEvent(ctx context.Context, event domain.AdminAuditEvent) error {
+	changesJSON, err := json.Marshal(event.Changes)
+	if err != nil {
+		return fmt.Errorf("marshal changes: %w", err)
+	}
+	
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO admin_audit_events (id, timestamp, admin_id, action, resource_type, resource_id, changes, success, error_message)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+	`, event.ID, event.Timestamp, event.AdminID, event.Action, event.ResourceType, event.ResourceID, changesJSON, event.Success, event.ErrorMessage)
+	
+	return err
+}
+
+// ListAuditEvents retrieves audit events based on filter criteria
+func (s *Store) ListAuditEvents(ctx context.Context, filter domain.AuditEventFilter) ([]domain.AdminAuditEvent, error) {
+	query := `
+		SELECT id, timestamp, admin_id, action, resource_type, resource_id, changes, success, error_message
+		FROM admin_audit_events
+		WHERE 1=1
+	`
+	args := []interface{}{}
+	argIdx := 1
+	
+	if filter.AdminID != "" {
+		query += fmt.Sprintf(" AND admin_id = $%d", argIdx)
+		args = append(args, filter.AdminID)
+		argIdx++
+	}
+	
+	if filter.Action != "" {
+		query += fmt.Sprintf(" AND action = $%d", argIdx)
+		args = append(args, filter.Action)
+		argIdx++
+	}
+	
+	if filter.ResourceType != "" {
+		query += fmt.Sprintf(" AND resource_type = $%d", argIdx)
+		args = append(args, filter.ResourceType)
+		argIdx++
+	}
+	
+	if filter.ResourceID != "" {
+		query += fmt.Sprintf(" AND resource_id = $%d", argIdx)
+		args = append(args, filter.ResourceID)
+		argIdx++
+	}
+	
+	if filter.StartTime != nil {
+		query += fmt.Sprintf(" AND timestamp >= $%d", argIdx)
+		args = append(args, filter.StartTime)
+		argIdx++
+	}
+	
+	if filter.EndTime != nil {
+		query += fmt.Sprintf(" AND timestamp <= $%d", argIdx)
+		args = append(args, filter.EndTime)
+		argIdx++
+	}
+	
+	query += " ORDER BY timestamp DESC"
+	
+	if filter.Limit > 0 {
+		query += fmt.Sprintf(" LIMIT $%d", argIdx)
+		args = append(args, filter.Limit)
+		argIdx++
+	}
+	
+	if filter.Offset > 0 {
+		query += fmt.Sprintf(" OFFSET $%d", argIdx)
+		args = append(args, filter.Offset)
+	}
+	
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	
+	var events []domain.AdminAuditEvent
+	for rows.Next() {
+		var event domain.AdminAuditEvent
+		var changesJSON []byte
+		var errorMessage sql.NullString
+		
+		err := rows.Scan(&event.ID, &event.Timestamp, &event.AdminID, &event.Action, 
+			&event.ResourceType, &event.ResourceID, &changesJSON, &event.Success, &errorMessage)
+		if err != nil {
+			return nil, err
+		}
+		
+		if len(changesJSON) > 0 {
+			if err := json.Unmarshal(changesJSON, &event.Changes); err != nil {
+				return nil, fmt.Errorf("unmarshal changes: %w", err)
+			}
+		}
+		
+		if errorMessage.Valid {
+			event.ErrorMessage = errorMessage.String
+		}
+		
+		events = append(events, event)
+	}
+	
+	return events, rows.Err()
+}
+
+// GetAuditEvent retrieves a specific audit event by ID
+func (s *Store) GetAuditEvent(ctx context.Context, id string) (*domain.AdminAuditEvent, error) {
+	var event domain.AdminAuditEvent
+	var changesJSON []byte
+	var errorMessage sql.NullString
+	
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, timestamp, admin_id, action, resource_type, resource_id, changes, success, error_message
+		FROM admin_audit_events
+		WHERE id = $1
+	`, id).Scan(&event.ID, &event.Timestamp, &event.AdminID, &event.Action, 
+		&event.ResourceType, &event.ResourceID, &changesJSON, &event.Success, &errorMessage)
+	
+	if err != nil {
+		return nil, err
+	}
+	
+	if len(changesJSON) > 0 {
+		if err := json.Unmarshal(changesJSON, &event.Changes); err != nil {
+			return nil, fmt.Errorf("unmarshal changes: %w", err)
+		}
+	}
+	
+	if errorMessage.Valid {
+		event.ErrorMessage = errorMessage.String
+	}
+	
+	return &event, nil
 }

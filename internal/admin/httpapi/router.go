@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -113,6 +114,24 @@ func RegisterRoutes(mux *http.ServeMux, deps Dependencies) http.Handler {
 		}
 	})))
 
+	// Audit endpoints
+	mux.Handle("/v1/admin/audit/events", middleware.RequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		handleListAuditEvents(w, r, deps)
+	})))
+
+	mux.Handle("/v1/admin/audit/events/", middleware.RequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		eventID := strings.TrimPrefix(r.URL.Path, "/v1/admin/audit/events/")
+		handleGetAuditEvent(w, r, deps, eventID)
+	})))
+
 	return mux
 }
 
@@ -136,6 +155,12 @@ func handleCreateBundle(w http.ResponseWriter, r *http.Request, deps Dependencie
 		return
 	}
 
+	identity := authn.GetIdentity(r.Context())
+	if identity == nil {
+		http.Error(w, "internal error: no identity in context", http.StatusInternalServerError)
+		return
+	}
+
 	var input domain.CreateBundleInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -144,9 +169,16 @@ func handleCreateBundle(w http.ResponseWriter, r *http.Request, deps Dependencie
 
 	id, err := deps.Service.CreateBundle(r.Context(), input)
 	if err != nil {
+		// Log failed attempt
+		deps.Service.LogAuditEvent(r.Context(), identity.Subject, "CREATE_BUNDLE", "bundle", "", 
+			map[string]interface{}{"name": input.Name, "description": input.Description}, false, err.Error())
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	// Log successful creation
+	deps.Service.LogAuditEvent(r.Context(), identity.Subject, "CREATE_BUNDLE", "bundle", id,
+		map[string]interface{}{"name": input.Name, "description": input.Description}, true, "")
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
@@ -191,6 +223,12 @@ func handleUpdateBundle(w http.ResponseWriter, r *http.Request, deps Dependencie
 		return
 	}
 
+	identity := authn.GetIdentity(r.Context())
+	if identity == nil {
+		http.Error(w, "internal error: no identity in context", http.StatusInternalServerError)
+		return
+	}
+
 	var input domain.UpdateBundleInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -198,9 +236,14 @@ func handleUpdateBundle(w http.ResponseWriter, r *http.Request, deps Dependencie
 	}
 
 	if err := deps.Service.UpdateBundle(r.Context(), bundleID, input); err != nil {
+		deps.Service.LogAuditEvent(r.Context(), identity.Subject, "UPDATE_BUNDLE", "bundle", bundleID,
+			map[string]interface{}{"name": input.Name, "description": input.Description}, false, err.Error())
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	deps.Service.LogAuditEvent(r.Context(), identity.Subject, "UPDATE_BUNDLE", "bundle", bundleID,
+		map[string]interface{}{"name": input.Name, "description": input.Description}, true, "")
 
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -211,10 +254,21 @@ func handleDeleteBundle(w http.ResponseWriter, r *http.Request, deps Dependencie
 		return
 	}
 
+	identity := authn.GetIdentity(r.Context())
+	if identity == nil {
+		http.Error(w, "internal error: no identity in context", http.StatusInternalServerError)
+		return
+	}
+
 	if err := deps.Service.DeleteBundle(r.Context(), bundleID); err != nil {
+		deps.Service.LogAuditEvent(r.Context(), identity.Subject, "DELETE_BUNDLE", "bundle", bundleID,
+			nil, false, err.Error())
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	deps.Service.LogAuditEvent(r.Context(), identity.Subject, "DELETE_BUNDLE", "bundle", bundleID,
+		nil, true, "")
 
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -222,6 +276,12 @@ func handleDeleteBundle(w http.ResponseWriter, r *http.Request, deps Dependencie
 func handleCreateBundleAssignment(w http.ResponseWriter, r *http.Request, deps Dependencies, bundleID string) {
 	if deps.Service == nil {
 		http.Error(w, "service not configured", http.StatusInternalServerError)
+		return
+	}
+
+	identity := authn.GetIdentity(r.Context())
+	if identity == nil {
+		http.Error(w, "internal error: no identity in context", http.StatusInternalServerError)
 		return
 	}
 
@@ -240,9 +300,14 @@ func handleCreateBundleAssignment(w http.ResponseWriter, r *http.Request, deps D
 		PrincipalID:   input.PrincipalID,
 	})
 	if err != nil {
+		deps.Service.LogAuditEvent(r.Context(), identity.Subject, "CREATE_ASSIGNMENT", "assignment", "",
+			map[string]interface{}{"bundle_id": bundleID, "principal_type": input.PrincipalType, "principal_id": input.PrincipalID}, false, err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+
+	deps.Service.LogAuditEvent(r.Context(), identity.Subject, "CREATE_ASSIGNMENT", "assignment", id,
+		map[string]interface{}{"bundle_id": bundleID, "principal_type": input.PrincipalType, "principal_id": input.PrincipalID}, true, "")
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
@@ -271,15 +336,32 @@ func handleDeleteBundleAssignment(w http.ResponseWriter, r *http.Request, deps D
 		return
 	}
 
+	identity := authn.GetIdentity(r.Context())
+	if identity == nil {
+		http.Error(w, "internal error: no identity in context", http.StatusInternalServerError)
+		return
+	}
+
 	if err := deps.Service.DeleteBundleAssignment(r.Context(), assignmentID); err != nil {
+		deps.Service.LogAuditEvent(r.Context(), identity.Subject, "DELETE_ASSIGNMENT", "assignment", assignmentID,
+			nil, false, err.Error())
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	deps.Service.LogAuditEvent(r.Context(), identity.Subject, "DELETE_ASSIGNMENT", "assignment", assignmentID,
+		nil, true, "")
 
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func handleCreateSource(w http.ResponseWriter, r *http.Request, deps Dependencies) {
+	identity := authn.GetIdentity(r.Context())
+	if identity == nil {
+		http.Error(w, "internal error: no identity in context", http.StatusInternalServerError)
+		return
+	}
+
 	var input domain.CreateSourceInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -288,9 +370,14 @@ func handleCreateSource(w http.ResponseWriter, r *http.Request, deps Dependencie
 
 	source, err := deps.Service.CreateSource(r.Context(), input)
 	if err != nil {
+		deps.Service.LogAuditEvent(r.Context(), identity.Subject, "CREATE_SOURCE", "source", "",
+			map[string]interface{}{"kind": input.Kind, "display_name": input.DisplayName}, false, err.Error())
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	deps.Service.LogAuditEvent(r.Context(), identity.Subject, "CREATE_SOURCE", "source", source.ID,
+		map[string]interface{}{"kind": input.Kind, "display_name": input.DisplayName}, true, "")
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
@@ -328,4 +415,49 @@ func handleValidateSource(w http.ResponseWriter, r *http.Request, deps Dependenc
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
+}
+
+func handleListAuditEvents(w http.ResponseWriter, r *http.Request, deps Dependencies) {
+	// Parse query parameters for filtering
+	filter := domain.AuditEventFilter{
+		AdminID:      r.URL.Query().Get("admin_id"),
+		Action:       r.URL.Query().Get("action"),
+		ResourceType: r.URL.Query().Get("resource_type"),
+		ResourceID:   r.URL.Query().Get("resource_id"),
+	}
+
+	// Parse limit and offset
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		var limit int
+		if _, err := fmt.Sscanf(limitStr, "%d", &limit); err == nil {
+			filter.Limit = limit
+		}
+	}
+	
+	if offsetStr := r.URL.Query().Get("offset"); offsetStr != "" {
+		var offset int
+		if _, err := fmt.Sscanf(offsetStr, "%d", &offset); err == nil {
+			filter.Offset = offset
+		}
+	}
+
+	events, err := deps.Service.ListAuditEvents(r.Context(), filter)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(events)
+}
+
+func handleGetAuditEvent(w http.ResponseWriter, r *http.Request, deps Dependencies, eventID string) {
+	event, err := deps.Service.GetAuditEvent(r.Context(), eventID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(event)
 }

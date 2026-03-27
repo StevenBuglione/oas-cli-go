@@ -2,9 +2,15 @@ package authn
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
+)
+
+var (
+	// ErrInvalidToken is returned when a token is invalid or verification fails
+	ErrInvalidToken = errors.New("invalid token")
 )
 
 type contextKey int

@@ -76,3 +76,72 @@ type CreateBundleAssignmentInput struct {
 	PrincipalType string
 	PrincipalID   string
 }
+
+// Revision represents a versioned snapshot of a bundle's configuration
+type Revision struct {
+	ID          string
+	BundleID    string
+	Status      string // "draft", "published"
+	CreatedBy   string
+	CreatedAt   time.Time
+	PublishedAt *time.Time
+	SnapshotHash string
+}
+
+// CompiledSnapshot represents a runtime-ready configuration snapshot
+type CompiledSnapshot struct {
+	BundleID    string
+	BundleName  string
+	Sources     map[string]SnapshotSource
+	Services    map[string]SnapshotService
+	CompiledAt  time.Time
+}
+
+// SnapshotSource represents a source in a compiled snapshot
+type SnapshotSource struct {
+	Type    string
+	URI     string
+	Enabled bool
+}
+
+// SnapshotService represents a service in a compiled snapshot
+type SnapshotService struct {
+	Source string
+	Alias  string
+}
+
+// RevisionDiff represents the difference between two revisions
+type RevisionDiff struct {
+	FromRevisionID string
+	ToRevisionID   string
+	SourcesAdded   []string
+	SourcesRemoved []string
+	SourcesChanged []string
+	ServicesAdded   []string
+	ServicesRemoved []string
+}
+
+// AdminAuditEvent represents an auditable admin action
+type AdminAuditEvent struct {
+	ID           string
+	Timestamp    time.Time
+	AdminID      string
+	Action       string // CREATE_BUNDLE, UPDATE_BUNDLE, DELETE_BUNDLE, etc.
+	ResourceType string // bundle, source, assignment, revision
+	ResourceID   string
+	Changes      map[string]interface{} // old/new values for change tracking
+	Success      bool
+	ErrorMessage string
+}
+
+// AuditEventFilter contains filtering criteria for audit event queries
+type AuditEventFilter struct {
+	AdminID      string
+	Action       string
+	ResourceType string
+	ResourceID   string
+	StartTime    *time.Time
+	EndTime      *time.Time
+	Limit        int
+	Offset       int
+}
